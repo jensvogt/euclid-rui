@@ -39,8 +39,12 @@ Item {
         statusLoading = true
         statusError = ""
         emmClient.fetchModuleStatus(root.moduleName.toLowerCase())
-        emoClient.fetchCpuUsage(root.moduleName.toLowerCase())
-        emoClient.fetchMemoryUsage(root.moduleName.toLowerCase())
+        // Unlike emm's module registry (lowercase, matching x-euclid-target routing), emo's
+        // "module" metric label is the module's uppercase display name (e.g. "EQS") - set by
+        // each module's own HttpActionServer/UnixSocketServer serviceName, a different naming
+        // convention than the gateway routing target.
+        emoClient.fetchCpuUsage(root.moduleName)
+        emoClient.fetchMemoryUsage(root.moduleName)
     }
 
     onVisibleChanged: if (visible) refreshStatus()

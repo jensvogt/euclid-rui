@@ -139,7 +139,7 @@ Rectangle {
                     }
                     SubNavButton {
                         label: "ENS"
-                        selected: root.currentRoute === "modules-ens"
+                        selected: root.currentRoute.indexOf("modules-ens") === 0
                         onClicked: root.navigate("modules-ens")
                     }
                     SubNavButton {

@@ -39,6 +39,13 @@ ApplicationWindow {
     property string selectedBucketName: ""
     property var selectedBucketDetails: ({})
 
+    // ENS
+    property int ensTopicCount: -1
+    property int ensTotalMessages: -1
+    property string selectedTopicErn: ""
+    property string selectedTopicName: ""
+    property var selectedTopicDetails: ({})
+
     function initialsFor(name) {
         const parts = name.trim().split(/[\s@.]+/).filter(p => p.length > 0)
         if (parts.length === 0)
@@ -70,6 +77,12 @@ ApplicationWindow {
         esmClient.fetchBuckets("", 0, 100)
     }
 
+    function refreshEnsSummary() {
+        if (!window.loggedIn)
+            return
+        ensClient.fetchTopics("", 0, 100)
+    }
+
     LoginDialog {
         id: loginDialog
         onLoggedIn: (username, namespaceName) => {
@@ -92,10 +105,12 @@ ApplicationWindow {
     onCurrentRouteChanged: {
         if (currentRoute === "modules-eqs") refreshEqsSummary()
         if (currentRoute === "modules-esm") refreshEsmSummary()
+        if (currentRoute === "modules-ens") refreshEnsSummary()
     }
     onLoggedInChanged: {
         if (loggedIn && currentRoute === "modules-eqs") refreshEqsSummary()
         if (loggedIn && currentRoute === "modules-esm") refreshEsmSummary()
+        if (loggedIn && currentRoute === "modules-ens") refreshEnsSummary()
     }
 
     Timer {
@@ -110,6 +125,13 @@ ApplicationWindow {
         running: appSettings.autoRefreshSeconds > 0 && window.currentRoute === "modules-esm" && window.loggedIn
         repeat: true
         onTriggered: window.refreshEsmSummary()
+    }
+
+    Timer {
+        interval: appSettings.autoRefreshSeconds * 1000
+        running: appSettings.autoRefreshSeconds > 0 && window.currentRoute === "modules-ens" && window.loggedIn
+        repeat: true
+        onTriggered: window.refreshEnsSummary()
     }
 
     Connections {
@@ -131,6 +153,17 @@ ApplicationWindow {
             for (let i = 0; i < list.length; i++)
                 sum += list[i].objects
             window.esmTotalObjects = sum
+        }
+    }
+
+    Connections {
+        target: ensClient
+        function onTopicsLoaded(list, total) {
+            window.ensTopicCount = total
+            let sum = 0
+            for (let i = 0; i < list.length; i++)
+                sum += list[i].messages
+            window.ensTotalMessages = sum
         }
     }
 
@@ -433,8 +466,14 @@ ApplicationWindow {
                     moduleName: "ENS"
                     loggedIn: window.loggedIn
                     stats: [
-                        { title: "Notifications/sec", value: "512", trend: "+9.7% today", trendUp: true, accent: "#4f8cff" },
-                        { title: "Subscriptions", value: "128", trend: "+3 today", trendUp: true, accent: "#4cd97b" },
+                        {
+                            title: "Topics", value: window.ensTopicCount < 0 ? "—" : String(window.ensTopicCount),
+                            trend: "live", trendUp: true, accent: "#4f8cff", route: "modules-ens-topics"
+                        },
+                        {
+                            title: "Total Messages", value: window.ensTotalMessages < 0 ? "—" : String(window.ensTotalMessages),
+                            trend: "live", trendUp: true, accent: "#4cd97b", route: "modules-ens-messages"
+                        },
                         { title: "Failed Deliveries", value: "7", trend: "-1.2% today", trendUp: false, accent: "#ffb545" },
                         { title: "Avg. Delivery", value: "94ms", trend: "+0.5% today", trendUp: true, accent: "#c56bff" }
                     ]
@@ -443,6 +482,55 @@ ApplicationWindow {
                         { initials: "EN", avatarColor: "#4cd97b", title: "Subscription confirmed", subtitle: "endpoint · webhook", time: "27m ago" },
                         { initials: "EN", avatarColor: "#ffb545", title: "Retry policy applied", subtitle: "topic · alerts", time: "3h ago" }
                     ]
+                    onNavigate: (route) => {
+                        window.selectedTopicErn = ""
+                        window.selectedTopicName = ""
+                        window.currentRoute = route
+                    }
+                }
+
+                // ENS
+                EnsTopicsPage {
+                    anchors.fill: parent
+                    visible: window.currentRoute === "modules-ens-topics"
+                    loggedIn: window.loggedIn
+                    namespaceName: window.currentNamespace
+                    onBack: window.currentRoute = "modules-ens"
+                    onOpenTopic: (topicErn, topicName) => {
+                        window.selectedTopicErn = topicErn
+                        window.selectedTopicName = topicName
+                        window.currentRoute = "modules-ens-messages"
+                    }
+                    onOpenTopicDetails: (topicErn, topicName, details) => {
+                        window.selectedTopicErn = topicErn
+                        window.selectedTopicName = topicName
+                        window.selectedTopicDetails = details
+                        window.currentRoute = "modules-ens-topic-details"
+                    }
+                }
+                EnsMessagesPage {
+                    anchors.fill: parent
+                    visible: window.currentRoute === "modules-ens-messages"
+                    loggedIn: window.loggedIn
+                    namespaceName: window.currentNamespace
+                    topicErn: window.selectedTopicErn
+                    topicName: window.selectedTopicName
+                    onBack: window.currentRoute = window.selectedTopicErn.length > 0 ? "modules-ens-topics" : "modules-ens"
+                }
+                EnsTopicDetailsPage {
+                    anchors.fill: parent
+                    visible: window.currentRoute === "modules-ens-topic-details"
+                    loggedIn: window.loggedIn
+                    namespaceName: window.currentNamespace
+                    topicErn: window.selectedTopicErn
+                    topicName: window.selectedTopicName
+                    details: window.selectedTopicDetails
+                    onBack: window.currentRoute = "modules-ens-topics"
+                    onViewMessages: (topicErn, topicName) => {
+                        window.selectedTopicErn = topicErn
+                        window.selectedTopicName = topicName
+                        window.currentRoute = "modules-ens-messages"
+                    }
                 }
             }
         }

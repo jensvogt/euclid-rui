@@ -33,6 +33,7 @@ qt_add_executable(euclid_rui main.cpp
         client/EmmClient.h client/EmmClient.cpp
         client/EqsClient.h client/EqsClient.cpp
         client/EsmClient.h client/EsmClient.cpp
+        client/EnsClient.h client/EnsClient.cpp
         client/EmoClient.h client/EmoClient.cpp
 )
 
@@ -59,6 +60,9 @@ qt_add_qml_module(euclid_rui
         qml/pages/EsmBucketsPage.qml
         qml/pages/EsmBucketDetailsPage.qml
         qml/pages/EsmObjectsPage.qml
+        qml/pages/EnsTopicsPage.qml
+        qml/pages/EnsTopicDetailsPage.qml
+        qml/pages/EnsMessagesPage.qml
         qml/components/SideNav.qml
         qml/components/NavButton.qml
         qml/components/SubNavButton.qml

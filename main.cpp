@@ -8,6 +8,7 @@
 #include "AppSettings.h"
 #include "client/EmmClient.h"
 #include "client/EmoClient.h"
+#include "client/EnsClient.h"
 #include "client/EqsClient.h"
 #include "client/EsmClient.h"
 #include "client/EuclidBaseClient.h"
@@ -34,6 +35,7 @@ int main(int argc, char *argv[]) {
     EmmClient emmClient(&euclidClient);
     EqsClient eqsClient(&euclidClient);
     EsmClient esmClient(&euclidClient);
+    EnsClient ensClient(&euclidClient);
     EmoClient emoClient(&euclidClient);
     AppSettings appSettings;
 
@@ -42,6 +44,7 @@ int main(int argc, char *argv[]) {
     engine.rootContext()->setContextProperty("emmClient", &emmClient);
     engine.rootContext()->setContextProperty("eqsClient", &eqsClient);
     engine.rootContext()->setContextProperty("esmClient", &esmClient);
+    engine.rootContext()->setContextProperty("ensClient", &ensClient);
     engine.rootContext()->setContextProperty("emoClient", &emoClient);
     engine.rootContext()->setContextProperty("appSettings", &appSettings);
     engine.rootContext()->setContextProperty("cliUser", parser.value(userOption));
