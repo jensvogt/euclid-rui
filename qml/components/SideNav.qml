@@ -134,7 +134,7 @@ Rectangle {
                     }
                     SubNavButton {
                         label: "EKM"
-                        selected: root.currentRoute === "modules-ekm"
+                        selected: root.currentRoute.indexOf("modules-ekm") === 0
                         onClicked: root.navigate("modules-ekm")
                     }
                     SubNavButton {

@@ -6,6 +6,7 @@
 #include <QQuickStyle>
 
 #include "AppSettings.h"
+#include "client/EkmClient.h"
 #include "client/EmmClient.h"
 #include "client/EmoClient.h"
 #include "client/EnsClient.h"
@@ -36,6 +37,7 @@ int main(int argc, char *argv[]) {
     EqsClient eqsClient(&euclidClient);
     EsmClient esmClient(&euclidClient);
     EnsClient ensClient(&euclidClient);
+    EkmClient ekmClient(&euclidClient);
     EmoClient emoClient(&euclidClient);
     AppSettings appSettings;
 
@@ -45,6 +47,7 @@ int main(int argc, char *argv[]) {
     engine.rootContext()->setContextProperty("eqsClient", &eqsClient);
     engine.rootContext()->setContextProperty("esmClient", &esmClient);
     engine.rootContext()->setContextProperty("ensClient", &ensClient);
+    engine.rootContext()->setContextProperty("ekmClient", &ekmClient);
     engine.rootContext()->setContextProperty("emoClient", &emoClient);
     engine.rootContext()->setContextProperty("appSettings", &appSettings);
     engine.rootContext()->setContextProperty("cliUser", parser.value(userOption));

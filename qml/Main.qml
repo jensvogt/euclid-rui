@@ -46,6 +46,9 @@ ApplicationWindow {
     property string selectedTopicName: ""
     property var selectedTopicDetails: ({})
 
+    // EKM
+    property int ekmKeyCount: -1
+
     function initialsFor(name) {
         const parts = name.trim().split(/[\s@.]+/).filter(p => p.length > 0)
         if (parts.length === 0)
@@ -83,6 +86,12 @@ ApplicationWindow {
         ensClient.fetchTopics("", 0, 100)
     }
 
+    function refreshEkmSummary() {
+        if (!window.loggedIn)
+            return
+        ekmClient.fetchKeys("", 0, 100)
+    }
+
     LoginDialog {
         id: loginDialog
         onLoggedIn: (username, namespaceName) => {
@@ -106,11 +115,13 @@ ApplicationWindow {
         if (currentRoute === "modules-eqs") refreshEqsSummary()
         if (currentRoute === "modules-esm") refreshEsmSummary()
         if (currentRoute === "modules-ens") refreshEnsSummary()
+        if (currentRoute === "modules-ekm") refreshEkmSummary()
     }
     onLoggedInChanged: {
         if (loggedIn && currentRoute === "modules-eqs") refreshEqsSummary()
         if (loggedIn && currentRoute === "modules-esm") refreshEsmSummary()
         if (loggedIn && currentRoute === "modules-ens") refreshEnsSummary()
+        if (loggedIn && currentRoute === "modules-ekm") refreshEkmSummary()
     }
 
     Timer {
@@ -132,6 +143,13 @@ ApplicationWindow {
         running: appSettings.autoRefreshSeconds > 0 && window.currentRoute === "modules-ens" && window.loggedIn
         repeat: true
         onTriggered: window.refreshEnsSummary()
+    }
+
+    Timer {
+        interval: appSettings.autoRefreshSeconds * 1000
+        running: appSettings.autoRefreshSeconds > 0 && window.currentRoute === "modules-ekm" && window.loggedIn
+        repeat: true
+        onTriggered: window.refreshEkmSummary()
     }
 
     Connections {
@@ -164,6 +182,13 @@ ApplicationWindow {
             for (let i = 0; i < list.length; i++)
                 sum += list[i].messages
             window.ensTotalMessages = sum
+        }
+    }
+
+    Connections {
+        target: ekmClient
+        function onKeysLoaded(list, total) {
+            window.ekmKeyCount = total
         }
     }
 
@@ -303,7 +328,10 @@ ApplicationWindow {
                     moduleName: "EKM"
                     loggedIn: window.loggedIn
                     stats: [
-                        { title: "Managed Keys", value: "64", trend: "+2 today", trendUp: true, accent: "#4f8cff" },
+                        {
+                            title: "Managed Keys", value: window.ekmKeyCount < 0 ? "—" : String(window.ekmKeyCount),
+                            trend: "live", trendUp: true, accent: "#4f8cff", route: "modules-ekm-keys"
+                        },
                         { title: "Encrypt Ops/sec", value: "890", trend: "+3.8% today", trendUp: true, accent: "#4cd97b" },
                         { title: "Decrypt Ops/sec", value: "742", trend: "+1.6% today", trendUp: true, accent: "#ffb545" },
                         { title: "Key Rotations", value: "5", trend: "0 today", trendUp: true, accent: "#c56bff" }
@@ -313,7 +341,16 @@ ApplicationWindow {
                         { initials: "EK", avatarColor: "#4cd97b", title: "New key \"backup-2026\" created", subtitle: "usage · encrypt/decrypt", time: "1h ago" },
                         { initials: "EK", avatarColor: "#ffb545", title: "Key policy updated", subtitle: "key · prod-primary", time: "5h ago" }
                     ]
+                    onNavigate: (route) => window.currentRoute = route
                 }
+                EkmKeysPage {
+                    anchors.fill: parent
+                    visible: window.currentRoute === "modules-ekm-keys"
+                    loggedIn: window.loggedIn
+                    namespaceName: window.currentNamespace
+                    onBack: window.currentRoute = "modules-ekm"
+                }
+
                 ModulePage {
                     anchors.fill: parent
                     visible: window.currentRoute === "modules-eqs"
