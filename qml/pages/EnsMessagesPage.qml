@@ -47,9 +47,6 @@ Item {
             { title: "Status", key: "status", formatter: function (v) { return v && v.length > 0 ? v : "—" } },
             { title: "Size", key: "size", formatter: function (v, row) { return SizeFormat.format(root.byteLength(row.body)) } },
             { title: "Created", key: "created", formatter: function (v) { return DateFormat.format(v) } },
-            // ENS never sets a message's "modified" timestamp (it's a publish-once record, not
-            // mutated afterwards), so the server always returns the zero epoch here rather than a
-            // real date - showing that raw would look like a bug rather than "not applicable".
             { title: "Modified", key: "modified", formatter: function (v) { return v && v.indexOf("1970-01-01") === 0 ? "—" : DateFormat.format(v) } },
             { title: "TopicErn", key: "topicErn", hidden: true },
             { title: "MessageErn", key: "ern", hidden: true }
