@@ -58,6 +58,15 @@ Item {
     }
 
     signal back()
+    signal openObjectDetails(string objectErn, string objectKey, string bucketName, var details)
+
+    // In the single-bucket view every row belongs to root.bucketName; in the aggregate "all
+    // buckets" view rows can belong to any bucket, so look the name up by the row's own bucketErn.
+    function bucketNameFor(row) {
+        if (root.bucketErn.length > 0)
+            return root.bucketName
+        return root.bucketLookup[row.bucketErn] || "—"
+    }
 
     function statusColor(status) {
         if (status === "COMPLETED") return "#4cd97b"
@@ -413,6 +422,12 @@ Item {
                 }
 
                 contextMenuActions: [
+                    {
+                        text: "Details",
+                        action: function(row) {
+                            root.openObjectDetails(row.ern, row.key, root.bucketNameFor(row), row)
+                        }
+                    },
                     {
                         text: "Delete",
                         action: function(row) {

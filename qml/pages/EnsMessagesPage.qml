@@ -55,6 +55,15 @@ Item {
     }
 
     signal back()
+    signal openMessageDetails(string messageErn, string messageId, string topicName, var details)
+
+    // In the single-topic view every row belongs to root.topicName; in the aggregate "all
+    // topics" view rows can belong to any topic, so look the name up by the row's own topicErn.
+    function topicNameFor(row) {
+        if (root.topicErn.length > 0)
+            return root.topicName
+        return root.topicLookup[row.topicErn] || "—"
+    }
 
     function byteLength(str) {
         if (!str)
@@ -501,6 +510,15 @@ Item {
                     root.sortAscending = ascending
                     root.pageIndex = 0
                 }
+
+                contextMenuActions: [
+                    {
+                        text: "Details",
+                        action: function(row) {
+                            root.openMessageDetails(row.ern, row.messageId, root.topicNameFor(row), row)
+                        }
+                    }
+                ]
             }
         }
     }

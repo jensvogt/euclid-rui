@@ -58,6 +58,15 @@ Item {
     }
 
     signal back()
+    signal openMessageDetails(string messageErn, string messageId, string queueName, var details)
+
+    // In the single-queue view every row belongs to root.queueName; in the aggregate "all
+    // queues" view rows can belong to any queue, so look the name up by the row's own queueErn.
+    function queueNameFor(row) {
+        if (root.queueErn.length > 0)
+            return root.queueName
+        return root.queueLookup[row.queueErn] || "—"
+    }
 
     function statusColor(status) {
         if (status === "AVAILABLE") return "#4cd97b"
@@ -552,15 +561,15 @@ Item {
 
                 contextMenuActions: [
                     {
-                        text: "Edit",
+                        text: "Details",
                         action: function(row) {
-                            console.log("Edit:", row.messageId)
+                            root.openMessageDetails(row.ern, row.messageId, root.queueNameFor(row), row)
                         }
                     },
                     {
                         text: "Delete",
                         action: function(row) {
-                            eqsClient.deleteSqsMessage(root.queueErn, row.messageId)
+                            eqsClient.deleteSqsMessage(row.queueErn, row.messageId)
                         }
                     }
                 ]

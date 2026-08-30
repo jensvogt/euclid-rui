@@ -152,6 +152,39 @@ void EamClient::fetchUsers(const QString &prefix, const int pageIndex, const int
          });
 }
 
+void EamClient::createUser(const QString &userId, const QString &password, const QString &email,
+                            const QString &accountId, const QString &region, const bool isAdmin) {
+    QJsonObject body;
+    body["userId"] = userId;
+    body["password"] = password;
+    body["email"] = email;
+    body["accountId"] = accountId;
+    body["region"] = region;
+    body["isAdmin"] = isAdmin;
+
+    m_base->post("eam", "register", body, true,
+         [this, userId](const QJsonObject &response) {
+             emit userCreated(userId);
+             emit usersReload();
+         },
+         [this](const QString &message) {
+             emit userCreateFailed(message);
+         });
+}
+
+void EamClient::deleteUser(const QString &userId) {
+    QJsonObject body;
+    body["userId"] = userId;
+
+    m_base->post("eam", "delete-user", body, true,
+         [this](const QJsonObject &response) {
+             emit usersReload();
+         },
+         [this](const QString &message) {
+             emit usersFailed(message);
+         });
+}
+
 void EamClient::fetchUserGroups(const QString &prefix, const int pageIndex, const int pageSize, const QString &sortColumn, const QString &sortDirection) {
     QJsonObject body;
     body["prefix"] = prefix;
@@ -177,6 +210,34 @@ void EamClient::fetchUserGroups(const QString &prefix, const int pageIndex, cons
                  groups << entry;
              }
              emit userGroupsLoaded(groups, response.value("total").toInt());
+         },
+         [this](const QString &message) {
+             emit userGroupsFailed(message);
+         });
+}
+
+void EamClient::createUserGroup(const QString &name, const QString &description) {
+    QJsonObject body;
+    body["name"] = name;
+    body["description"] = description;
+
+    m_base->post("eam", "create-user-group", body, true,
+         [this, name](const QJsonObject &response) {
+             emit userGroupCreated(name);
+             emit userGroupsReload();
+         },
+         [this](const QString &message) {
+             emit userGroupCreateFailed(message);
+         });
+}
+
+void EamClient::deleteUserGroup(const QString &name) {
+    QJsonObject body;
+    body["name"] = name;
+
+    m_base->post("eam", "delete-user-group", body, true,
+         [this](const QJsonObject &response) {
+             emit userGroupsReload();
          },
          [this](const QString &message) {
              emit userGroupsFailed(message);

@@ -41,6 +41,10 @@ ApplicationWindow {
     property string selectedQueueErn: ""
     property string selectedQueueName: ""
     property var selectedQueueDetails: ({})
+    property string selectedMessageErn: ""
+    property string selectedMessageId: ""
+    property string selectedMessageQueueName: ""
+    property var selectedMessageDetails: ({})
 
     // ESM
     property int esmBucketCount: -1
@@ -50,6 +54,10 @@ ApplicationWindow {
     property string selectedBucketErn: ""
     property string selectedBucketName: ""
     property var selectedBucketDetails: ({})
+    property string selectedObjectErn: ""
+    property string selectedObjectKey: ""
+    property string selectedObjectBucketName: ""
+    property var selectedObjectDetails: ({})
 
     // ENS
     property int ensTopicCount: -1
@@ -59,6 +67,10 @@ ApplicationWindow {
     property string selectedTopicErn: ""
     property string selectedTopicName: ""
     property var selectedTopicDetails: ({})
+    property string selectedEnsMessageErn: ""
+    property string selectedEnsMessageId: ""
+    property string selectedEnsMessageTopicName: ""
+    property var selectedEnsMessageDetails: ({})
 
     // EKM
     property int ekmKeyCount: -1
@@ -447,6 +459,20 @@ ApplicationWindow {
                     namespaceName: window.currentNamespace
                     onBack: window.currentRoute = "modules-eam"
                 }
+                EamUsersPage {
+                    anchors.fill: parent
+                    visible: window.currentRoute === "modules-eam-users"
+                    loggedIn: window.loggedIn
+                    namespaceName: window.currentNamespace
+                    onBack: window.currentRoute = "modules-eam"
+                }
+                EamUserGroupsPage {
+                    anchors.fill: parent
+                    visible: window.currentRoute === "modules-eam-user-groups"
+                    loggedIn: window.loggedIn
+                    namespaceName: window.currentNamespace
+                    onBack: window.currentRoute = "modules-eam"
+                }
 
                 ModulePage {
                     anchors.fill: parent
@@ -562,6 +588,24 @@ ApplicationWindow {
                     queueErn: window.selectedQueueErn
                     queueName: window.selectedQueueName
                     onBack: window.currentRoute = window.selectedQueueErn.length > 0 ? "modules-eqs-queues" : "modules-eqs"
+                    onOpenMessageDetails: (messageErn, messageId, queueName, details) => {
+                        window.selectedMessageErn = messageErn
+                        window.selectedMessageId = messageId
+                        window.selectedMessageQueueName = queueName
+                        window.selectedMessageDetails = details
+                        window.currentRoute = "modules-eqs-message-details"
+                    }
+                }
+                EqsMessageDetailsPage {
+                    anchors.fill: parent
+                    visible: window.currentRoute === "modules-eqs-message-details"
+                    loggedIn: window.loggedIn
+                    namespaceName: window.currentNamespace
+                    queueName: window.selectedMessageQueueName
+                    messageErn: window.selectedMessageErn
+                    messageId: window.selectedMessageId
+                    details: window.selectedMessageDetails
+                    onBack: window.currentRoute = "modules-eqs-messages"
                 }
                 EqsQueueDetailsPage {
                     anchors.fill: parent
@@ -641,6 +685,24 @@ ApplicationWindow {
                     bucketErn: window.selectedBucketErn
                     bucketName: window.selectedBucketName
                     onBack: window.currentRoute = window.selectedBucketErn.length > 0 ? "modules-esm-buckets" : "modules-esm"
+                    onOpenObjectDetails: (objectErn, objectKey, bucketName, details) => {
+                        window.selectedObjectErn = objectErn
+                        window.selectedObjectKey = objectKey
+                        window.selectedObjectBucketName = bucketName
+                        window.selectedObjectDetails = details
+                        window.currentRoute = "modules-esm-object-details"
+                    }
+                }
+                EsmObjectDetailsPage {
+                    anchors.fill: parent
+                    visible: window.currentRoute === "modules-esm-object-details"
+                    loggedIn: window.loggedIn
+                    namespaceName: window.currentNamespace
+                    bucketName: window.selectedObjectBucketName
+                    objectErn: window.selectedObjectErn
+                    objectKey: window.selectedObjectKey
+                    details: window.selectedObjectDetails
+                    onBack: window.currentRoute = "modules-esm-objects"
                 }
 
                 EsmBucketDetailsPage {
@@ -720,6 +782,24 @@ ApplicationWindow {
                     topicErn: window.selectedTopicErn
                     topicName: window.selectedTopicName
                     onBack: window.currentRoute = window.selectedTopicErn.length > 0 ? "modules-ens-topics" : "modules-ens"
+                    onOpenMessageDetails: (messageErn, messageId, topicName, details) => {
+                        window.selectedEnsMessageErn = messageErn
+                        window.selectedEnsMessageId = messageId
+                        window.selectedEnsMessageTopicName = topicName
+                        window.selectedEnsMessageDetails = details
+                        window.currentRoute = "modules-ens-message-details"
+                    }
+                }
+                EnsMessageDetailsPage {
+                    anchors.fill: parent
+                    visible: window.currentRoute === "modules-ens-message-details"
+                    loggedIn: window.loggedIn
+                    namespaceName: window.currentNamespace
+                    topicName: window.selectedEnsMessageTopicName
+                    messageErn: window.selectedEnsMessageErn
+                    messageId: window.selectedEnsMessageId
+                    details: window.selectedEnsMessageDetails
+                    onBack: window.currentRoute = "modules-ens-messages"
                 }
                 EnsTopicDetailsPage {
                     anchors.fill: parent
