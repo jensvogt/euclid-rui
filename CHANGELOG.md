@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.0.1](https://github.com/jensvogt/euclid-rui/compare/v1.0.0...v1.0.1) (2026-08-30)
+
+
+### Bug Fixes
+
+* add OpenGL dependencies ([5539ef8](https://github.com/jensvogt/euclid-rui/commit/5539ef886aa6e6d7f96ce6071f981e8647e94434))
+* add OpenGL dependencies ([0cdb22b](https://github.com/jensvogt/euclid-rui/commit/0cdb22b1b1533198e4e5db1c016dd5de09955016))
+* add OpenGL dependencies ([5566e80](https://github.com/jensvogt/euclid-rui/commit/5566e80caa8429ca78eeeedb7062e56f3fd830d8))
+
 ## 1.0.0 (2026-08-30)
 
 
