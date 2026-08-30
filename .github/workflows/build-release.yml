@@ -1,4 +1,19 @@
-name: Release + Build (DEB / RPM)
+name: Release + Build (Linux / macOS / Windows, static Qt)
+
+# Adapted from ~/work/awsmock-qt-ui's build-release.yml, with one structural difference: that
+# template installs a normal (dynamic) Qt via jurplel/install-qt-action / aqtinstall for every
+# run. Here Qt is built *from source* with -static once per OS and cached (actions/cache, keyed
+# on OS + Qt version), since no prebuilt static Qt package exists. Every build job downstream
+# just restores that cache instead of rebuilding Qt - only a cache-key bump or the first-ever run
+# pays the (multi-hour) source build cost.
+#
+# Because the app binary is statically linked against Qt, packaging is simpler than the template
+# in one respect: there's no Qt runtime (shared libs/plugins/qml modules) to bundle alongside it
+# with windeployqt/macdeployqt - the executable is already self-contained. One deviation from the
+# template: awsmock-qt-ui's Windows job produces a Qt Installer Framework (IFW) installer, backed
+# by installer/config/config.xml + installer/packages/<id>/ scaffolding that only exists in that
+# repo. Rather than fabricate an untested IFW config here, Windows is packaged as a plain zip of
+# the standalone .exe.
 
 on:
   push:
@@ -7,8 +22,14 @@ on:
 
 env:
   QT_VERSION: "6.11.2"
-  APP_NAME: "euclid-rui"       # package name / install prefix under /usr/local
-  BIN_NAME: "euclid_rui"       # actual executable file name produced by CMake
+  # Qt submodules actually needed to satisfy euclid-rui's CMakeLists.txt find_package(Qt6
+  # COMPONENTS Core Gui Network Qml Quick QuickControls2 QuickDialogs2) - qtshadertools is a
+  # required build dependency of qtdeclarative, not directly used by the app.
+  QT_MODULES: "qtbase,qtdeclarative,qtshadertools"
+  # Bump to force every static-Qt cache to rebuild from scratch (e.g. after changing QT_MODULES).
+  QT_CACHE_VERSION: "v1"
+  APP_NAME: "euclid-rui"
+  BIN_NAME: "euclid_rui"
 
 permissions:
   contents: write       # required for tagging + releasing
@@ -38,11 +59,158 @@ jobs:
           CLEAN="${TAG#v}"   # remove leading 'v'
           echo "clean_tag=$CLEAN" >> $GITHUB_OUTPUT
 
-  build-linux-deb:
-    name: Build & Package (Linux DEB)
+  # ── Static Qt, built once per OS and cached ────────────────────────────────
+
+  build-qt-static-linux:
+    name: Build static Qt (Linux, cached)
     runs-on: ubuntu-22.04
     needs: release-please
     if: ${{ needs.release-please.outputs.release_created == 'true' }}
+    steps:
+      - name: Restore/save cached static Qt
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/qt-static
+          key: qt-static-linux-${{ env.QT_VERSION }}-${{ env.QT_CACHE_VERSION }}
+
+      - name: Install Qt build dependencies
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          sudo apt update
+          sudo apt install -y build-essential cmake ninja-build git perl python3 pkg-config \
+            libssl-dev libfontconfig1-dev libfreetype6-dev libglib2.0-dev libgl1-mesa-dev \
+            libx11-dev libx11-xcb-dev libxext-dev libxfixes-dev libxi-dev libxrender-dev \
+            libxkbcommon-dev libxkbcommon-x11-dev \
+            libxcb1-dev libxcb-cursor-dev libxcb-glx0-dev libxcb-keysyms1-dev libxcb-image0-dev \
+            libxcb-shm0-dev libxcb-icccm4-dev libxcb-sync-dev libxcb-xfixes0-dev libxcb-shape0-dev \
+            libxcb-randr0-dev libxcb-render-util0-dev libxcb-xinerama0-dev
+
+      - name: Clone Qt sources
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          git clone --branch "v${{ env.QT_VERSION }}" --depth 1 https://github.com/qt/qt5.git qt-src
+          cd qt-src
+          perl init-repository --module-subset=${{ env.QT_MODULES }}
+
+      - name: Configure static Qt
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p qt-build
+          cd qt-build
+          ../qt-src/configure -static -release -opensource -confirm-license \
+            -prefix "${{ github.workspace }}/qt-static" \
+            -nomake examples -nomake tests \
+            -submodules ${{ env.QT_MODULES }}
+
+      - name: Build static Qt
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: cmake --build qt-build --parallel $(nproc)
+
+      - name: Install static Qt
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: cmake --install qt-build
+
+  build-qt-static-macos:
+    name: Build static Qt (macOS, cached)
+    runs-on: macos-latest
+    needs: release-please
+    if: ${{ needs.release-please.outputs.release_created == 'true' }}
+    steps:
+      - name: Restore/save cached static Qt
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/qt-static
+          key: qt-static-macos-${{ env.QT_VERSION }}-${{ env.QT_CACHE_VERSION }}
+
+      - name: Install Qt build dependencies
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: brew install ninja pkg-config
+
+      - name: Clone Qt sources
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          git clone --branch "v${{ env.QT_VERSION }}" --depth 1 https://github.com/qt/qt5.git qt-src
+          cd qt-src
+          perl init-repository --module-subset=${{ env.QT_MODULES }}
+
+      - name: Configure static Qt
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p qt-build
+          cd qt-build
+          ../qt-src/configure -static -release -opensource -confirm-license \
+            -prefix "${{ github.workspace }}/qt-static" \
+            -nomake examples -nomake tests \
+            -submodules ${{ env.QT_MODULES }}
+
+      - name: Build static Qt
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: cmake --build qt-build --parallel $(sysctl -n hw.logicalcpu)
+
+      - name: Install static Qt
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: cmake --install qt-build
+
+  build-qt-static-windows:
+    name: Build static Qt (Windows, cached)
+    runs-on: windows-latest
+    needs: release-please
+    if: ${{ needs.release-please.outputs.release_created == 'true' }}
+    steps:
+      - name: Restore/save cached static Qt
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}\qt-static
+          key: qt-static-windows-${{ env.QT_VERSION }}-${{ env.QT_CACHE_VERSION }}
+
+      - name: Setup MSVC environment
+        if: steps.cache.outputs.cache-hit != 'true'
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Install Ninja
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: choco install ninja -y
+
+      - name: Clone Qt sources
+        if: steps.cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          git clone --branch "v${{ env.QT_VERSION }}" --depth 1 https://github.com/qt/qt5.git qt-src
+          cd qt-src
+          perl init-repository --module-subset=${{ env.QT_MODULES }}
+
+      - name: Configure static Qt
+        if: steps.cache.outputs.cache-hit != 'true'
+        shell: cmd
+        run: |
+          mkdir qt-build
+          cd qt-build
+          ..\qt-src\configure.bat -static -static-runtime -release -opensource -confirm-license ^
+            -prefix "${{ github.workspace }}\qt-static" ^
+            -nomake examples -nomake tests ^
+            -submodules %QT_MODULES%
+
+      - name: Build static Qt
+        if: steps.cache.outputs.cache-hit != 'true'
+        shell: cmd
+        run: cmake --build qt-build --parallel %NUMBER_OF_PROCESSORS%
+
+      - name: Install static Qt
+        if: steps.cache.outputs.cache-hit != 'true'
+        shell: cmd
+        run: cmake --install qt-build
+
+  # ── App builds, each restoring its platform's cached static Qt ────────────
+
+  build-linux-deb:
+    name: Build & Package (Linux DEB)
+    runs-on: ubuntu-22.04
+    needs: [ release-please, build-qt-static-linux ]
     env:
       BUILD_DIR: "${{ github.workspace }}/build-linux"
       SEMVER: "${{ needs.release-please.outputs.tag_name }}"
@@ -52,56 +220,38 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Install system dependencies
+      - name: Restore cached static Qt
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/qt-static
+          key: qt-static-linux-${{ env.QT_VERSION }}-${{ env.QT_CACHE_VERSION }}
+
+      - name: Install packaging tools
         run: |
           sudo apt update
-          sudo apt install -y build-essential cmake ninja-build ruby ruby-dev \
-            libfreetype6-dev libfontconfig1-dev libglib2.0-dev libx11-dev libxext-dev libxrender-dev
+          sudo apt install -y build-essential cmake ninja-build ruby ruby-dev
           sudo gem install --no-document fpm
-
-      - name: Install Qt
-        uses: jurplel/install-qt-action@v4
-        with:
-          version: ${{ env.QT_VERSION }}
-          install-deps: true
 
       - name: Configure (Linux)
         run: |
           mkdir -p $BUILD_DIR
-          cmake -S . -B $BUILD_DIR -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$QT_ROOT_DIR"
+          cmake -S . -B $BUILD_DIR -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="${{ github.workspace }}/qt-static"
 
       - name: Build (Linux)
-        run: |
-          cmake --build $BUILD_DIR --parallel $(nproc)
+        run: cmake --build $BUILD_DIR --parallel $(nproc)
 
       - name: Prepare package structure
         run: |
           PACKAGE_DIR=package
           echo "PACKAGE_DIR=$PACKAGE_DIR" >> $GITHUB_ENV
-
-          mkdir -p $PACKAGE_DIR/usr/local/$APP_NAME/bin
-          mkdir -p $PACKAGE_DIR/usr/local/$APP_NAME/lib
-          mkdir -p $PACKAGE_DIR/usr/local/$APP_NAME/plugins
-          mkdir -p $PACKAGE_DIR/usr/local/$APP_NAME/qml
-
-          # App binary. euclid-rui embeds its own QML as AOT-compiled resources, so only Qt's own
-          # runtime (shared libs, platform/style plugins, Qt-provided QML modules like
-          # QtQuick.Controls.Material and QtQuick.Dialogs) needs to be bundled alongside it.
-          cp $BUILD_DIR/$BIN_NAME $PACKAGE_DIR/usr/local/$APP_NAME/bin/
-          cp -r $QT_ROOT_DIR/lib/* $PACKAGE_DIR/usr/local/$APP_NAME/lib/
-          cp -r $QT_ROOT_DIR/plugins/* $PACKAGE_DIR/usr/local/$APP_NAME/plugins/
-          cp -r $QT_ROOT_DIR/qml/* $PACKAGE_DIR/usr/local/$APP_NAME/qml/
-
-          cat << EOF > $PACKAGE_DIR/usr/local/$APP_NAME/bin/qt.conf
-          [Paths]
-          Prefix = ..
-          Qml2Imports = qml
-          EOF
+          mkdir -p $PACKAGE_DIR/usr/bin
+          # Statically linked - the single binary is the whole package, no Qt runtime to bundle.
+          cp $BUILD_DIR/$BIN_NAME $PACKAGE_DIR/usr/bin/$APP_NAME
 
       - name: Build DEB with fpm
         run: |
           fpm -s dir -t deb --name "${APP_NAME}" --version "${SEMVER}" --architecture amd64 \
-            --package "${APP_NAME}-${SEMVER}-amd64.deb" -C "$PACKAGE_DIR" usr/local/$APP_NAME
+            --package "${APP_NAME}-${SEMVER}-amd64.deb" -C "$PACKAGE_DIR" usr/bin
 
       - name: Upload .deb
         uses: actions/upload-artifact@v4
@@ -112,8 +262,7 @@ jobs:
   build-linux-rpm:
     name: Build & Package (Linux RPM)
     runs-on: ubuntu-22.04
-    needs: release-please
-    if: ${{ needs.release-please.outputs.release_created == 'true' }}
+    needs: [ release-please, build-qt-static-linux ]
     env:
       BUILD_DIR: "${{ github.workspace }}/build-linux"
       SEMVER: "${{ needs.release-please.outputs.tag_name }}"
@@ -123,53 +272,37 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Install system dependencies
+      - name: Restore cached static Qt
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/qt-static
+          key: qt-static-linux-${{ env.QT_VERSION }}-${{ env.QT_CACHE_VERSION }}
+
+      - name: Install packaging tools
         run: |
           sudo apt update
-          sudo apt install -y build-essential cmake ninja-build ruby ruby-dev \
-            libfreetype6-dev libfontconfig1-dev libglib2.0-dev libx11-dev libxext-dev libxrender-dev
+          sudo apt install -y build-essential cmake ninja-build ruby ruby-dev
           sudo gem install --no-document fpm
-
-      - name: Install Qt
-        uses: jurplel/install-qt-action@v4
-        with:
-          version: ${{ env.QT_VERSION }}
-          install-deps: true
 
       - name: Configure (Linux)
         run: |
           mkdir -p $BUILD_DIR
-          cmake -S . -B $BUILD_DIR -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$QT_ROOT_DIR"
+          cmake -S . -B $BUILD_DIR -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="${{ github.workspace }}/qt-static"
 
       - name: Build (Linux)
-        run: |
-          cmake --build $BUILD_DIR --parallel $(nproc)
+        run: cmake --build $BUILD_DIR --parallel $(nproc)
 
       - name: Prepare package structure
         run: |
           PACKAGE_DIR=package
           echo "PACKAGE_DIR=$PACKAGE_DIR" >> $GITHUB_ENV
-
-          mkdir -p $PACKAGE_DIR/usr/local/$APP_NAME/bin
-          mkdir -p $PACKAGE_DIR/usr/local/$APP_NAME/lib
-          mkdir -p $PACKAGE_DIR/usr/local/$APP_NAME/plugins
-          mkdir -p $PACKAGE_DIR/usr/local/$APP_NAME/qml
-
-          cp $BUILD_DIR/$BIN_NAME $PACKAGE_DIR/usr/local/$APP_NAME/bin/
-          cp -r $QT_ROOT_DIR/lib/* $PACKAGE_DIR/usr/local/$APP_NAME/lib/
-          cp -r $QT_ROOT_DIR/plugins/* $PACKAGE_DIR/usr/local/$APP_NAME/plugins/
-          cp -r $QT_ROOT_DIR/qml/* $PACKAGE_DIR/usr/local/$APP_NAME/qml/
-
-          cat << EOF > $PACKAGE_DIR/usr/local/$APP_NAME/bin/qt.conf
-          [Paths]
-          Prefix = ..
-          Qml2Imports = qml
-          EOF
+          mkdir -p $PACKAGE_DIR/usr/bin
+          cp $BUILD_DIR/$BIN_NAME $PACKAGE_DIR/usr/bin/$APP_NAME
 
       - name: Build RPM with fpm
         run: |
           fpm -s dir -t rpm --name "${APP_NAME}" --version "${SEMVER}" --architecture amd64 \
-            --package "${APP_NAME}-${SEMVER}-amd64.rpm" -C "$PACKAGE_DIR" usr/local/$APP_NAME
+            --package "${APP_NAME}-${SEMVER}-amd64.rpm" -C "$PACKAGE_DIR" usr/bin
 
       - name: Upload RPM
         uses: actions/upload-artifact@v4
@@ -177,10 +310,113 @@ jobs:
           name: rpm-package-linux
           path: ${{ env.APP_NAME }}-${{ env.SEMVER }}-amd64.rpm
 
+  build-macos:
+    name: Build & Package (macOS)
+    runs-on: macos-latest
+    needs: [ release-please, build-qt-static-macos ]
+    env:
+      BUILD_DIR: "${{ github.workspace }}/build-macos"
+      SEMVER: "${{ needs.release-please.outputs.tag_name }}"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Restore cached static Qt
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/qt-static
+          key: qt-static-macos-${{ env.QT_VERSION }}-${{ env.QT_CACHE_VERSION }}
+
+      - name: Configure (macOS)
+        run: |
+          mkdir -p $BUILD_DIR
+          cmake -S . -B $BUILD_DIR -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="${{ github.workspace }}/qt-static"
+
+      - name: Build (macOS)
+        run: cmake --build $BUILD_DIR --parallel $(sysctl -n hw.logicalcpu)
+
+      - name: Codesign + create DMG
+        run: |
+          APP_BUNDLE="$BUILD_DIR/${APP_NAME}.app"
+          if [ ! -d "$APP_BUNDLE" ]; then
+            # qt_add_executable() only produces a .app bundle for a GUI-flagged target; fall back
+            # to wrapping the raw binary if that didn't happen for some reason.
+            echo "No .app bundle at $APP_BUNDLE, packaging the raw binary instead"
+            mkdir -p "dist-root/${APP_NAME}.app/Contents/MacOS"
+            cp "$BUILD_DIR/$BIN_NAME" "dist-root/${APP_NAME}.app/Contents/MacOS/$APP_NAME"
+            APP_BUNDLE="dist-root/${APP_NAME}.app"
+          fi
+          # Ad-hoc signed (no Apple Developer ID here) - fine for local/manual install, not
+          # notarized for Gatekeeper-free distribution.
+          codesign --force --deep --options runtime --entitlements dist/macos/entitlements.plist --sign - "$APP_BUNDLE"
+          mkdir -p dist
+          DMG_NAME="${APP_NAME}-${SEMVER}-macos.dmg"
+          hdiutil create "dist/$DMG_NAME" -volname "${APP_NAME}" -srcfolder "$APP_BUNDLE" -ov -format UDZO
+
+      - name: Upload macOS DMG
+        uses: actions/upload-artifact@v4
+        with:
+          name: installer-macos
+          path: dist/${{ env.APP_NAME }}-${{ env.SEMVER }}-macos.dmg
+
+  build-windows:
+    name: Build & Package (Windows)
+    runs-on: windows-latest
+    needs: [ release-please, build-qt-static-windows ]
+    env:
+      BUILD_DIR: "${{ github.workspace }}\\build-windows"
+      SEMVER: "${{ needs.release-please.outputs.tag_name }}"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Restore cached static Qt
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}\qt-static
+          key: qt-static-windows-${{ env.QT_VERSION }}-${{ env.QT_CACHE_VERSION }}
+
+      - name: Setup MSVC environment
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Install Ninja
+        run: choco install ninja -y
+
+      - name: Configure (Windows)
+        shell: powershell
+        run: |
+          cmake -S . -B $env:BUILD_DIR -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="${{ github.workspace }}\qt-static"
+
+      - name: Build (Windows)
+        shell: powershell
+        run: cmake --build $env:BUILD_DIR --parallel
+
+      - name: Package as zip
+        shell: powershell
+        run: |
+          $stageDir = "dist\$env:APP_NAME-$env:SEMVER-windows"
+          New-Item -ItemType Directory -Path $stageDir -Force | Out-Null
+          # Statically linked (and -static-runtime, so the MSVC runtime is embedded too) - the
+          # single .exe is self-contained, no windeployqt needed.
+          Copy-Item "$env:BUILD_DIR\$env:BIN_NAME.exe" "$stageDir\$env:APP_NAME.exe"
+          Compress-Archive -Path "$stageDir\*" -DestinationPath "dist\$env:APP_NAME-$env:SEMVER-windows.zip"
+
+      - name: Upload Windows package
+        uses: actions/upload-artifact@v4
+        with:
+          name: installer-windows
+          path: dist/${{ env.APP_NAME }}-${{ env.SEMVER }}-windows.zip
+
   publish:
     name: Publish Release & Attach Packages
     runs-on: ubuntu-latest
-    needs: [ release-please, build-linux-deb, build-linux-rpm ]
+    needs: [ release-please, build-linux-deb, build-linux-rpm, build-macos, build-windows ]
     env:
       SEMVER: "${{ needs.release-please.outputs.tag_name }}"
     steps:
@@ -196,12 +432,26 @@ jobs:
           name: rpm-package-linux
           path: artifacts/linux
 
+      - name: Download macOS DMG
+        uses: actions/download-artifact@v4
+        with:
+          name: installer-macos
+          path: artifacts/macos
+
+      - name: Download Windows package
+        uses: actions/download-artifact@v4
+        with:
+          name: installer-windows
+          path: artifacts/windows
+
       - name: Create GitHub Release (attach packages)
         uses: softprops/action-gh-release@v2
         with:
           files: |
             artifacts/linux/*.deb
             artifacts/linux/*.rpm
+            artifacts/macos/*.dmg
+            artifacts/windows/*.zip
           name: Release ${{ env.SEMVER }}
           tag_name: ${{ env.SEMVER }}
           body: "Automated release for ${{ env.SEMVER }}"
