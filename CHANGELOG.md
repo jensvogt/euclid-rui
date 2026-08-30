@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.11](https://github.com/jensvogt/euclid-rui/compare/v1.0.10...v1.0.11) (2026-08-30)
+
+
+### Bug Fixes
+
+* windows installation ([78227c1](https://github.com/jensvogt/euclid-rui/commit/78227c1bc060a19eb3e91b380fd482318b05dfcd))
+
 ## [1.0.10](https://github.com/jensvogt/euclid-rui/compare/v1.0.9...v1.0.10) (2026-08-30)
 
 
