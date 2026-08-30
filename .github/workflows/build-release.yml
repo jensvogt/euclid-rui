@@ -205,7 +205,6 @@ jobs:
         shell: cmd
         run: cmake --install qt-build
 
-
   # ── App builds, each restoring its platform's cached static Qt ────────────
 
   build-linux-deb:
@@ -232,8 +231,6 @@ jobs:
           sudo apt update
           sudo apt install -y build-essential cmake ninja-build ruby ruby-dev libgl1-mesa-dev libegl1-mesa-dev
           sudo apt install -y libx11-dev libx11-xcb-dev libxcb1-dev libxcb-xkb-dev libxkbcommon-dev libxkbcommon-x11-dev
-#          sudo apt install -y libglu1-mesa-dev mesa-common-dev libxkbcommon-dev libxkbcommon-x11-dev libx11-xcb-dev
-#          sudo apt install -y libxcb1-dev libxcb-xclasses0-dev
           sudo gem install --no-document fpm
 
       - name: Configure (Linux)
