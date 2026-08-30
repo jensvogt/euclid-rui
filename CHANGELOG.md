@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.12](https://github.com/jensvogt/euclid-rui/compare/1.0.11...v1.0.12) (2026-08-30)
+
+
+### Bug Fixes
+
+* add EAM pages ([dc9d465](https://github.com/jensvogt/euclid-rui/commit/dc9d465c80e0d96b858d6ed08ecd3656de657e5f))
+* add several ESM details ([516ca55](https://github.com/jensvogt/euclid-rui/commit/516ca5544f4c62cebc19bfccd7224cc6155594e7))
+
 ## [1.0.11](https://github.com/jensvogt/euclid-rui/compare/v1.0.10...v1.0.11) (2026-08-30)
 
 
