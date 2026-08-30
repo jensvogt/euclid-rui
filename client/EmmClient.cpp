@@ -22,8 +22,7 @@ void EmmClient::fetchModuleStatus(const QString &moduleName) {
                      if (instance.value("state").toString() != "RUNNING")
                          continue;
                      ++runningInstances;
-                     const QDateTime created = QDateTime::fromString(instance.value("created").toString(), Qt::ISODateWithMs);
-                     if (created.isValid() && (!earliestStart.isValid() || created < earliestStart))
+                     if (const QDateTime created = QDateTime::fromString(instance.value("created").toString(), Qt::ISODateWithMs); created.isValid() && (!earliestStart.isValid() || created < earliestStart))
                          earliestStart = created;
                  }
 
