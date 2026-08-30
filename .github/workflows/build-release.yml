@@ -102,7 +102,7 @@ jobs:
             -prefix "${{ github.workspace }}/qt-static" \
             -nomake examples -nomake tests \
             -submodules ${{ env.QT_MODULES }} \
-            -qt-libtiff -no-icu -qt-pcre -qt-libpng -qt-jpeg
+            -qt-tiff -no-icu -qt-pcre -qt-libpng -qt-jpeg
 
       - name: Build static Qt
         if: steps.cache.outputs.cache-hit != 'true'
