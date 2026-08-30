@@ -25,6 +25,7 @@ void EkmClient::fetchKeys(const QString &prefix, const int pageIndex, const int 
                  entry["status"] = key.value("status").toString();
                  entry["created"] = key.value("created").toString();
                  entry["modified"] = key.value("modified").toString();
+                 entry["deletionDate"] = key.value("deletionDate").toString();
                  keys << entry;
              }
              emit keysLoaded(keys, response.value("total").toInt());
@@ -46,5 +47,63 @@ void EkmClient::createKey(const QString &algorithm, const int length) {
          },
          [this](const QString &message) {
              emit keyCreateFailed(message);
+         });
+}
+
+void EkmClient::revokeKey(const QString &ern) {
+    QJsonObject body;
+    body["ern"] = ern;
+
+    m_base->post("ekm", "revoke-key", body, true,
+         [this](const QJsonObject &response) {
+             emit keysReload();
+         },
+         [this](const QString &message) {
+             emit keyCreateFailed(message);
+         });
+}
+
+void EkmClient::deleteKey(const QString &keyId, const int pendingWindowInDays) {
+    QJsonObject body;
+    body["keyId"] = keyId;
+    body["pendingWindowInDays"] = pendingWindowInDays;
+
+    m_base->post("ekm", "delete-key", body, true,
+         [this](const QJsonObject &response) {
+             emit keysReload();
+         },
+         [this](const QString &message) {
+             emit keyCreateFailed(message);
+         });
+}
+
+void EkmClient::addKeyTag(const QString &keyErn, const QString &key, const QString &value) {
+    QJsonObject body;
+    body["ern"] = keyErn;
+    body["key"] = key;
+    body["value"] = value;
+
+    m_base->post("ekm", "add-key-tag", body, true,
+         [this, keyErn, key, value](const QJsonObject &response) {
+             emit keyTagAdded(keyErn, key, value);
+             emit keysReload();
+         },
+         [this](const QString &message) {
+             emit keyTagAddFailed(message);
+         });
+}
+
+void EkmClient::deleteKeyTag(const QString &keyErn, const QString &key) {
+    QJsonObject body;
+    body["ern"] = keyErn;
+    body["key"] = key;
+
+    m_base->post("ekm", "delete-key-tag", body, true,
+         [this, keyErn, key](const QJsonObject &response) {
+             emit keyTagDeleted(keyErn, key);
+             emit keysReload();
+         },
+         [this](const QString &message) {
+             emit keyTagDeleteFailed(message);
          });
 }

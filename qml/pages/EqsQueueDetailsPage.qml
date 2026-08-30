@@ -29,6 +29,39 @@ Item {
         return tags ? Object.keys(tags) : []
     }
 
+    // No "get single queue" action exists server-side to re-fetch after a mutation, so apply the
+    // now-confirmed change to the local details snapshot instead (reassigned, not mutated in
+    // place, so the "var" property change notification actually fires).
+    function addTagLocally(key, value) {
+        const tags = Object.assign({}, detail("tags", {}))
+        tags[key] = value
+        root.details = Object.assign({}, root.details, { tags: tags })
+    }
+
+    function removeTagLocally(key) {
+        const tags = Object.assign({}, detail("tags", {}))
+        delete tags[key]
+        root.details = Object.assign({}, root.details, { tags: tags })
+    }
+
+    Connections {
+        target: eqsClient
+        function onQueueTagAdded(queueErn, key, value) {
+            if (queueErn !== root.queueErn) return
+            addTagDialog.saving = false
+            addTagDialog.close()
+            root.addTagLocally(key, value)
+        }
+        function onQueueTagAddFailed(message) {
+            addTagDialog.saving = false
+            addTagDialog.errorText = message
+        }
+        function onQueueTagDeleted(queueErn, key) {
+            if (queueErn !== root.queueErn) return
+            root.removeTagLocally(key)
+        }
+    }
+
     readonly property int available: Number(detail("available", 0))
     readonly property int delayed: Number(detail("delayed", 0))
     readonly property int invisible: Number(detail("invisible", 0))
@@ -180,7 +213,25 @@ Item {
                     anchors.margins: 20
                     spacing: 14
 
-                    Text { text: "Tags"; color: "white"; font.pixelSize: 15; font.bold: true }
+                    Item {
+                        width: parent.width
+                        height: tagsHeaderRow.implicitHeight
+
+                        Row {
+                            id: tagsHeaderRow
+                            Text { text: "Tags"; color: "white"; font.pixelSize: 15; font.bold: true }
+                        }
+
+                        Button {
+                            text: "+ Add"
+                            highlighted: true
+                            anchors.right: parent.right
+                            anchors.verticalCenter: tagsHeaderRow.verticalCenter
+                            Material.theme: Material.Dark
+                            Material.accent: "#4f8cff"
+                            onClicked: addTagDialog.open()
+                        }
+                    }
 
                     Text {
                         visible: root.tagList().length === 0
@@ -200,16 +251,162 @@ Item {
                                 radius: 8
                                 color: "#2c3648"
                                 height: 26
-                                width: tagText.implicitWidth + 20
-                                Text {
-                                    id: tagText
+                                width: chipRow.implicitWidth + 20
+
+                                Row {
+                                    id: chipRow
                                     anchors.centerIn: parent
-                                    text: modelData + ": " + root.detail("tags", {})[modelData]
-                                    color: "#c4c9d1"
-                                    font.pixelSize: 11
+                                    spacing: 6
+
+                                    Text {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        text: modelData + ": " + root.detail("tags", {})[modelData]
+                                        color: "#c4c9d1"
+                                        font.pixelSize: 11
+                                    }
+
+                                    Text {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        text: "×"
+                                        color: removeArea.containsMouse ? "#ff6b6b" : "#9aa1ac"
+                                        font.pixelSize: 13
+                                        font.bold: true
+
+                                        MouseArea {
+                                            id: removeArea
+                                            anchors.fill: parent
+                                            anchors.margins: -4
+                                            hoverEnabled: true
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: eqsClient.deleteQueueTag(root.queueErn, modelData)
+                                        }
+                                    }
                                 }
                             }
                         }
+                    }
+                }
+            }
+        }
+    }
+
+    Dialog {
+        id: addTagDialog
+        modal: true
+        anchors.centerIn: parent
+        width: 380
+        padding: 28
+        topPadding: 24
+        bottomPadding: 24
+        standardButtons: Dialog.NoButton
+
+        property bool saving: false
+        property string errorText: ""
+
+        background: Rectangle {
+            radius: 16
+            color: "#1b1e25"
+            border.color: "#2c313c"
+            border.width: 1
+        }
+
+        onOpened: {
+            tagKeyField.text = ""
+            tagValueField.text = ""
+            addTagDialog.errorText = ""
+            addTagDialog.saving = false
+            tagKeyField.forceActiveFocus()
+        }
+
+        contentItem: Column {
+            width: addTagDialog.availableWidth
+            spacing: 20
+
+            Column {
+                width: parent.width
+                spacing: 4
+                Text { text: "Add Tag"; color: "white"; font.pixelSize: 18; font.bold: true }
+                Text {
+                    text: "Set a key/value tag on this queue."
+                    color: "#9aa1ac"
+                    font.pixelSize: 12
+                    wrapMode: Text.WordWrap
+                    width: parent.width
+                }
+            }
+
+            Column {
+                width: parent.width
+                spacing: 6
+                Text { text: "Key"; color: "#9aa1ac"; font.pixelSize: 12 }
+                TextField {
+                    id: tagKeyField
+                    width: parent.width
+                    placeholderText: "e.g. environment"
+                    Material.accent: "#4f8cff"
+                    selectByMouse: true
+                    Keys.onReturnPressed: tagValueField.forceActiveFocus()
+                }
+            }
+
+            Column {
+                width: parent.width
+                spacing: 6
+                Text { text: "Value"; color: "#9aa1ac"; font.pixelSize: 12 }
+                TextField {
+                    id: tagValueField
+                    width: parent.width
+                    placeholderText: "e.g. production"
+                    Material.accent: "#4f8cff"
+                    selectByMouse: true
+                    Keys.onReturnPressed: if (saveTagButton.enabled) saveTagButton.clicked()
+                }
+                Text {
+                    text: addTagDialog.errorText
+                    color: "#ff6b6b"
+                    font.pixelSize: 12
+                    wrapMode: Text.WordWrap
+                    width: parent.width
+                    visible: text.length > 0
+                }
+            }
+
+            Item {
+                width: parent.width
+                height: 40
+
+                Button {
+                    text: "Cancel"
+                    flat: true
+                    anchors.left: parent.left
+                    anchors.verticalCenter: parent.verticalCenter
+                    Material.theme: Material.Dark
+                    onClicked: addTagDialog.close()
+                }
+
+                BusyIndicator {
+                    running: addTagDialog.saving
+                    visible: addTagDialog.saving
+                    width: 22
+                    height: 22
+                    anchors.right: saveTagButton.left
+                    anchors.rightMargin: 12
+                    anchors.verticalCenter: parent.verticalCenter
+                }
+
+                Button {
+                    id: saveTagButton
+                    text: "Add"
+                    highlighted: true
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    Material.theme: Material.Dark
+                    Material.accent: "#4f8cff"
+                    enabled: !addTagDialog.saving && tagKeyField.text.trim().length > 0
+                    onClicked: {
+                        addTagDialog.errorText = ""
+                        addTagDialog.saving = true
+                        eqsClient.addQueueTag(root.queueErn, tagKeyField.text.trim(), tagValueField.text)
                     }
                 }
             }

@@ -20,6 +20,11 @@ public:
     Q_INVOKABLE void createBucket(const QString &name);
     Q_INVOKABLE void purgeBucket(const QString &bucketErn);
     Q_INVOKABLE void deleteBucket(const QString &bucketErn);
+    // Upserts the tag unconditionally (unlike set-bucket-tag, this doesn't require the key to
+    // already exist), matching an "Add" button's semantics.
+    Q_INVOKABLE void addBucketTag(const QString &bucketErn, const QString &key, const QString &value);
+    // No-ops server-side if the bucket doesn't have this tag key.
+    Q_INVOKABLE void deleteBucketTag(const QString &bucketErn, const QString &key);
 
     // Objects
     Q_INVOKABLE void fetchObjects(const QString &bucketErn, const QString &prefix = QString(), int pageIndex = 0, int pageSize = 100,
@@ -38,6 +43,10 @@ signals:
     void bucketsReload();
     void bucketCreated(const QString &name);
     void bucketCreateFailed(const QString &message);
+    void bucketTagAdded(const QString &bucketErn, const QString &key, const QString &value);
+    void bucketTagAddFailed(const QString &message);
+    void bucketTagDeleted(const QString &bucketErn, const QString &key);
+    void bucketTagDeleteFailed(const QString &message);
 
     // Objects
     void objectsLoaded(const QString &bucketErn, const QVariantList &objects, int total);

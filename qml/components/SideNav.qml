@@ -129,7 +129,7 @@ Rectangle {
 
                     SubNavButton {
                         label: "EAM"
-                        selected: root.currentRoute === "modules-eam"
+                        selected: root.currentRoute.indexOf("modules-eam") === 0
                         onClicked: root.navigate("modules-eam")
                     }
                     SubNavButton {

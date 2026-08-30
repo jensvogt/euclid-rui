@@ -43,8 +43,7 @@ Item {
         }
         loading = true
         error = ""
-        esmClient.fetchBuckets(root.prefix, root.pageIndex, root.pageSize,
-            root.sortColumn, root.sortAscending ? "asc" : "desc")
+        esmClient.fetchBuckets(root.prefix, root.pageIndex, root.pageSize, root.sortColumn, root.sortAscending ? "asc" : "desc")
     }
 
     onVisibleChanged: if (visible) refresh()
@@ -215,7 +214,7 @@ Item {
 
                 SectionHeader {
                     id: sectionHeader
-                    title: "Buckets"
+                    title: "Buckets (" + totalCount + ")"
                     subtitle: "All buckets in the " + root.namespaceName + " namespace."
                 }
 

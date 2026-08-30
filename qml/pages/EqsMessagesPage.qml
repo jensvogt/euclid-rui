@@ -17,6 +17,7 @@ Item {
     property bool sortAscending: true
 
     property var allMessages: []
+    property int totalMessages: 0
     property var queueLookup: ({})
     property var pendingQueueErns: []
     property bool loading: false
@@ -133,6 +134,7 @@ Item {
             root.pendingQueueErns = erns
             for (let i = 0; i < list.length; i++)
                 eqsClient.fetchMessages(list[i].ern, 0, 200)
+            root.totalMessages = total;
         }
         function onQueuesFailed(message) {
             if (!root.loading || root.queueErn.length > 0)
@@ -489,7 +491,7 @@ Item {
 
                 SectionHeader {
                     id: messagesSectionHeader
-                    title: root.queueErn.length > 0 ? "Messages · " + root.queueName : "Messages"
+                    title: root.queueErn.length > 0 ? "Messages · " + root.queueName + " (" + root.totalMessages + ")" : "Messages (" + root.totalMessages + ")"
                     subtitle: root.queueErn.length > 0
                         ? "Messages currently in the \"" + root.queueName + "\" queue."
                         : "Messages across all queues in the " + root.namespaceName + " namespace."

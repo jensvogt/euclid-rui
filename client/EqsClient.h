@@ -21,6 +21,11 @@ public:
     Q_INVOKABLE void createQueue(const QString &name);
     Q_INVOKABLE void purgeQueue(const QString &queueErn);
     Q_INVOKABLE void deleteQueue(const QString &queueErn);
+    // Upserts the tag unconditionally (unlike set-queue-tag, this doesn't require the key to
+    // already exist), matching an "Add" button's semantics.
+    Q_INVOKABLE void addQueueTag(const QString &queueErn, const QString &key, const QString &value);
+    // No-ops server-side if the queue doesn't have this tag key.
+    Q_INVOKABLE void deleteQueueTag(const QString &queueErn, const QString &key);
 
     // Messages
     Q_INVOKABLE void fetchMessages(const QString &queueErn, int pageIndex = 0, int pageSize = 100);
@@ -34,6 +39,10 @@ signals:
     void queuesReload();
     void queueCreated(const QString &name);
     void queueCreateFailed(const QString &message);
+    void queueTagAdded(const QString &queueErn, const QString &key, const QString &value);
+    void queueTagAddFailed(const QString &message);
+    void queueTagDeleted(const QString &queueErn, const QString &key);
+    void queueTagDeleteFailed(const QString &message);
 
     // Messages
     void messagesLoaded(const QString &queueErn, const QVariantList &messages, int total);

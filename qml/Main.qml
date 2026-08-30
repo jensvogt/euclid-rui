@@ -25,9 +25,19 @@ ApplicationWindow {
     property string currentNamespace: ""
     property string currentRoute: "dashboard"
 
+    // EAM
+    property int eamAccountCount: -1
+    property int eamNamespaceCount: -1
+    property int eamUserCount: -1
+    property int eamGroupCount: -1
+    property double eamServiceCount: -1
+    property double eamServiceTime: -1
+
     // EQS
     property int eqsQueueCount: -1
     property int eqsTotalMessages: -1
+    property double eqsServiceCount: -1
+    property double eqsServiceTime: -1
     property string selectedQueueErn: ""
     property string selectedQueueName: ""
     property var selectedQueueDetails: ({})
@@ -35,6 +45,8 @@ ApplicationWindow {
     // ESM
     property int esmBucketCount: -1
     property int esmTotalObjects: -1
+    property double esmServiceCount: -1
+    property double esmServiceTime: -1
     property string selectedBucketErn: ""
     property string selectedBucketName: ""
     property var selectedBucketDetails: ({})
@@ -42,12 +54,19 @@ ApplicationWindow {
     // ENS
     property int ensTopicCount: -1
     property int ensTotalMessages: -1
+    property double ensServiceCount: -1
+    property double ensServiceTime: -1
     property string selectedTopicErn: ""
     property string selectedTopicName: ""
     property var selectedTopicDetails: ({})
 
     // EKM
     property int ekmKeyCount: -1
+    property double ekmServiceCount: -1
+    property double ekmServiceTime: -1
+    property string selectedKeyErn: ""
+    property string selectedKeyName: ""
+    property var selectedKeyDetails: ({})
 
     function initialsFor(name) {
         const parts = name.trim().split(/[\s@.]+/).filter(p => p.length > 0)
@@ -68,28 +87,47 @@ ApplicationWindow {
         return window.moduleRoutes[key] || ""
     }
 
+    function refreshEamSummary() {
+        if (!window.loggedIn)
+            return
+        eamClient.fetchAccounts("", 0, 100)
+        eamClient.fetchNamespaces(euclidClient.accountId, "", 0, 100)
+        eamClient.fetchUsers("", 0, 100)
+        eamClient.fetchUserGroups("", 0, 100)
+        emoClient.fetchAverage("eam-service-count")
+        emoClient.fetchAverage("eam-service-time")
+    }
+
     function refreshEqsSummary() {
         if (!window.loggedIn)
             return
         eqsClient.fetchQueues("", 0, 100)
+        emoClient.fetchAverage("eqs-service-count")
+        emoClient.fetchAverage("eqs-service-time")
     }
 
     function refreshEsmSummary() {
         if (!window.loggedIn)
             return
         esmClient.fetchBuckets("", 0, 100)
+        emoClient.fetchAverage("esm-service-count")
+        emoClient.fetchAverage("esm-service-time")
     }
 
     function refreshEnsSummary() {
         if (!window.loggedIn)
             return
         ensClient.fetchTopics("", 0, 100)
+        emoClient.fetchAverage("ens-service-count")
+        emoClient.fetchAverage("ens-service-time")
     }
 
     function refreshEkmSummary() {
         if (!window.loggedIn)
             return
         ekmClient.fetchKeys("", 0, 100)
+        emoClient.fetchAverage("ekm-service-count")
+        emoClient.fetchAverage("ekm-service-time")
     }
 
     LoginDialog {
@@ -112,16 +150,25 @@ ApplicationWindow {
     }
 
     onCurrentRouteChanged: {
+        if (currentRoute === "modules-eam") refreshEamSummary()
         if (currentRoute === "modules-eqs") refreshEqsSummary()
         if (currentRoute === "modules-esm") refreshEsmSummary()
         if (currentRoute === "modules-ens") refreshEnsSummary()
         if (currentRoute === "modules-ekm") refreshEkmSummary()
     }
     onLoggedInChanged: {
+        if (loggedIn && currentRoute === "modules-eam") refreshEamSummary()
         if (loggedIn && currentRoute === "modules-eqs") refreshEqsSummary()
         if (loggedIn && currentRoute === "modules-esm") refreshEsmSummary()
         if (loggedIn && currentRoute === "modules-ens") refreshEnsSummary()
         if (loggedIn && currentRoute === "modules-ekm") refreshEkmSummary()
+    }
+
+    Timer {
+        interval: appSettings.autoRefreshSeconds * 1000
+        running: appSettings.autoRefreshSeconds > 0 && window.currentRoute === "modules-eam" && window.loggedIn
+        repeat: true
+        onTriggered: window.refreshEamSummary()
     }
 
     Timer {
@@ -150,6 +197,22 @@ ApplicationWindow {
         running: appSettings.autoRefreshSeconds > 0 && window.currentRoute === "modules-ekm" && window.loggedIn
         repeat: true
         onTriggered: window.refreshEkmSummary()
+    }
+
+    Connections {
+        target: eamClient
+        function onAccountsLoaded(list, total) {
+            window.eamAccountCount = total
+        }
+        function onNamespacesLoaded(list, total) {
+            window.eamNamespaceCount = total
+        }
+        function onUsersLoaded(list, total) {
+            window.eamUserCount = total
+        }
+        function onUserGroupsLoaded(list, total) {
+            window.eamGroupCount = total
+        }
     }
 
     Connections {
@@ -189,6 +252,32 @@ ApplicationWindow {
         target: ekmClient
         function onKeysLoaded(list, total) {
             window.ekmKeyCount = total
+        }
+    }
+
+    Connections {
+        target: emoClient
+        function onAverageLoaded(name, value) {
+            if(name === "esm-service-count")
+                window.esmServiceCount = value
+            else if(name === "esm-service-time")
+                window.esmServiceTime = value
+            else if(name === "eqs-service-count")
+                window.eqsServiceCount = value
+            else if(name === "eqs-service-time")
+                window.eqsServiceTime = value
+            else if(name === "ens-service-count")
+                window.ensServiceCount = value
+            else if(name === "ens-service-time")
+                window.ensServiceTime = value
+            else if(name === "eam-service-count")
+                window.eamServiceCount = value
+            else if(name === "eam-service-time")
+                window.eamServiceTime = value
+            else if(name === "ekm-service-count")
+                window.ekmServiceCount = value
+            else if(name === "ekm-service-time")
+                window.ekmServiceTime = value
         }
     }
 
@@ -305,23 +394,60 @@ ApplicationWindow {
                     anchors.fill: parent
                     visible: window.currentRoute === "settings"
                 }
+
+                // EAM
                 ModulePage {
                     anchors.fill: parent
                     visible: window.currentRoute === "modules-eam"
                     moduleName: "EAM"
                     loggedIn: window.loggedIn
                     stats: [
-                        { title: "Active Sessions", value: "47", trend: "+5.4% today", trendUp: true, accent: "#4f8cff" },
-                        { title: "Logins Today", value: "312", trend: "+2.1% today", trendUp: true, accent: "#4cd97b" },
-                        { title: "Failed Logins", value: "6", trend: "-4.0% today", trendUp: false, accent: "#ffb545" },
-                        { title: "Namespaces", value: "18", trend: "+1 today", trendUp: true, accent: "#c56bff" }
+                        {
+                            title: "Accounts", value: window.eamAccountCount < 0 ? "—" : String(window.eamAccountCount),
+                            trend: "live", trendUp: true, accent: "#4f8cff", route: "modules-eam-accounts"
+                        },
+                        {
+                            title: "Namespaces", value: window.eamNamespaceCount < 0 ? "—" : String(window.eamNamespaceCount),
+                            trend: "live", trendUp: true, accent: "#4f8cff", route: "modules-eam-namespaces"
+                        },
+                        {
+                            title: "Users", value: window.eamUserCount < 0 ? "—" : String(window.eamUserCount),
+                            trend: "live", trendUp: true, accent: "#4cd97b", route: "modules-eam-users"
+                        },
+                        {
+                            title: "User Groups", value: window.eamGroupCount < 0 ? "—" : String(window.eamGroupCount),
+                            trend: "live", trendUp: true, accent: "#ffb545", route: "modules-eam-user-groups"
+                        },
+                        {
+                            title: "Service Count", value: window.eamServiceCount < 0 ? "—" : window.eamServiceCount.toFixed(1),
+                            trend: "-1.2% today", trendUp: false, accent: "#ffb545" },
+                        {
+                            title: "Service Time", value: window.eamServiceTime < 0 ? "—" : window.eamServiceTime.toFixed(1) + " ms",
+                            trend: "+0.5% today", trendUp: true, accent: "#c56bff"
+                        }
                     ]
                     activity: [
                         { initials: "EA", avatarColor: "#4f8cff", title: "User \"" + window.currentUser + "\" signed in", subtitle: "namespace · " + window.currentNamespace, time: "1m ago" },
                         { initials: "EA", avatarColor: "#4cd97b", title: "Namespace \"staging\" created", subtitle: "account · 000000000000", time: "34m ago" },
                         { initials: "EA", avatarColor: "#ffb545", title: "Access key rotated", subtitle: "policy · default", time: "2h ago" }
                     ]
+                    onNavigate: (route) => window.currentRoute = route
                 }
+                EamAccountsPage {
+                    anchors.fill: parent
+                    visible: window.currentRoute === "modules-eam-accounts"
+                    loggedIn: window.loggedIn
+                    namespaceName: window.currentNamespace
+                    onBack: window.currentRoute = "modules-eam"
+                }
+                EamNamespacesPage {
+                    anchors.fill: parent
+                    visible: window.currentRoute === "modules-eam-namespaces"
+                    loggedIn: window.loggedIn
+                    namespaceName: window.currentNamespace
+                    onBack: window.currentRoute = "modules-eam"
+                }
+
                 ModulePage {
                     anchors.fill: parent
                     visible: window.currentRoute === "modules-ekm"
@@ -332,16 +458,24 @@ ApplicationWindow {
                             title: "Managed Keys", value: window.ekmKeyCount < 0 ? "—" : String(window.ekmKeyCount),
                             trend: "live", trendUp: true, accent: "#4f8cff", route: "modules-ekm-keys"
                         },
-                        { title: "Encrypt Ops/sec", value: "890", trend: "+3.8% today", trendUp: true, accent: "#4cd97b" },
-                        { title: "Decrypt Ops/sec", value: "742", trend: "+1.6% today", trendUp: true, accent: "#ffb545" },
-                        { title: "Key Rotations", value: "5", trend: "0 today", trendUp: true, accent: "#c56bff" }
+                        {
+                            title: "Service Count", value: window.ekmServiceCount < 0 ? "—" : window.ekmServiceCount.toFixed(1),
+                            trend: "-1.2% today", trendUp: false, accent: "#ffb545" },
+                        {
+                            title: "Service Time", value: window.ekmServiceTime < 0 ? "—" : window.ekmServiceTime.toFixed(1) + " ms",
+                            trend: "+0.5% today", trendUp: true, accent: "#c56bff"
+                        }
                     ]
                     activity: [
                         { initials: "EK", avatarColor: "#4f8cff", title: "Key \"prod-primary\" rotated", subtitle: "namespace · " + window.currentNamespace, time: "9m ago" },
                         { initials: "EK", avatarColor: "#4cd97b", title: "New key \"backup-2026\" created", subtitle: "usage · encrypt/decrypt", time: "1h ago" },
                         { initials: "EK", avatarColor: "#ffb545", title: "Key policy updated", subtitle: "key · prod-primary", time: "5h ago" }
                     ]
-                    onNavigate: (route) => window.currentRoute = route
+                    onNavigate: (route) => {
+                        window.selectedKeyErn = ""
+                        window.selectedKeyName = ""
+                        window.currentRoute = route
+                    }
                 }
                 EkmKeysPage {
                     anchors.fill: parent
@@ -349,6 +483,22 @@ ApplicationWindow {
                     loggedIn: window.loggedIn
                     namespaceName: window.currentNamespace
                     onBack: window.currentRoute = "modules-ekm"
+                    onOpenKeyDetails: (keyErn, keyName, details) => {
+                        window.selectedKeyErn = keyErn
+                        window.selectedKeyName = keyName
+                        window.selectedKeyDetails = details
+                        window.currentRoute = "modules-ekm-key-details"
+                    }
+                }
+                EkmKeyDetailsPage {
+                    anchors.fill: parent
+                    visible: window.currentRoute === "modules-ekm-key-details"
+                    loggedIn: window.loggedIn
+                    namespaceName: window.currentNamespace
+                    keyErn: window.selectedKeyErn
+                    keyName: window.selectedKeyName
+                    details: window.selectedKeyDetails
+                    onBack: window.currentRoute = "modules-ekm-keys"
                 }
 
                 ModulePage {
@@ -365,8 +515,13 @@ ApplicationWindow {
                             title: "Total Messages", value: window.eqsTotalMessages < 0 ? "—" : String(window.eqsTotalMessages),
                             trend: "live", trendUp: true, accent: "#4cd97b", route: "modules-eqs-messages"
                         },
-                        { title: "Avg. Latency", value: "18ms", trend: "+1.4% today", trendUp: true, accent: "#ffb545" },
-                        { title: "Dead Letters", value: "3", trend: "0% today", trendUp: true, accent: "#c56bff" }
+                        {
+                            title: "Service Count", value: window.eqsServiceCount < 0 ? "—" : window.eqsServiceCount.toFixed(1),
+                            trend: "-1.2% today", trendUp: false, accent: "#ffb545" },
+                        {
+                            title: "Service Time", value: window.eqsServiceTime < 0 ? "—" : window.eqsServiceTime.toFixed(1) + " ms",
+                            trend: "+0.5% today", trendUp: true, accent: "#c56bff"
+                        }
                     ]
                     activity: [
                         { initials: "EQ", avatarColor: "#4f8cff", title: "Queue \"orders-in\" created", subtitle: "namespace · " + window.currentNamespace, time: "6m ago" },
@@ -437,6 +592,13 @@ ApplicationWindow {
                         {
                             title: "Total Objects", value: window.esmTotalObjects < 0 ? "—" : String(window.esmTotalObjects),
                             trend: "live", trendUp: true, accent: "#4cd97b", route: "modules-esm-objects"
+                        },
+                        {
+                            title: "Service Count", value: window.esmServiceCount < 0 ? "—" : window.esmServiceCount.toFixed(1),
+                            trend: "-1.2% today", trendUp: false, accent: "#ffb545" },
+                        {
+                            title: "Service Time", value: window.esmServiceTime < 0 ? "—" : window.esmServiceTime.toFixed(1) + " ms",
+                            trend: "+0.5% today", trendUp: true, accent: "#c56bff"
                         }
                     ]
                     activity: [
@@ -511,8 +673,13 @@ ApplicationWindow {
                             title: "Total Messages", value: window.ensTotalMessages < 0 ? "—" : String(window.ensTotalMessages),
                             trend: "live", trendUp: true, accent: "#4cd97b", route: "modules-ens-messages"
                         },
-                        { title: "Failed Deliveries", value: "7", trend: "-1.2% today", trendUp: false, accent: "#ffb545" },
-                        { title: "Avg. Delivery", value: "94ms", trend: "+0.5% today", trendUp: true, accent: "#c56bff" }
+                        {
+                            title: "Service Count", value: window.ensServiceCount < 0 ? "—" : window.ensServiceCount.toFixed(1),
+                            trend: "-1.2% today", trendUp: false, accent: "#ffb545" },
+                        {
+                            title: "Service Time", value: window.ensServiceTime < 0 ? "—" : window.ensServiceTime.toFixed(1) + " ms",
+                            trend: "+0.5% today", trendUp: true, accent: "#c56bff"
+                        }
                     ]
                     activity: [
                         { initials: "EN", avatarColor: "#4f8cff", title: "Topic \"deploy-events\" created", subtitle: "namespace · " + window.currentNamespace, time: "3m ago" },

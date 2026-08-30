@@ -6,8 +6,7 @@
 
 EmoClient::EmoClient(EuclidBaseClient *baseClient, QObject *parent) : QObject(parent), m_base(baseClient) {}
 
-void EmoClient::fetchLatestMetric(const QString &metricName, const QString &moduleName,
-                                   const std::function<void(double)> &onValue, const std::function<void(const QString &)> &onError) {
+void EmoClient::fetchLatestMetric(const QString &metricName, const QString &moduleName, const std::function<void(double)> &onValue, const std::function<void(const QString &)> &onError) const {
     QJsonObject body;
     body["name"] = metricName;
     body["labelName"] = "module";
@@ -26,6 +25,17 @@ void EmoClient::fetchLatestMetric(const QString &metricName, const QString &modu
          onError);
 }
 
+void EmoClient::fetchLatestAvgMetric(const QString &metricName, const std::function<void(double)> &onValue, const std::function<void(const QString &)> &onError) const {
+    QJsonObject body;
+    body["name"] = metricName;
+
+    m_base->post("emo", "average", body, true,
+         [onValue, onError](const QJsonObject &response) {
+             onValue(response["average"].toDouble());
+         },
+         onError);
+}
+
 void EmoClient::fetchCpuUsage(const QString &moduleName) {
     fetchLatestMetric("euclid-cpu-usage", moduleName,
         [this, moduleName](const double percent) { emit cpuUsageLoaded(moduleName, percent); },
@@ -36,4 +46,10 @@ void EmoClient::fetchMemoryUsage(const QString &moduleName) {
     fetchLatestMetric("euclid-memory-usage-percent", moduleName,
         [this, moduleName](const double percent) { emit memoryUsageLoaded(moduleName, percent); },
         [this, moduleName](const QString &message) { emit memoryUsageFailed(moduleName, message); });
+}
+
+void EmoClient::fetchAverage(const QString &metricName) {
+    fetchLatestAvgMetric(metricName,
+        [this, metricName](const double value) { emit averageLoaded(metricName, value); },
+        [this, metricName](const QString &message) { emit averageFailed(metricName, message); });
 }
