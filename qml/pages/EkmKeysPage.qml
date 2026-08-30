@@ -20,11 +20,19 @@ Item {
     property string error: ""
     property string lastUpdatedText: "—"
 
+    function statusColor(status) {
+        if (status === "AVAILABLE") return "#4cd97b"
+        if (status === "REVOKED" || status === "UPLOADED") return "#ffb545"
+        if (status === "PENDING_DELETION") return "#ff4f5e"
+        return "#9aa1ac"
+    }
+
     readonly property var columns: {
         let cols = [
             { title: "Key ID", key: "name", fill: true },
             { title: "Algorithm", key: "algorithm" },
             { title: "Length", key: "length", formatter: function (v) { return v + " bit" } },
+            { title: "Status", key: "status", colorFor: function (v) { return root.statusColor(v) } },
             { title: "Created", key: "created", formatter: function (v) { return DateFormat.format(v) } },
             { title: "Modified", key: "modified", formatter: function (v) { return DateFormat.format(v) } },
             { title: "Ern", key: "ern", hidden: true }

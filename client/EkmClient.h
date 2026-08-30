@@ -3,6 +3,8 @@
 #include <QObject>
 #include <QString>
 #include <QVariantList>
+#include <QJsonArray>
+#include <QJsonObject>
 
 class EuclidBaseClient;
 
