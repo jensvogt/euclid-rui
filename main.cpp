@@ -4,8 +4,10 @@
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QQuickStyle>
+#include <QQuickWindow>
 
 #include "AppSettings.h"
+#include "client/EamClient.h"
 #include "client/EkmClient.h"
 #include "client/EmmClient.h"
 #include "client/EmoClient.h"
@@ -15,7 +17,8 @@
 #include "client/EuclidBaseClient.h"
 
 int main(int argc, char *argv[]) {
-    QGuiApplication app(argc, argv);
+
+    const QGuiApplication app(argc, argv);
     QGuiApplication::setOrganizationName("Euclid");
     QGuiApplication::setApplicationName("Euclid RUI");
 
@@ -33,6 +36,7 @@ int main(int argc, char *argv[]) {
     QQuickStyle::setStyle("Material");
 
     EuclidBaseClient euclidClient;
+    EamClient eamClient(&euclidClient);
     EmmClient emmClient(&euclidClient);
     EqsClient eqsClient(&euclidClient);
     EsmClient esmClient(&euclidClient);
@@ -43,6 +47,7 @@ int main(int argc, char *argv[]) {
 
     QQmlApplicationEngine engine;
     engine.rootContext()->setContextProperty("euclidClient", &euclidClient);
+    engine.rootContext()->setContextProperty("eamClient", &eamClient);
     engine.rootContext()->setContextProperty("emmClient", &emmClient);
     engine.rootContext()->setContextProperty("eqsClient", &eqsClient);
     engine.rootContext()->setContextProperty("esmClient", &esmClient);
@@ -53,14 +58,24 @@ int main(int argc, char *argv[]) {
     engine.rootContext()->setContextProperty("cliUser", parser.value(userOption));
     engine.rootContext()->setContextProperty("cliPassword", parser.value(passwordOption));
     engine.rootContext()->setContextProperty("cliNamespace", parser.value(namespaceOption));
-    QObject::connect(
-        &engine, &QQmlApplicationEngine::objectCreationFailed,
-        &app, [] { QGuiApplication::exit(-1); },
-        Qt::QueuedConnection);
+    QObject::connect(&engine, &QQmlApplicationEngine::objectCreationFailed, &app, [] { QGuiApplication::exit(-1); }, Qt::QueuedConnection);
 
     engine.load(QUrl(QStringLiteral("qrc:/EuclidRui/qml/Main.qml")));
     if (engine.rootObjects().isEmpty())
         return -1;
+
+    // Get the first root window
+    if (auto *window = qobject_cast<QQuickWindow*>(engine.rootObjects().first())) {
+        // Force assignment to the primary screen
+        QScreen *primaryScreen = QGuiApplication::primaryScreen();
+        window->setScreen(primaryScreen);
+
+        // Optional: Recenter on the primary screen's available geometry
+        const QRect screenGeometry = primaryScreen->availableGeometry();
+        const int x = screenGeometry.x() + (screenGeometry.width() - window->width()) / 2;
+        const int y = screenGeometry.y() + (screenGeometry.height() - window->height()) / 2;
+        window->setPosition(x, y);
+    }
 
     return QGuiApplication::exec();
 }

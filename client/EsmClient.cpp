@@ -89,6 +89,37 @@ void EsmClient::deleteBucket(const QString &bucketErn) {
          });
 }
 
+void EsmClient::addBucketTag(const QString &bucketErn, const QString &key, const QString &value) {
+    QJsonObject body;
+    body["ern"] = bucketErn;
+    body["key"] = key;
+    body["value"] = value;
+
+    m_base->post("esm", "add-bucket-tag", body, true,
+         [this, bucketErn, key, value](const QJsonObject &response) {
+             emit bucketTagAdded(bucketErn, key, value);
+             emit bucketsReload();
+         },
+         [this](const QString &message) {
+             emit bucketTagAddFailed(message);
+         });
+}
+
+void EsmClient::deleteBucketTag(const QString &bucketErn, const QString &key) {
+    QJsonObject body;
+    body["ern"] = bucketErn;
+    body["key"] = key;
+
+    m_base->post("esm", "delete-bucket-tag", body, true,
+         [this, bucketErn, key](const QJsonObject &response) {
+             emit bucketTagDeleted(bucketErn, key);
+             emit bucketsReload();
+         },
+         [this](const QString &message) {
+             emit bucketTagDeleteFailed(message);
+         });
+}
+
 void EsmClient::fetchObjects(const QString &bucketErn, const QString &prefix, const int pageIndex, const int pageSize, const QString &sortColumn, const QString &sortDirection) {
     QJsonObject body;
     body["bucketErn"] = bucketErn;

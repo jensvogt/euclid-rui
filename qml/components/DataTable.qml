@@ -45,6 +45,10 @@ Item {
             return !column.hidden
         })
 
+    // Reserves room so the trailing drill-in chevron / actions button don't collide with the
+    // last column's text (fill-column sizing otherwise has no idea they're there).
+    readonly property int trailingIconsWidth: root.contextMenuActions.length > 0 ? (root.columnSpacing + 26) : 0
+
     function recomputeColumnWidths() {
         let widths = []
         let usedWidth = 0
@@ -80,7 +84,7 @@ Item {
 
         if (fillIndex >= 0) {
             const spacingTotal = Math.max(0, root.visibleColumns.length - 1) * root.columnSpacing
-            const availableWidth = root.width - 24
+            const availableWidth = root.width - 24 - root.trailingIconsWidth
             widths[fillIndex] = Math.max(140, availableWidth - usedWidth - spacingTotal)
         }
 
@@ -223,6 +227,14 @@ Item {
                             color: rowArea.containsMouse && root.rowsClickable ? "#262b35" : "transparent"
                             Behavior on color { ColorAnimation { duration: 120 } }
 
+                            MouseArea {
+                                id: rowArea
+                                anchors.fill: parent
+                                hoverEnabled: root.rowsClickable
+                                cursorShape: root.rowsClickable ? Qt.PointingHandCursor : Qt.ArrowCursor
+                                onClicked: if (root.rowsClickable) root.rowClicked(rowItem.rowData)
+                            }
+
                             Row {
                                 anchors.left: parent.left
                                 anchors.verticalCenter: parent.verticalCenter
@@ -242,34 +254,38 @@ Item {
                                         elide: Text.ElideRight
                                     }
                                 }
-                            }
 
-                            Text {
-                                visible: root.rowsClickable
-                                text: "›"
-                                color: "#6b7280"
-                                font.pixelSize: 15
-                                anchors.right: parent.right
-                                anchors.rightMargin: 4
-                                anchors.verticalCenter: parent.verticalCenter
-                            }
+                                // Trailing "column": actions button, laid out in the same flow as the
+                                // data columns (same root.columnSpacing gap) instead of overlaid/
+                                // absolutely positioned. Row left-click already drills in, so no
+                                // separate chevron indicator is needed here.
+                                Rectangle {
+                                    visible: root.contextMenuActions.length > 0
+                                    width: 26
+                                    height: 26
+                                    radius: 13
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    color: kebabArea.containsMouse ? "#333a48" : "transparent"
+                                    Behavior on color { ColorAnimation { duration: 120 } }
 
-                            MouseArea {
-                                id: rowArea
-                                anchors.fill: parent
-                                hoverEnabled: root.rowsClickable
-                                cursorShape: root.rowsClickable ? Qt.PointingHandCursor : Qt.ArrowCursor
-                                acceptedButtons: Qt.LeftButton | Qt.RightButton
-                                onClicked: function(mouse) {
-
-                                    if (mouse.button === Qt.RightButton) {
-                                        contextMenu.currentRow = rowItem.rowData
-                                        contextMenu.popup()
-                                        return
+                                    Text {
+                                        anchors.centerIn: parent
+                                        text: "⋮"
+                                        color: "#c4c9d1"
+                                        font.pixelSize: 18
+                                        font.bold: true
                                     }
 
-                                    if (root.rowsClickable)
-                                        root.rowClicked(rowItem.rowData)
+                                    MouseArea {
+                                        id: kebabArea
+                                        anchors.fill: parent
+                                        hoverEnabled: true
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: {
+                                            contextMenu.currentRow = rowItem.rowData
+                                            contextMenu.popup()
+                                        }
+                                    }
                                 }
                             }
                         }

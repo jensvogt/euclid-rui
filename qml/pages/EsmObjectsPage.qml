@@ -18,6 +18,7 @@ Item {
     property bool sortAscending: true
 
     property var allObjects: []
+    property int totalCount: 0
     property var bucketLookup: ({})
     property var pendingBucketErns: []
     property bool loading: false
@@ -135,6 +136,7 @@ Item {
                 root.loading = false
                 root.lastUpdatedText = Qt.formatDateTime(new Date(), "hh:mm:ss")
             }
+            root.totalCount = total
         }
         function onObjectsFailed(ern, message) {
             if (!root.loading)
@@ -351,7 +353,7 @@ Item {
 
                 SectionHeader {
                     id: objectsSectionHeader
-                    title: root.bucketErn.length > 0 ? "Objects · " + root.bucketName : "Objects"
+                    title: root.bucketErn.length > 0 ? "Objects · " + root.bucketName + " (" + root.totalCount + ")": "Objects (" + root.totalCount + ")"
                     subtitle: root.bucketErn.length > 0
                         ? "Objects currently in the \"" + root.bucketName + "\" bucket."
                         : "Objects across all buckets in the " + root.namespaceName + " namespace."

@@ -19,15 +19,21 @@ public:
     // Fetches the most recent "euclid-memory-usage-percent" reading for the given module.
     Q_INVOKABLE void fetchMemoryUsage(const QString &moduleName);
 
+    Q_INVOKABLE void fetchAverage(const QString &metricName);
+
 signals:
     void cpuUsageLoaded(const QString &moduleName, double percent);
     void cpuUsageFailed(const QString &moduleName, const QString &message);
     void memoryUsageLoaded(const QString &moduleName, double percent);
     void memoryUsageFailed(const QString &moduleName, const QString &message);
+    void averageLoaded(const QString &moduleName, double value);
+    void averageFailed(const QString &moduleName, const QString &value);
 
 private:
     void fetchLatestMetric(const QString &metricName, const QString &moduleName,
-                            const std::function<void(double)> &onValue, const std::function<void(const QString &)> &onError);
+                            const std::function<void(double)> &onValue, const std::function<void(const QString &)> &onError) const;
+
+    void fetchLatestAvgMetric(const QString &metricName, const std::function<void(double)> &onValue, const std::function<void(const QString &)> &onError) const;
 
     EuclidBaseClient *m_base;
 };

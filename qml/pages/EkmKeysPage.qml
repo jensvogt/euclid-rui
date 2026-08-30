@@ -35,12 +35,13 @@ Item {
             { title: "Status", key: "status", colorFor: function (v) { return root.statusColor(v) } },
             { title: "Created", key: "created", formatter: function (v) { return DateFormat.format(v) } },
             { title: "Modified", key: "modified", formatter: function (v) { return DateFormat.format(v) } },
-            { title: "Ern", key: "ern", hidden: true }
+            { title: "Ern", key: "ern", hidden: true },
         ]
         return cols
     }
 
     signal back()
+    signal openKeyDetails(string keyErn, string keyName, var details)
 
     function refresh() {
         if (!root.loggedIn) {
@@ -285,6 +286,33 @@ Item {
                     root.pageIndex = 0
                     root.refresh()
                 }
+
+                contextMenuActions: [
+                    {
+                        text: "Details",
+                        action: function(row) {
+                            root.openKeyDetails(row.ern, row.name, row)
+                        }
+                    },
+                    {
+                        text: "Revoke",
+                        enabled: function(row) {
+                            return !!row && row.status === "AVAILABLE"
+                        },
+                        action: function(row) {
+                            ekmClient.revokeKey(row.ern)
+                        }
+                    },
+                    {
+                        text: "Delete",
+                        enabled: function(row) {
+                            return !!row && row.status !== "PENDING_DELETION"
+                        },
+                        action: function(row) {
+                            ekmClient.deleteKey(row.name)
+                        }
+                    }
+                ]
             }
         }
     }

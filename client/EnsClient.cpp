@@ -80,6 +80,37 @@ void EnsClient::deleteTopic(const QString &topicErn) {
          });
 }
 
+void EnsClient::addTopicTag(const QString &topicErn, const QString &key, const QString &value) {
+    QJsonObject body;
+    body["ern"] = topicErn;
+    body["key"] = key;
+    body["value"] = value;
+
+    m_base->post("ens", "add-topic-tag", body, true,
+         [this, topicErn, key, value](const QJsonObject &response) {
+             emit topicTagAdded(topicErn, key, value);
+             emit topicsReload();
+         },
+         [this](const QString &message) {
+             emit topicTagAddFailed(message);
+         });
+}
+
+void EnsClient::deleteTopicTag(const QString &topicErn, const QString &key) {
+    QJsonObject body;
+    body["ern"] = topicErn;
+    body["key"] = key;
+
+    m_base->post("ens", "delete-topic-tag", body, true,
+         [this, topicErn, key](const QJsonObject &response) {
+             emit topicTagDeleted(topicErn, key);
+             emit topicsReload();
+         },
+         [this](const QString &message) {
+             emit topicTagDeleteFailed(message);
+         });
+}
+
 void EnsClient::fetchMessages(const QString &topicErn, const int pageIndex, const int pageSize, const QString &sortColumn, const QString &sortDirection) {
     QJsonObject body;
     body["topicErn"] = topicErn;
@@ -135,5 +166,45 @@ void EnsClient::publishMessage(const QString &topicErn, const QString &body, con
          },
          [this](const QString &message) {
              emit messagePublishFailed(message);
+         });
+}
+
+void EnsClient::fetchSubscriptions(const QString &topicErn) {
+    QJsonObject body;
+    body["topicErn"] = topicErn;
+
+    m_base->post("ens", "list-subscriptions", body, true,
+         [this, topicErn](const QJsonObject &response) {
+             QVariantList subscriptions;
+             for (const QJsonArray array = response.value("subscriptions").toArray(); const auto &value : array) {
+                 const QJsonObject subscription = value.toObject();
+                 QVariantMap entry;
+                 entry["ern"] = subscription.value("ern").toString();
+                 entry["sourceErn"] = subscription.value("sourceErn").toString();
+                 entry["type"] = subscription.value("type").toString();
+                 entry["targetErn"] = subscription.value("targetErn").toString();
+                 entry["created"] = subscription.value("created").toString();
+                 entry["modified"] = subscription.value("modified").toString();
+                 subscriptions << entry;
+             }
+             emit subscriptionsLoaded(topicErn, subscriptions, response.value("total").toInt());
+         },
+         [this, topicErn](const QString &message) {
+             emit subscriptionsFailed(topicErn, message);
+         });
+}
+
+void EnsClient::subscribe(const QString &topicErn, const QString &type, const QString &targetErn) {
+    QJsonObject body;
+    body["sourceErn"] = topicErn;
+    body["type"] = type;
+    body["targetErn"] = targetErn;
+
+    m_base->post("ens", "subscribe", body, true,
+         [this, topicErn](const QJsonObject &response) {
+             emit subscriptionCreated(topicErn);
+         },
+         [this](const QString &message) {
+             emit subscriptionCreateFailed(message);
          });
 }

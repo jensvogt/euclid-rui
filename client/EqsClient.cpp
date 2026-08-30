@@ -90,6 +90,37 @@ void EqsClient::deleteQueue(const QString &queueErn) {
          });
 }
 
+void EqsClient::addQueueTag(const QString &queueErn, const QString &key, const QString &value) {
+    QJsonObject body;
+    body["ern"] = queueErn;
+    body["key"] = key;
+    body["value"] = value;
+
+    m_base->post("eqs", "add-queue-tag", body, true,
+         [this, queueErn, key, value](const QJsonObject &response) {
+             emit queueTagAdded(queueErn, key, value);
+             emit queuesReload();
+         },
+         [this](const QString &message) {
+             emit queueTagAddFailed(message);
+         });
+}
+
+void EqsClient::deleteQueueTag(const QString &queueErn, const QString &key) {
+    QJsonObject body;
+    body["ern"] = queueErn;
+    body["key"] = key;
+
+    m_base->post("eqs", "delete-queue-tag", body, true,
+         [this, queueErn, key](const QJsonObject &response) {
+             emit queueTagDeleted(queueErn, key);
+             emit queuesReload();
+         },
+         [this](const QString &message) {
+             emit queueTagDeleteFailed(message);
+         });
+}
+
 void EqsClient::fetchMessages(const QString &queueErn, const int pageIndex, const int pageSize) {
     QJsonObject body;
     body["queueErn"] = queueErn;

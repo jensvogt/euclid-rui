@@ -11,10 +11,10 @@ Item {
     property string prefix: ""
     property int pageIndex: 0
     readonly property int pageSize: 10
-    property string sortColumn: "available"
-    property bool sortAscending: false
+    property string sortColumn: "name"
+    property bool sortAscending: true
 
-    property var queues: []
+    property var namespaces: []
     property int totalCount: 0
     property bool loading: false
     property string error: ""
@@ -23,10 +23,8 @@ Item {
     readonly property var columns: {
         let cols = [
             { title: "Name", key: "name", fill: true },
-            { title: "Available", key: "available" },
-            { title: "Delayed", key: "delayed" },
-            { title: "Invisible", key: "invisible" },
-            { title: "Size", key: "size", formatter: function (v) { return SizeFormat.format(v) } },
+            { title: "Account ID", key: "accountId" },
+            { title: "Description", key: "description" },
             { title: "Created", key: "created", formatter: function (v) { return DateFormat.format(v) } },
             { title: "Modified", key: "modified", formatter: function (v) { return DateFormat.format(v) } },
             { title: "Ern", key: "ern", hidden: true }
@@ -35,17 +33,15 @@ Item {
     }
 
     signal back()
-    signal openQueue(string queueErn, string queueName)
-    signal openQueueDetails(string queueErn, string queueName, var details)
 
     function refresh() {
         if (!root.loggedIn) {
-            error = "Sign in to view queues."
+            error = "Sign in to view namespaces."
             return
         }
         loading = true
         error = ""
-        eqsClient.fetchQueues(root.prefix, root.pageIndex, root.pageSize,
+        eamClient.fetchNamespaces(euclidClient.accountId, root.prefix, root.pageIndex, root.pageSize,
             root.sortColumn, root.sortAscending ? "asc" : "desc")
     }
 
@@ -60,35 +56,33 @@ Item {
     }
 
     Connections {
-        target: eqsClient
-        function onQueuesLoaded(list, total) {
+        target: eamClient
+        function onNamespacesLoaded(list, total) {
             root.loading = false
             root.error = ""
-            root.queues = list
+            root.namespaces = list
             root.totalCount = total
             root.lastUpdatedText = Qt.formatDateTime(new Date(), "hh:mm:ss")
         }
-        function onQueuesFailed(message) {
+        function onNamespacesFailed(message) {
             root.loading = false
             root.error = message
         }
-
-        function onQueuesReload() {
+        function onNamespacesReload() {
             refresh()
         }
-
-        function onQueueCreated(name) {
-            createQueueDialog.creating = false
-            createQueueDialog.close()
+        function onNamespaceCreated(name) {
+            createNamespaceDialog.creating = false
+            createNamespaceDialog.close()
         }
-        function onQueueCreateFailed(message) {
-            createQueueDialog.creating = false
-            createQueueDialog.errorText = message
+        function onNamespaceCreateFailed(message) {
+            createNamespaceDialog.creating = false
+            createNamespaceDialog.errorText = message
         }
     }
 
     Dialog {
-        id: createQueueDialog
+        id: createNamespaceDialog
         modal: true
         anchors.centerIn: parent
         width: 380
@@ -109,21 +103,22 @@ Item {
 
         onOpened: {
             nameField.text = ""
-            createQueueDialog.errorText = ""
-            createQueueDialog.creating = false
+            descriptionField.text = ""
+            createNamespaceDialog.errorText = ""
+            createNamespaceDialog.creating = false
             nameField.forceActiveFocus()
         }
 
         contentItem: Column {
-            width: createQueueDialog.availableWidth
+            width: createNamespaceDialog.availableWidth
             spacing: 20
 
             Column {
                 width: parent.width
                 spacing: 4
-                Text { text: "Create Queue"; color: "white"; font.pixelSize: 18; font.bold: true }
+                Text { text: "Create Namespace"; color: "white"; font.pixelSize: 18; font.bold: true }
                 Text {
-                    text: "Enter a name for the new queue."
+                    text: "Creates a namespace under account " + euclidClient.accountId + "."
                     color: "#9aa1ac"
                     font.pixelSize: 12
                     wrapMode: Text.WordWrap
@@ -134,17 +129,31 @@ Item {
             Column {
                 width: parent.width
                 spacing: 6
-                Text { text: "Queue name"; color: "#9aa1ac"; font.pixelSize: 12 }
+                Text { text: "Name"; color: "#9aa1ac"; font.pixelSize: 12 }
                 TextField {
                     id: nameField
                     width: parent.width
-                    placeholderText: "e.g. orders-in"
+                    placeholderText: "e.g. staging"
+                    Material.accent: "#4f8cff"
+                    selectByMouse: true
+                    Keys.onReturnPressed: descriptionField.forceActiveFocus()
+                }
+            }
+
+            Column {
+                width: parent.width
+                spacing: 6
+                Text { text: "Description (optional)"; color: "#9aa1ac"; font.pixelSize: 12 }
+                TextField {
+                    id: descriptionField
+                    width: parent.width
+                    placeholderText: "e.g. Staging environment"
                     Material.accent: "#4f8cff"
                     selectByMouse: true
                     Keys.onReturnPressed: if (createButton.enabled) createButton.clicked()
                 }
                 Text {
-                    text: createQueueDialog.errorText
+                    text: createNamespaceDialog.errorText
                     color: "#ff6b6b"
                     font.pixelSize: 12
                     wrapMode: Text.WordWrap
@@ -163,12 +172,12 @@ Item {
                     anchors.left: parent.left
                     anchors.verticalCenter: parent.verticalCenter
                     Material.theme: Material.Dark
-                    onClicked: createQueueDialog.close()
+                    onClicked: createNamespaceDialog.close()
                 }
 
                 BusyIndicator {
-                    running: createQueueDialog.creating
-                    visible: createQueueDialog.creating
+                    running: createNamespaceDialog.creating
+                    visible: createNamespaceDialog.creating
                     width: 22
                     height: 22
                     anchors.right: createButton.left
@@ -184,11 +193,11 @@ Item {
                     anchors.verticalCenter: parent.verticalCenter
                     Material.theme: Material.Dark
                     Material.accent: "#4f8cff"
-                    enabled: !createQueueDialog.creating && nameField.text.trim().length > 0
+                    enabled: !createNamespaceDialog.creating && nameField.text.trim().length > 0
                     onClicked: {
-                        createQueueDialog.errorText = ""
-                        createQueueDialog.creating = true
-                        eqsClient.createQueue(nameField.text.trim())
+                        createNamespaceDialog.errorText = ""
+                        createNamespaceDialog.creating = true
+                        eamClient.createNamespace(euclidClient.accountId, nameField.text.trim(), descriptionField.text.trim())
                     }
                 }
             }
@@ -206,7 +215,7 @@ Item {
             spacing: 20
 
             Button {
-                text: "‹ Back to EQS Dashboard"
+                text: "‹ Back to EAM Dashboard"
                 flat: true
                 onClicked: root.back()
             }
@@ -217,34 +226,34 @@ Item {
 
                 SectionHeader {
                     id: sectionHeader
-                    title: "Queues (" + root.totalCount + ")"
-                    subtitle: "All queues in the " + root.namespaceName + " namespace."
+                    title: "Namespaces (" + root.totalCount + ")"
+                    subtitle: "All namespaces in account " + euclidClient.accountId + "."
                 }
 
                 Button {
-                    text: "+ Add Queue"
+                    text: "+ Add Namespace"
                     highlighted: true
                     anchors.right: parent.right
                     anchors.verticalCenter: sectionHeader.verticalCenter
                     Material.theme: Material.Dark
                     Material.accent: "#4f8cff"
-                    onClicked: createQueueDialog.open()
+                    onClicked: createNamespaceDialog.open()
                 }
             }
 
             DataTable {
                 width: parent.width
                 columns: root.columns
-                rows: root.queues
+                rows: root.namespaces
                 totalCount: root.totalCount
                 pageSize: root.pageSize
                 pageIndex: root.pageIndex
                 loading: root.loading
                 error: root.error
                 lastUpdatedText: root.lastUpdatedText
-                searchPlaceholder: "Filter by queue name prefix..."
-                emptyText: "No queues found in this namespace."
-                rowsClickable: true
+                searchPlaceholder: "Filter by namespace name prefix..."
+                emptyText: "No namespaces found in this account."
+                rowsClickable: false
                 sortKey: root.sortColumn
                 sortAscending: root.sortAscending
 
@@ -258,7 +267,6 @@ Item {
                     root.pageIndex = index
                     root.refresh()
                 }
-                onRowClicked: (row) => root.openQueue(row.ern, row.name)
                 onSortRequested: (key, ascending) => {
                     root.sortColumn = key
                     root.sortAscending = ascending
@@ -268,24 +276,9 @@ Item {
 
                 contextMenuActions: [
                     {
-                        text: "Details",
-                        action: function(row) {
-                            root.openQueueDetails(row.ern, row.name, row)
-                        }
-                    },
-                    {
-                        text: "Purge",
-                        enabled: function(row) {
-                            return !!row && Number(row.available) > 0
-                        },
-                        action: function(row) {
-                            eqsClient.purgeQueue(row.ern)
-                        }
-                    },
-                    {
                         text: "Delete",
                         action: function(row) {
-                            eqsClient.deleteQueue(row.ern)
+                            eamClient.deleteNamespace(row.accountId, row.name)
                         }
                     }
                 ]

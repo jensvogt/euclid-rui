@@ -7,16 +7,23 @@ Item {
     id: root
     property bool loggedIn: false
     property string namespaceName: ""
-    property string bucketErn: ""
-    property string bucketName: ""
+    property string keyErn: ""
+    property string keyName: ""
     property var details: ({})
 
     signal back()
-    signal viewObjects(string bucketErn, string bucketName)
 
-    // Erns look like ern:esm:{region}:{accountId}:{namespace}:bucket:{name}
+    function statusColor(status) {
+        if (status === "AVAILABLE") return "#4cd97b"
+        if (status === "REVOKED" || status === "UPLOADED") return "#ffb545"
+        if (status === "PENDING_DELETION") return "#ff4f5e"
+        return "#9aa1ac"
+    }
+
+    // Erns look like ern:ekm:{region}:{accountId}:key:{keyId} - no namespace segment, since keys
+    // are keyed by a randomly generated ID rather than a user-chosen, namespace-scoped name.
     function ernPart(index) {
-        const parts = root.bucketErn.split(":")
+        const parts = root.keyErn.split(":")
         return index < parts.length ? parts[index] : "—"
     }
 
@@ -29,7 +36,7 @@ Item {
         return tags ? Object.keys(tags) : []
     }
 
-    // No "get single bucket" action exists server-side to re-fetch after a mutation, so apply the
+    // No "get single key" action exists server-side to re-fetch after a mutation, so apply the
     // now-confirmed change to the local details snapshot instead (reassigned, not mutated in
     // place, so the "var" property change notification actually fires).
     function addTagLocally(key, value) {
@@ -45,24 +52,25 @@ Item {
     }
 
     Connections {
-        target: esmClient
-        function onBucketTagAdded(bucketErn, key, value) {
-            if (bucketErn !== root.bucketErn) return
+        target: ekmClient
+        function onKeyTagAdded(keyErn, key, value) {
+            if (keyErn !== root.keyErn) return
             addTagDialog.saving = false
             addTagDialog.close()
             root.addTagLocally(key, value)
         }
-        function onBucketTagAddFailed(message) {
+        function onKeyTagAddFailed(message) {
             addTagDialog.saving = false
             addTagDialog.errorText = message
         }
-        function onBucketTagDeleted(bucketErn, key) {
-            if (bucketErn !== root.bucketErn) return
+        function onKeyTagDeleted(keyErn, key) {
+            if (keyErn !== root.keyErn) return
             root.removeTagLocally(key)
         }
     }
 
-    readonly property int objects: Number(detail("objects", 0))
+    readonly property string status: detail("status", "")
+    readonly property string deletionDate: detail("deletionDate", "")
 
     ScrollView {
         anchors.fill: parent
@@ -75,7 +83,7 @@ Item {
             spacing: 20
 
             Button {
-                text: "‹ Back to Buckets"
+                text: "‹ Back to Keys"
                 flat: true
                 onClicked: root.back()
             }
@@ -86,8 +94,8 @@ Item {
 
                 SectionHeader {
                     id: sectionHeader
-                    title: root.bucketName
-                    subtitle: root.bucketErn
+                    title: root.keyName
+                    subtitle: root.keyErn
                 }
 
                 Row {
@@ -96,20 +104,21 @@ Item {
                     spacing: 8
 
                     Button {
-                        text: "- Purge"
+                        text: "- Revoke"
                         flat: true
                         Material.theme: Material.Dark
-                        Material.accent: "#ff6b6b"
-                        enabled: root.objects > 0
-                        onClicked: esmClient.purgeBucket(root.bucketErn)
+                        Material.accent: "#ffb545"
+                        enabled: root.status === "AVAILABLE"
+                        onClicked: ekmClient.revokeKey(root.keyErn)
                     }
 
                     Button {
-                        text: "View Objects"
+                        text: "Delete"
                         highlighted: true
                         Material.theme: Material.Dark
-                        Material.accent: "#4f8cff"
-                        onClicked: root.viewObjects(root.bucketErn, root.bucketName)
+                        Material.accent: "#ff6b6b"
+                        enabled: root.status !== "PENDING_DELETION"
+                        onClicked: ekmClient.deleteKey(root.keyName)
                     }
                 }
             }
@@ -118,8 +127,24 @@ Item {
                 width: parent.width
                 spacing: 18
 
-                StatCard { title: "Objects"; value: String(root.objects); trend: "in bucket"; trendUp: true; accent: "#4cd97b" }
-                StatCard { title: "Size"; value: SizeFormat.format(root.detail("size", 0)); trend: "on disk"; trendUp: true; accent: "#c56bff" }
+                StatCard { title: "Algorithm"; value: root.detail("algorithm", "—"); trend: "cipher"; trendUp: true; accent: "#4f8cff" }
+                StatCard { title: "Length"; value: root.detail("length", 0) + " bit"; trend: "key size"; trendUp: true; accent: "#c56bff" }
+                StatCard {
+                    title: "Status"
+                    value: root.status.length > 0 ? root.status : "—"
+                    trend: root.status === "AVAILABLE" ? "usable" : "restricted"
+                    trendUp: root.status === "AVAILABLE"
+                    accent: root.statusColor(root.status)
+                    width: 440
+                }
+                StatCard {
+                    title: "Scheduled Deletion"
+                    value: root.deletionDate.length > 0 ? DateFormat.format(root.deletionDate) : "None"
+                    trend: root.deletionDate.length > 0 ? "pending" : "not scheduled"
+                    trendUp: root.deletionDate.length === 0
+                    accent: "#ffb545"
+                    width: 440
+                }
             }
 
             Rectangle {
@@ -146,10 +171,8 @@ Item {
                         columnSpacing: 24
                         rowSpacing: 16
 
-                        DetailField { width: (identityCol.width - 48) / 3; label: "Owner"; value: root.detail("owner", "—") }
                         DetailField { width: (identityCol.width - 48) / 3; label: "Region"; value: root.ernPart(2) }
                         DetailField { width: (identityCol.width - 48) / 3; label: "Account ID"; value: root.ernPart(3) }
-                        DetailField { width: (identityCol.width - 48) / 3; label: "Namespace"; value: root.ernPart(4) }
                         DetailField { width: (identityCol.width - 48) / 3; label: "Created"; value: DateFormat.format(root.detail("created", "")) }
                         DetailField { width: (identityCol.width - 48) / 3; label: "Modified"; value: DateFormat.format(root.detail("modified", "")) }
                     }
@@ -194,7 +217,7 @@ Item {
 
                     Text {
                         visible: root.tagList().length === 0
-                        text: "No tags set for this bucket."
+                        text: "No tags set for this key."
                         color: "#6b7280"
                         font.pixelSize: 12
                     }
@@ -237,7 +260,7 @@ Item {
                                             anchors.margins: -4
                                             hoverEnabled: true
                                             cursorShape: Qt.PointingHandCursor
-                                            onClicked: esmClient.deleteBucketTag(root.bucketErn, modelData)
+                                            onClicked: ekmClient.deleteKeyTag(root.keyErn, modelData)
                                         }
                                     }
                                 }
@@ -286,7 +309,7 @@ Item {
                 spacing: 4
                 Text { text: "Add Tag"; color: "white"; font.pixelSize: 18; font.bold: true }
                 Text {
-                    text: "Set a key/value tag on this bucket."
+                    text: "Set a key/value tag on this key."
                     color: "#9aa1ac"
                     font.pixelSize: 12
                     wrapMode: Text.WordWrap
@@ -365,7 +388,7 @@ Item {
                     onClicked: {
                         addTagDialog.errorText = ""
                         addTagDialog.saving = true
-                        esmClient.addBucketTag(root.bucketErn, tagKeyField.text.trim(), tagValueField.text)
+                        ekmClient.addKeyTag(root.keyErn, tagKeyField.text.trim(), tagValueField.text)
                     }
                 }
             }

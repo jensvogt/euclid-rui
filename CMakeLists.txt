@@ -30,6 +30,7 @@ qt_policy(SET QTP0004 NEW)
 qt_add_executable(euclid_rui main.cpp
         AppSettings.h AppSettings.cpp
         client/EuclidBaseClient.h client/EuclidBaseClient.cpp
+        client/EamClient.h client/EamClient.cpp
         client/EmmClient.h client/EmmClient.cpp
         client/EqsClient.h client/EqsClient.cpp
         client/EsmClient.h client/EsmClient.cpp
@@ -55,6 +56,8 @@ qt_add_qml_module(euclid_rui
         qml/pages/AnalyticsPage.qml
         qml/pages/SettingsPage.qml
         qml/pages/ModulePage.qml
+        qml/pages/EamAccountsPage.qml
+        qml/pages/EamNamespacesPage.qml
         qml/pages/EqsQueuesPage.qml
         qml/pages/EqsQueueDetailsPage.qml
         qml/pages/EqsMessagesPage.qml
@@ -65,6 +68,7 @@ qt_add_qml_module(euclid_rui
         qml/pages/EnsTopicDetailsPage.qml
         qml/pages/EnsMessagesPage.qml
         qml/pages/EkmKeysPage.qml
+        qml/pages/EkmKeyDetailsPage.qml
         qml/components/SideNav.qml
         qml/components/NavButton.qml
         qml/components/SubNavButton.qml

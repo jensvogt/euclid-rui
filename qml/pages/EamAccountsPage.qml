@@ -11,10 +11,10 @@ Item {
     property string prefix: ""
     property int pageIndex: 0
     readonly property int pageSize: 10
-    property string sortColumn: "available"
-    property bool sortAscending: false
+    property string sortColumn: "name"
+    property bool sortAscending: true
 
-    property var queues: []
+    property var accounts: []
     property int totalCount: 0
     property bool loading: false
     property string error: ""
@@ -23,10 +23,8 @@ Item {
     readonly property var columns: {
         let cols = [
             { title: "Name", key: "name", fill: true },
-            { title: "Available", key: "available" },
-            { title: "Delayed", key: "delayed" },
-            { title: "Invisible", key: "invisible" },
-            { title: "Size", key: "size", formatter: function (v) { return SizeFormat.format(v) } },
+            { title: "Account ID", key: "accountId" },
+            { title: "Description", key: "description" },
             { title: "Created", key: "created", formatter: function (v) { return DateFormat.format(v) } },
             { title: "Modified", key: "modified", formatter: function (v) { return DateFormat.format(v) } },
             { title: "Ern", key: "ern", hidden: true }
@@ -35,17 +33,15 @@ Item {
     }
 
     signal back()
-    signal openQueue(string queueErn, string queueName)
-    signal openQueueDetails(string queueErn, string queueName, var details)
 
     function refresh() {
         if (!root.loggedIn) {
-            error = "Sign in to view queues."
+            error = "Sign in to view accounts."
             return
         }
         loading = true
         error = ""
-        eqsClient.fetchQueues(root.prefix, root.pageIndex, root.pageSize,
+        eamClient.fetchAccounts(root.prefix, root.pageIndex, root.pageSize,
             root.sortColumn, root.sortAscending ? "asc" : "desc")
     }
 
@@ -60,35 +56,33 @@ Item {
     }
 
     Connections {
-        target: eqsClient
-        function onQueuesLoaded(list, total) {
+        target: eamClient
+        function onAccountsLoaded(list, total) {
             root.loading = false
             root.error = ""
-            root.queues = list
+            root.accounts = list
             root.totalCount = total
             root.lastUpdatedText = Qt.formatDateTime(new Date(), "hh:mm:ss")
         }
-        function onQueuesFailed(message) {
+        function onAccountsFailed(message) {
             root.loading = false
             root.error = message
         }
-
-        function onQueuesReload() {
+        function onAccountsReload() {
             refresh()
         }
-
-        function onQueueCreated(name) {
-            createQueueDialog.creating = false
-            createQueueDialog.close()
+        function onAccountCreated(accountId) {
+            createAccountDialog.creating = false
+            createAccountDialog.close()
         }
-        function onQueueCreateFailed(message) {
-            createQueueDialog.creating = false
-            createQueueDialog.errorText = message
+        function onAccountCreateFailed(message) {
+            createAccountDialog.creating = false
+            createAccountDialog.errorText = message
         }
     }
 
     Dialog {
-        id: createQueueDialog
+        id: createAccountDialog
         modal: true
         anchors.centerIn: parent
         width: 380
@@ -108,22 +102,24 @@ Item {
         }
 
         onOpened: {
+            accountIdField.text = ""
             nameField.text = ""
-            createQueueDialog.errorText = ""
-            createQueueDialog.creating = false
-            nameField.forceActiveFocus()
+            descriptionField.text = ""
+            createAccountDialog.errorText = ""
+            createAccountDialog.creating = false
+            accountIdField.forceActiveFocus()
         }
 
         contentItem: Column {
-            width: createQueueDialog.availableWidth
+            width: createAccountDialog.availableWidth
             spacing: 20
 
             Column {
                 width: parent.width
                 spacing: 4
-                Text { text: "Create Queue"; color: "white"; font.pixelSize: 18; font.bold: true }
+                Text { text: "Create Account"; color: "white"; font.pixelSize: 18; font.bold: true }
                 Text {
-                    text: "Enter a name for the new queue."
+                    text: "Global-admin only. Account IDs are unique across the deployment."
                     color: "#9aa1ac"
                     font.pixelSize: 12
                     wrapMode: Text.WordWrap
@@ -134,17 +130,45 @@ Item {
             Column {
                 width: parent.width
                 spacing: 6
-                Text { text: "Queue name"; color: "#9aa1ac"; font.pixelSize: 12 }
+                Text { text: "Account ID"; color: "#9aa1ac"; font.pixelSize: 12 }
+                TextField {
+                    id: accountIdField
+                    width: parent.width
+                    placeholderText: "e.g. 000000000001"
+                    Material.accent: "#4f8cff"
+                    selectByMouse: true
+                    Keys.onReturnPressed: nameField.forceActiveFocus()
+                }
+            }
+
+            Column {
+                width: parent.width
+                spacing: 6
+                Text { text: "Name"; color: "#9aa1ac"; font.pixelSize: 12 }
                 TextField {
                     id: nameField
                     width: parent.width
-                    placeholderText: "e.g. orders-in"
+                    placeholderText: "e.g. staging"
+                    Material.accent: "#4f8cff"
+                    selectByMouse: true
+                    Keys.onReturnPressed: descriptionField.forceActiveFocus()
+                }
+            }
+
+            Column {
+                width: parent.width
+                spacing: 6
+                Text { text: "Description (optional)"; color: "#9aa1ac"; font.pixelSize: 12 }
+                TextField {
+                    id: descriptionField
+                    width: parent.width
+                    placeholderText: "e.g. Staging environment"
                     Material.accent: "#4f8cff"
                     selectByMouse: true
                     Keys.onReturnPressed: if (createButton.enabled) createButton.clicked()
                 }
                 Text {
-                    text: createQueueDialog.errorText
+                    text: createAccountDialog.errorText
                     color: "#ff6b6b"
                     font.pixelSize: 12
                     wrapMode: Text.WordWrap
@@ -163,12 +187,12 @@ Item {
                     anchors.left: parent.left
                     anchors.verticalCenter: parent.verticalCenter
                     Material.theme: Material.Dark
-                    onClicked: createQueueDialog.close()
+                    onClicked: createAccountDialog.close()
                 }
 
                 BusyIndicator {
-                    running: createQueueDialog.creating
-                    visible: createQueueDialog.creating
+                    running: createAccountDialog.creating
+                    visible: createAccountDialog.creating
                     width: 22
                     height: 22
                     anchors.right: createButton.left
@@ -184,11 +208,11 @@ Item {
                     anchors.verticalCenter: parent.verticalCenter
                     Material.theme: Material.Dark
                     Material.accent: "#4f8cff"
-                    enabled: !createQueueDialog.creating && nameField.text.trim().length > 0
+                    enabled: !createAccountDialog.creating && accountIdField.text.trim().length > 0 && nameField.text.trim().length > 0
                     onClicked: {
-                        createQueueDialog.errorText = ""
-                        createQueueDialog.creating = true
-                        eqsClient.createQueue(nameField.text.trim())
+                        createAccountDialog.errorText = ""
+                        createAccountDialog.creating = true
+                        eamClient.createAccount(accountIdField.text.trim(), nameField.text.trim(), descriptionField.text.trim())
                     }
                 }
             }
@@ -206,7 +230,7 @@ Item {
             spacing: 20
 
             Button {
-                text: "‹ Back to EQS Dashboard"
+                text: "‹ Back to EAM Dashboard"
                 flat: true
                 onClicked: root.back()
             }
@@ -217,34 +241,34 @@ Item {
 
                 SectionHeader {
                     id: sectionHeader
-                    title: "Queues (" + root.totalCount + ")"
-                    subtitle: "All queues in the " + root.namespaceName + " namespace."
+                    title: "Accounts (" + root.totalCount + ")"
+                    subtitle: "All accounts in this deployment."
                 }
 
                 Button {
-                    text: "+ Add Queue"
+                    text: "+ Add Account"
                     highlighted: true
                     anchors.right: parent.right
                     anchors.verticalCenter: sectionHeader.verticalCenter
                     Material.theme: Material.Dark
                     Material.accent: "#4f8cff"
-                    onClicked: createQueueDialog.open()
+                    onClicked: createAccountDialog.open()
                 }
             }
 
             DataTable {
                 width: parent.width
                 columns: root.columns
-                rows: root.queues
+                rows: root.accounts
                 totalCount: root.totalCount
                 pageSize: root.pageSize
                 pageIndex: root.pageIndex
                 loading: root.loading
                 error: root.error
                 lastUpdatedText: root.lastUpdatedText
-                searchPlaceholder: "Filter by queue name prefix..."
-                emptyText: "No queues found in this namespace."
-                rowsClickable: true
+                searchPlaceholder: "Filter by account name prefix..."
+                emptyText: "No accounts found."
+                rowsClickable: false
                 sortKey: root.sortColumn
                 sortAscending: root.sortAscending
 
@@ -258,7 +282,6 @@ Item {
                     root.pageIndex = index
                     root.refresh()
                 }
-                onRowClicked: (row) => root.openQueue(row.ern, row.name)
                 onSortRequested: (key, ascending) => {
                     root.sortColumn = key
                     root.sortAscending = ascending
@@ -268,24 +291,9 @@ Item {
 
                 contextMenuActions: [
                     {
-                        text: "Details",
-                        action: function(row) {
-                            root.openQueueDetails(row.ern, row.name, row)
-                        }
-                    },
-                    {
-                        text: "Purge",
-                        enabled: function(row) {
-                            return !!row && Number(row.available) > 0
-                        },
-                        action: function(row) {
-                            eqsClient.purgeQueue(row.ern)
-                        }
-                    },
-                    {
                         text: "Delete",
                         action: function(row) {
-                            eqsClient.deleteQueue(row.ern)
+                            eamClient.deleteAccount(row.accountId)
                         }
                     }
                 ]
