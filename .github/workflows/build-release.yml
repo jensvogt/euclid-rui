@@ -229,7 +229,8 @@ jobs:
       - name: Install packaging tools
         run: |
           sudo apt update
-          sudo apt install -y build-essential cmake ninja-build ruby ruby-dev libgl1-mesa-dev libegl1-mesa-dev libglu1-mesa-dev mesa-common-dev
+          sudo apt install -y build-essential cmake ninja-build ruby ruby-dev libgl1-mesa-dev libegl1-mesa-dev
+          sudo apt install -y libglu1-mesa-dev mesa-common-dev libxkbcommon-dev libxkbcommon-x11-dev
           sudo gem install --no-document fpm
 
       - name: Configure (Linux)
@@ -281,7 +282,8 @@ jobs:
       - name: Install packaging tools
         run: |
           sudo apt update
-          sudo apt install -y build-essential cmake ninja-build ruby ruby-dev mesa-libGL-devel mesa-libEGL-devel libX11-devel libXext-devel
+          sudo apt install -y build-essential cmake ninja-build ruby ruby-dev mesa-libGL-devel mesa-libEGL-devel
+          sudo apt install -y libX11-devel libXext-devel libxkbcommon-devel libxkbcommon-x11-devel
           sudo gem install --no-document fpm
 
       - name: Configure (Linux)
