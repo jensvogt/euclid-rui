@@ -465,6 +465,12 @@ jobs:
       - publish
     runs-on: ubuntu-latest
 
+    # Required permissions for actions/deploy-pages
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
