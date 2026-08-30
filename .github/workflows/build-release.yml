@@ -101,7 +101,8 @@ jobs:
           ../qt-src/configure -static -release -opensource -confirm-license \
             -prefix "${{ github.workspace }}/qt-static" \
             -nomake examples -nomake tests \
-            -submodules ${{ env.QT_MODULES }}
+            -submodules ${{ env.QT_MODULES }} \
+            -qt-libtiff -no-icu -qt-pcre -qt-libpng -qt-jpeg
 
       - name: Build static Qt
         if: steps.cache.outputs.cache-hit != 'true'
