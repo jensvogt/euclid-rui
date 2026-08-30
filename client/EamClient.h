@@ -29,7 +29,19 @@ public:
 
     // ListUserRequest has no sortDirection field server-side, unlike the other list actions here.
     Q_INVOKABLE void fetchUsers(const QString &prefix = QString(), int pageIndex = 0, int pageSize = 10, const QString &sortColumn = QStringLiteral("userId"));
+    // Wire action is "register", not "create-user" - registering a user IS how one gets created.
+    // Admin-only server-side (except the very first user ever registered).
+    Q_INVOKABLE void createUser(const QString &userId, const QString &password, const QString &email,
+                                 const QString &accountId, const QString &region, bool isAdmin = false);
+    // Admin-only; deletes unconditionally (no check for group membership).
+    Q_INVOKABLE void deleteUser(const QString &userId);
+
     Q_INVOKABLE void fetchUserGroups(const QString &prefix = QString(), int pageIndex = 0, int pageSize = 10, const QString &sortColumn = QStringLiteral("userId"), const QString &sortDirection = QStringLiteral("asc"));
+    // Admin-only; group name must be unique across the deployment. Starts empty - members are
+    // added afterward via user-group-add-user (not yet exposed here).
+    Q_INVOKABLE void createUserGroup(const QString &name, const QString &description = QString());
+    // Admin-only; no check for remaining members.
+    Q_INVOKABLE void deleteUserGroup(const QString &name);
 
 signals:
     void accountsLoaded(const QVariantList &keys, int total);
@@ -46,8 +58,15 @@ signals:
 
     void usersLoaded(const QVariantList &users, int total);
     void usersFailed(const QString &message);
+    void usersReload();
+    void userCreated(const QString &userId);
+    void userCreateFailed(const QString &message);
+
     void userGroupsLoaded(const QVariantList &groups, int total);
     void userGroupsFailed(const QString &message);
+    void userGroupsReload();
+    void userGroupCreated(const QString &name);
+    void userGroupCreateFailed(const QString &message);
 
 private:
     EuclidBaseClient *m_base;

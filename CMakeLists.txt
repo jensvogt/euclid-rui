@@ -58,15 +58,20 @@ qt_add_qml_module(euclid_rui
         qml/pages/ModulePage.qml
         qml/pages/EamAccountsPage.qml
         qml/pages/EamNamespacesPage.qml
+        qml/pages/EamUsersPage.qml
+        qml/pages/EamUserGroupsPage.qml
         qml/pages/EqsQueuesPage.qml
         qml/pages/EqsQueueDetailsPage.qml
         qml/pages/EqsMessagesPage.qml
+        qml/pages/EqsMessageDetailsPage.qml
         qml/pages/EsmBucketsPage.qml
         qml/pages/EsmBucketDetailsPage.qml
         qml/pages/EsmObjectsPage.qml
+        qml/pages/EsmObjectDetailsPage.qml
         qml/pages/EnsTopicsPage.qml
         qml/pages/EnsTopicDetailsPage.qml
         qml/pages/EnsMessagesPage.qml
+        qml/pages/EnsMessageDetailsPage.qml
         qml/pages/EkmKeysPage.qml
         qml/pages/EkmKeyDetailsPage.qml
         qml/components/SideNav.qml

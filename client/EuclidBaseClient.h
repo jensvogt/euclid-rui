@@ -17,6 +17,7 @@ class EuclidBaseClient : public QObject {
     Q_OBJECT
     Q_PROPERTY(bool busy READ busy NOTIFY busyChanged)
     Q_PROPERTY(QString accountId READ accountId NOTIFY accountIdChanged)
+    Q_PROPERTY(QString region READ region NOTIFY regionChanged)
 
 public:
     explicit EuclidBaseClient(QObject *parent = nullptr);
@@ -27,6 +28,10 @@ public:
     // Empty until login() succeeds.
     [[nodiscard]]
     QString accountId() const { return m_accountId; }
+
+    // Empty until login() succeeds.
+    [[nodiscard]]
+    QString region() const { return m_region; }
 
     Q_INVOKABLE void login(const QString &userId, const QString &password);
     Q_INVOKABLE void fetchNamespaces();
@@ -49,6 +54,7 @@ public:
 signals:
     void busyChanged();
     void accountIdChanged();
+    void regionChanged();
     void loginSucceeded();
     void loginFailed(const QString &message);
     void namespacesLoaded(const QStringList &namespaces);

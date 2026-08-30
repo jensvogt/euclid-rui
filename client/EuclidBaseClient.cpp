@@ -105,6 +105,7 @@ void EuclidBaseClient::login(const QString &userId, const QString &password) {
              m_region = metadata.value("region").toString();
 
              emit accountIdChanged();
+             emit regionChanged();
              emit loginSucceeded();
              fetchNamespaces();
          },
