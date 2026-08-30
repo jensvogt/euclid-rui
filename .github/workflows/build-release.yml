@@ -501,7 +501,7 @@ jobs:
           cd public
           echo '{ "downloads": [' > files.json
           first=true
-          for f in *.{exe,deb,rpm,dmg}; do
+          for f in *.{exe,deb,rpm,dmg,zip}; do
             [ -f "$f" ] || continue
             if [ "$first" = true ]; then
               first=false
