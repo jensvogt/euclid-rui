@@ -1,9 +1,6 @@
 #include "EkmClient.h"
 #include "EuclidBaseClient.h"
 
-#include <QJsonArray>
-#include <QJsonObject>
-
 EkmClient::EkmClient(EuclidBaseClient *baseClient, QObject *parent) : QObject(parent), m_base(baseClient) {}
 
 void EkmClient::fetchKeys(const QString &prefix, const int pageIndex, const int pageSize, const QString &sortColumn, const QString &sortDirection) {
@@ -25,6 +22,7 @@ void EkmClient::fetchKeys(const QString &prefix, const int pageIndex, const int 
                  entry["algorithm"] = key.value("algorithm").toString();
                  entry["length"] = key.value("length").toInt();
                  entry["tags"] = key.value("tags").toObject().toVariantMap();
+                 entry["status"] = key.value("status").toString();
                  entry["created"] = key.value("created").toString();
                  entry["modified"] = key.value("modified").toString();
                  keys << entry;
