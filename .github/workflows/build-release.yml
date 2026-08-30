@@ -205,6 +205,7 @@ jobs:
         shell: cmd
         run: cmake --install qt-build
 
+
   # ── App builds, each restoring its platform's cached static Qt ────────────
 
   build-linux-deb:
