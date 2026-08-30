@@ -487,10 +487,10 @@ jobs:
       - name: Create site folder
         run: |
           mkdir public
-          cp ./artifacts/windows/*.exe public/ || true
-          cp ./artifacts/macos/*.dmg public/ || true
-          cp ./artifacts/linux/*.deb public/ || true
-          cp ./artifacts/linux/*.rpm public/ || true
+          cp ./artifacts/installer-windows/*.zip public/ || true
+          cp ./artifacts/installer-macos/*.dmg public/ || true
+          cp ./artifacts/deb-package-linux/*.deb public/ || true
+          cp ./artifacts/rpm-package-linux/*.rpm public/ || true
           cp -r ./artifacts/repository/* public/ || true
           cp .github/pages/index.html public/index.html || true
           cp version.txt public/version.txt || true
