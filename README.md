@@ -70,7 +70,7 @@ credentials on the command line:
 
 Tagged releases are built via GitHub Actions (`.github/workflows/build-release.yml`), which builds
 a static Qt from source (cached per OS) and packages `euclid_rui` as a self-contained binary for
-Linux (`.deb`/`.rpm`), macOS (`.dmg`), and Windows (`.zip`) - see the
+Linux (`.deb`/`.rpm`), macOS (`.dmg`), and Windows (a Qt Installer Framework installer) - see the
 [releases page](https://github.com/jensvogt/euclid-rui/releases) or [Changelog](CHANGELOG.md).
 
 ### Installing via APT (Debian/Ubuntu)
@@ -88,3 +88,11 @@ sudo apt install euclid-rui
 ```
 
 From then on, `sudo apt update && sudo apt upgrade` will pick up new releases.
+
+### Installing on Windows
+
+Download and run the installer (`euclid-rui-<version>-windows.exe`) from the
+[releases page](https://github.com/jensvogt/euclid-rui/releases). It's built with the Qt Installer
+Framework and points at an online repository, so its bundled maintenance tool (`maintenancetool.exe`,
+installed alongside the app) can check for and install new releases without re-downloading the
+installer - just run it and choose "Check for updates".

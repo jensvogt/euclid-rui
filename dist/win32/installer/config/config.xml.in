@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Installer>
+    <Name>EuclidRUI</Name>
+    <Version>@VERSION_STRING@</Version>
+    <Title>Euclid Rich UI Installer</Title>
+    <Publisher>Dr. Jens Vogt</Publisher>
+    <StartMenuDir>euclid</StartMenuDir>
+    <TargetDir>@ApplicationsDir@/euclid</TargetDir>
+    <RemoteRepositories>
+        <Repository>
+            <Url>https://jensvogt.github.io/euclid-rui</Url>
+            <Enabled>true</Enabled>
+        </Repository>
+    </RemoteRepositories>
+</Installer>

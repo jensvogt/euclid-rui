@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Repositories>
+    <Repository>
+        <Url>https://jensvogt.github.io/euclid-rui/</Url>
+        <Enabled>true</Enabled>
+    </Repository>
+</Repositories>
