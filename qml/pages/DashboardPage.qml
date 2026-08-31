@@ -3,6 +3,44 @@ import QtQuick.Controls
 import "../components"
 
 Item {
+    id: root
+    property bool loggedIn: false
+
+    // The dashboard shows overall system load, not a single module's - "average" over the
+    // last hour across all modules (no labelName/labelValue filter) is the closest thing emo
+    // exposes to a system-wide figure.
+    property real cpuPercent: -1
+    property real memoryPercent: -1
+
+    function refreshLoad() {
+        if (!root.loggedIn)
+            return
+        emoClient.fetchAverage("euclid-cpu-usage")
+        emoClient.fetchAverage("euclid-memory-usage-percent")
+    }
+
+    onVisibleChanged: if (visible) refreshLoad()
+    onLoggedInChanged: if (loggedIn && visible) refreshLoad()
+
+    Timer {
+        interval: appSettings.autoRefreshSeconds * 1000
+        running: appSettings.autoRefreshSeconds > 0 && root.visible && root.loggedIn
+        repeat: true
+        onTriggered: root.refreshLoad()
+    }
+
+    Connections {
+        target: emoClient
+        function onAverageLoaded(name, value) {
+            if (name === "euclid-cpu-usage") root.cpuPercent = value
+            else if (name === "euclid-memory-usage-percent") root.memoryPercent = value
+        }
+        function onAverageFailed(name, message) {
+            if (name === "euclid-cpu-usage") root.cpuPercent = -1
+            else if (name === "euclid-memory-usage-percent") root.memoryPercent = -1
+        }
+    }
+
     ScrollView {
         id: scrollView
         anchors.fill: parent
@@ -79,14 +117,14 @@ Item {
                         Row {
                             spacing: 24
                             Gauge {
-                                value: 0.68
-                                valueText: "68%"
+                                value: Math.min(1, Math.max(0, root.cpuPercent) / 100)
+                                valueText: root.cpuPercent >= 0 ? Math.round(root.cpuPercent) + "%" : "—"
                                 label: "CPU"
                                 progressColor: "#4f8cff"
                             }
                             Gauge {
-                                value: 0.41
-                                valueText: "41%"
+                                value: Math.min(1, Math.max(0, root.memoryPercent) / 100)
+                                valueText: root.memoryPercent >= 0 ? Math.round(root.memoryPercent) + "%" : "—"
                                 label: "Memory"
                                 progressColor: "#4cd97b"
                             }

@@ -33,6 +33,12 @@
 <h1>Euclid Rich UI Binaries</h1>
 <p>Automatically generated list of installer builds.</p>
 
+<h2>Debian/Ubuntu (APT repository)</h2>
+<pre><code>curl -fsSL https://jensvogt.github.io/euclid-rui/apt/euclid-rui.gpg.asc | sudo gpg --dearmor -o /usr/share/keyrings/euclid-rui.gpg
+echo "deb [signed-by=/usr/share/keyrings/euclid-rui.gpg] https://jensvogt.github.io/euclid-rui/apt stable main" | sudo tee /etc/apt/sources.list.d/euclid-rui.list
+sudo apt update
+sudo apt install euclid-rui</code></pre>
+
 <table>
     <thead>
     <tr>

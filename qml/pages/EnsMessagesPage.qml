@@ -44,7 +44,7 @@ Item {
     readonly property var columns: {
         let cols = [
             { title: "Message ID", key: "messageId", fill: true },
-            { title: "Status", key: "status", formatter: function (v) { return v && v.length > 0 ? v : "—" } },
+            { title: "Status", key: "status", formatter: function (v) { return v && v.length > 0 ? v : "—" }, colorFor: function (v) { return root.statusColor(v) } },
             { title: "Size", key: "size", formatter: function (v, row) { return SizeFormat.format(root.byteLength(row.body)) } },
             { title: "Created", key: "created", formatter: function (v) { return DateFormat.format(v) } },
             { title: "Modified", key: "modified", formatter: function (v) { return v && v.indexOf("1970-01-01") === 0 ? "—" : DateFormat.format(v) } },
@@ -56,6 +56,11 @@ Item {
 
     signal back()
     signal openMessageDetails(string messageErn, string messageId, string topicName, var details)
+
+    function statusColor(status) {
+        if (status === "PUBLISHED") return "#4cd97b"
+        return "#9aa1ac"
+    }
 
     // In the single-topic view every row belongs to root.topicName; in the aggregate "all
     // topics" view rows can belong to any topic, so look the name up by the row's own topicErn.

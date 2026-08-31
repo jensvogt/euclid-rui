@@ -397,6 +397,7 @@ ApplicationWindow {
                 DashboardPage {
                     anchors.fill: parent
                     visible: window.currentRoute === "dashboard"
+                    loggedIn: window.loggedIn
                 }
                 AnalyticsPage {
                     anchors.fill: parent

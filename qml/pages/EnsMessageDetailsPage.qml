@@ -40,8 +40,7 @@ Item {
     }
 
     function statusColor(status) {
-        if (status === "COMPLETED" || status === "AVAILABLE") return "#4cd97b"
-        if (status === "PENDING") return "#ffb545"
+        if (status === "PUBLISHED") return "#4cd97b"
         return "#9aa1ac"
     }
 
@@ -89,8 +88,8 @@ Item {
                 StatCard {
                     title: "Status"
                     value: root.status.length > 0 ? root.status : "—"
-                    trend: root.status === "COMPLETED" ? "delivered" : "processing"
-                    trendUp: root.status === "COMPLETED"
+                    trend: root.status === "PUBLISHED" ? "delivered" : "processing"
+                    trendUp: root.status === "PUBLISHED"
                     accent: root.statusColor(root.status)
                 }
                 StatCard { title: "Size"; value: SizeFormat.format(root.byteLength(root.fullBody)); trend: "on disk"; trendUp: true; accent: "#c56bff" }

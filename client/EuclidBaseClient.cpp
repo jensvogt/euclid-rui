@@ -10,6 +10,11 @@
 
 namespace {
 constexpr auto kBaseUrl = "https://localhost:5566/";
+// The gateway (and/or intermediate infra) can silently close an idle keep-alive connection;
+// QNetworkAccessManager doesn't always notice before trying to reuse it, which otherwise leaves
+// the request hanging forever with no error and no timeout. Bound every request so a stale
+// connection surfaces as a normal, retryable error instead.
+constexpr int kTransferTimeoutMs = 15000;
 }
 
 EuclidBaseClient::EuclidBaseClient(QObject *parent) : QObject(parent) {}
@@ -39,6 +44,7 @@ void EuclidBaseClient::post(const QString &target, const QString &action, const 
     QSslConfiguration sslConfig = request.sslConfiguration();
     sslConfig.setPeerVerifyMode(QSslSocket::VerifyNone);
     request.setSslConfiguration(sslConfig);
+    request.setTransferTimeout(kTransferTimeoutMs);
 
     QNetworkReply *reply = m_networkManager.post(request, QJsonDocument(body).toJson(QJsonDocument::Compact));
     connect(reply, &QNetworkReply::finished, this, [reply, onSuccess, onError]() {
@@ -72,6 +78,7 @@ void EuclidBaseClient::postRaw(const QString &target, const QString &action, con
     QSslConfiguration sslConfig = request.sslConfiguration();
     sslConfig.setPeerVerifyMode(QSslSocket::VerifyNone);
     request.setSslConfiguration(sslConfig);
+    request.setTransferTimeout(kTransferTimeoutMs);
 
     QNetworkReply *reply = m_networkManager.post(request, body);
     connect(reply, &QNetworkReply::finished, this, [reply, onSuccess, onError]() {
