@@ -32,6 +32,21 @@ ApplicationWindow {
     property int eamGroupCount: -1
     property double eamServiceCount: -1
     property double eamServiceTime: -1
+    property string selectedUserErn: ""
+    property string selectedUserId: ""
+    property var selectedUserDetails: ({})
+    property string selectedGroupErn: ""
+    property string selectedGroupName: ""
+    property var selectedGroupDetails: ({})
+    property string selectedAccountId: ""
+    property string selectedAccountName: ""
+    property var selectedAccountDetails: ({})
+    property string selectedNamespaceAccountId: ""
+    property string selectedNamespaceName: ""
+    property var selectedNamespaceDetails: ({})
+    // Where "‹ Back" on the namespace details page returns to: it is reachable both from the
+    // namespaces table and from a namespace row on the account details page.
+    property string namespaceDetailsReturnRoute: "modules-eam-namespaces"
 
     // EQS
     property int eqsQueueCount: -1
@@ -72,6 +87,23 @@ ApplicationWindow {
     property string selectedEnsMessageTopicName: ""
     property var selectedEnsMessageDetails: ({})
 
+    // ETS. No service count/time here, unlike every other module: ETS has no MonitoringTimer
+    // instrumentation server-side, so emo holds no "ets-service-*" series to average. What it does
+    // have is transfer counters, recorded by the euclid-ftp/euclid-sftp processes themselves
+    // (extern/common/include/TransferMetrics.h) and labelled by server; -1 means "not loaded yet",
+    // which is what distinguishes it from a genuine zero.
+    property int etsServerCount: -1
+    property int etsRunningCount: -1
+    property double etsFilesSent: -1
+    property double etsFilesReceived: -1
+    // Bytes are counted at the protocol rather than at the bucket, so they are what the client
+    // actually put on or took off the wire - for SFTP that can differ from the objects' size, a
+    // partial re-read or a write into the middle of a file being the usual reasons.
+    property double etsBytesSent: -1
+    property double etsBytesReceived: -1
+    property string selectedTransferServerId: ""
+    property var selectedTransferServerDetails: ({})
+
     // EKM
     property int ekmKeyCount: -1
     property double ekmServiceCount: -1
@@ -91,7 +123,7 @@ ApplicationWindow {
 
     readonly property var moduleRoutes: ({
         "eam": "modules-eam", "eqs": "modules-eqs", "esm": "modules-esm",
-        "ekm": "modules-ekm", "ens": "modules-ens"
+        "ekm": "modules-ekm", "ens": "modules-ens", "ets": "modules-ets"
     })
 
     function moduleRouteFor(query) {
@@ -142,6 +174,64 @@ ApplicationWindow {
         emoClient.fetchAverage("ekm-service-time")
     }
 
+    // Total of a RATE series over today's buckets. emo has neither a "sum" action nor a
+    // today-to-date query - "average" returns a per-bucket mean over the whole retention - so the
+    // buckets are fetched and added up here, the same way the analytics page bounds "Today".
+    function sumToday(points) {
+        const now = new Date()
+        const start = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
+        let total = 0
+        for (const point of points) {
+            const t = new Date(point.timestamp).getTime()
+            if (!isNaN(t) && t >= start)
+                total += point.value
+        }
+        return total
+    }
+
+    function refreshEtsSummary() {
+        if (!window.loggedIn)
+            return
+        etsClient.fetchServers("")
+        // Aggregated across the "server" label, so the dashboard shows the deployment's total
+        // rather than one server's. The row cap counts rows, and one bucket costs one row per
+        // server, so it is a day of 5-minute buckets times room for eight transfer servers.
+        emoClient.fetchAggregatedSeries("ets-files-received", 288 * 8, "RAW")
+        emoClient.fetchAggregatedSeries("ets-files-sent", 288 * 8, "RAW")
+        emoClient.fetchAggregatedSeries("ets-bytes-received", 288 * 8, "RAW")
+        emoClient.fetchAggregatedSeries("ets-bytes-sent", 288 * 8, "RAW")
+    }
+
+    Connections {
+        target: emoClient
+        function onSeriesLoaded(name, labelValue, points) {
+            if (name === "ets-files-received") window.etsFilesReceived = window.sumToday(points)
+            else if (name === "ets-files-sent") window.etsFilesSent = window.sumToday(points)
+            else if (name === "ets-bytes-received") window.etsBytesReceived = window.sumToday(points)
+            else if (name === "ets-bytes-sent") window.etsBytesSent = window.sumToday(points)
+        }
+        function onSeriesFailed(name, labelValue, message) {
+            if (name === "ets-files-received") window.etsFilesReceived = -1
+            else if (name === "ets-files-sent") window.etsFilesSent = -1
+            else if (name === "ets-bytes-received") window.etsBytesReceived = -1
+            else if (name === "ets-bytes-sent") window.etsBytesSent = -1
+        }
+    }
+
+    Connections {
+        target: etsClient
+        function onServersLoaded(list, total) {
+            window.etsServerCount = total
+            // Counted on `state`, not `desiredState`: the module page should say what is actually
+            // up, not what was asked for.
+            window.etsRunningCount = list.filter(s => s.state === "RUNNING").length
+        }
+        function onServersFailed(message) {
+            window.etsServerCount = -1
+            window.etsRunningCount = -1
+        }
+    }
+
     LoginDialog {
         id: loginDialog
         onLoggedIn: (username, namespaceName) => {
@@ -149,6 +239,18 @@ ApplicationWindow {
             window.currentUser = username
             window.currentNamespace = namespaceName
             euclidClient.setNamespace(namespaceName)
+        }
+    }
+
+    Connections {
+        target: euclidClient
+        // Pointing the client at another gateway throws the session away (a token is only good on
+        // the euclid-mgr that issued it), so the window has to stop claiming someone is signed in
+        // - otherwise every page would keep polling with a token that no longer exists.
+        function onSessionCleared() {
+            window.loggedIn = false
+            window.currentUser = ""
+            window.currentNamespace = ""
         }
     }
 
@@ -167,6 +269,7 @@ ApplicationWindow {
         if (currentRoute === "modules-esm") refreshEsmSummary()
         if (currentRoute === "modules-ens") refreshEnsSummary()
         if (currentRoute === "modules-ekm") refreshEkmSummary()
+        if (currentRoute === "modules-ets") refreshEtsSummary()
     }
     onLoggedInChanged: {
         if (loggedIn && currentRoute === "modules-eam") refreshEamSummary()
@@ -174,6 +277,7 @@ ApplicationWindow {
         if (loggedIn && currentRoute === "modules-esm") refreshEsmSummary()
         if (loggedIn && currentRoute === "modules-ens") refreshEnsSummary()
         if (loggedIn && currentRoute === "modules-ekm") refreshEkmSummary()
+        if (loggedIn && currentRoute === "modules-ets") refreshEtsSummary()
     }
 
     Timer {
@@ -209,6 +313,13 @@ ApplicationWindow {
         running: appSettings.autoRefreshSeconds > 0 && window.currentRoute === "modules-ekm" && window.loggedIn
         repeat: true
         onTriggered: window.refreshEkmSummary()
+    }
+
+    Timer {
+        interval: appSettings.autoRefreshSeconds * 1000
+        running: appSettings.autoRefreshSeconds > 0 && window.currentRoute === "modules-ets" && window.loggedIn
+        repeat: true
+        onTriggered: window.refreshEtsSummary()
     }
 
     Connections {
@@ -345,7 +456,13 @@ ApplicationWindow {
                         anchors.verticalCenter: parent.verticalCenter
                         spacing: 1
                         Text { text: window.currentUser; color: "#e5e7eb"; font.pixelSize: 12 }
-                        Text { text: window.currentNamespace; color: "#9aa1ac"; font.pixelSize: 11 }
+                        // Which gateway, alongside the namespace: with a remote euclid-mgr one
+                        // click away, "where am I connected" stops being obvious.
+                        Text {
+                            text: window.currentNamespace + " · " + appSettings.host + ":" + appSettings.port
+                            color: "#9aa1ac"
+                            font.pixelSize: 11
+                        }
                     }
 
                     Rectangle {
@@ -453,6 +570,29 @@ ApplicationWindow {
                     loggedIn: window.loggedIn
                     namespaceName: window.currentNamespace
                     onBack: window.currentRoute = "modules-eam"
+                    onOpenAccountDetails: (accountId, accountName, details) => {
+                        window.selectedAccountId = accountId
+                        window.selectedAccountName = accountName
+                        window.selectedAccountDetails = details
+                        window.currentRoute = "modules-eam-account-details"
+                    }
+                }
+                EamAccountDetailsPage {
+                    anchors.fill: parent
+                    visible: window.currentRoute === "modules-eam-account-details"
+                    loggedIn: window.loggedIn
+                    namespaceName: window.currentNamespace
+                    accountId: window.selectedAccountId
+                    accountName: window.selectedAccountName
+                    details: window.selectedAccountDetails
+                    onBack: window.currentRoute = "modules-eam-accounts"
+                    onOpenNamespaceDetails: (accountId, namespaceName, details) => {
+                        window.selectedNamespaceAccountId = accountId
+                        window.selectedNamespaceName = namespaceName
+                        window.selectedNamespaceDetails = details
+                        window.namespaceDetailsReturnRoute = "modules-eam-account-details"
+                        window.currentRoute = "modules-eam-namespace-details"
+                    }
                 }
                 EamNamespacesPage {
                     anchors.fill: parent
@@ -460,6 +600,22 @@ ApplicationWindow {
                     loggedIn: window.loggedIn
                     namespaceName: window.currentNamespace
                     onBack: window.currentRoute = "modules-eam"
+                    onOpenNamespaceDetails: (accountId, namespaceName, details) => {
+                        window.selectedNamespaceAccountId = accountId
+                        window.selectedNamespaceName = namespaceName
+                        window.selectedNamespaceDetails = details
+                        window.namespaceDetailsReturnRoute = "modules-eam-namespaces"
+                        window.currentRoute = "modules-eam-namespace-details"
+                    }
+                }
+                EamNamespaceDetailsPage {
+                    anchors.fill: parent
+                    visible: window.currentRoute === "modules-eam-namespace-details"
+                    loggedIn: window.loggedIn
+                    accountId: window.selectedNamespaceAccountId
+                    namespaceName: window.selectedNamespaceName
+                    details: window.selectedNamespaceDetails
+                    onBack: window.currentRoute = window.namespaceDetailsReturnRoute
                 }
                 EamUsersPage {
                     anchors.fill: parent
@@ -467,6 +623,22 @@ ApplicationWindow {
                     loggedIn: window.loggedIn
                     namespaceName: window.currentNamespace
                     onBack: window.currentRoute = "modules-eam"
+                    onOpenUserDetails: (userErn, userId, details) => {
+                        window.selectedUserErn = userErn
+                        window.selectedUserId = userId
+                        window.selectedUserDetails = details
+                        window.currentRoute = "modules-eam-user-details"
+                    }
+                }
+                EamUserDetailsPage {
+                    anchors.fill: parent
+                    visible: window.currentRoute === "modules-eam-user-details"
+                    loggedIn: window.loggedIn
+                    namespaceName: window.currentNamespace
+                    userErn: window.selectedUserErn
+                    userId: window.selectedUserId
+                    details: window.selectedUserDetails
+                    onBack: window.currentRoute = "modules-eam-users"
                 }
                 EamUserGroupsPage {
                     anchors.fill: parent
@@ -474,6 +646,22 @@ ApplicationWindow {
                     loggedIn: window.loggedIn
                     namespaceName: window.currentNamespace
                     onBack: window.currentRoute = "modules-eam"
+                    onOpenGroupDetails: (groupErn, groupName, details) => {
+                        window.selectedGroupErn = groupErn
+                        window.selectedGroupName = groupName
+                        window.selectedGroupDetails = details
+                        window.currentRoute = "modules-eam-user-group-details"
+                    }
+                }
+                EamUserGroupDetailsPage {
+                    anchors.fill: parent
+                    visible: window.currentRoute === "modules-eam-user-group-details"
+                    loggedIn: window.loggedIn
+                    namespaceName: window.currentNamespace
+                    groupErn: window.selectedGroupErn
+                    groupName: window.selectedGroupName
+                    details: window.selectedGroupDetails
+                    onBack: window.currentRoute = "modules-eam-user-groups"
                 }
 
                 ModulePage {
@@ -527,6 +715,80 @@ ApplicationWindow {
                     keyName: window.selectedKeyName
                     details: window.selectedKeyDetails
                     onBack: window.currentRoute = "modules-ekm-keys"
+                }
+
+                // ETS
+                ModulePage {
+                    anchors.fill: parent
+                    visible: window.currentRoute === "modules-ets"
+                    moduleName: "ETS"
+                    loggedIn: window.loggedIn
+                    stats: [
+                        {
+                            title: "Transfer Servers", value: window.etsServerCount < 0 ? "—" : String(window.etsServerCount),
+                            trend: "live", trendUp: true, accent: "#4f8cff", route: "modules-ets-servers"
+                        },
+                        {
+                            title: "Running", value: window.etsRunningCount < 0 ? "—" : String(window.etsRunningCount),
+                            trend: window.etsServerCount > 0 ? "of " + window.etsServerCount + " defined" : "none defined",
+                            trendUp: window.etsRunningCount > 0, accent: "#4cd97b", route: "modules-ets-servers"
+                        },
+                        {
+                            title: "Stopped",
+                            value: window.etsServerCount < 0 ? "—" : String(window.etsServerCount - window.etsRunningCount),
+                            trend: "not accepting logins", trendUp: false, accent: "#ffb545"
+                        },
+                        {
+                            title: "Files Received",
+                            value: window.etsFilesReceived < 0 ? "—" : String(Math.round(window.etsFilesReceived)),
+                            trend: "uploaded today", trendUp: window.etsFilesReceived > 0, accent: "#4cd97b"
+                        },
+                        {
+                            title: "Bytes Received",
+                            value: window.etsBytesReceived < 0 ? "—" : SizeFormat.format(window.etsBytesReceived),
+                            trend: "on the wire today", trendUp: window.etsBytesReceived > 0, accent: "#4cd97b"
+                        },
+                        {
+                            title: "Files Sent",
+                            value: window.etsFilesSent < 0 ? "—" : String(Math.round(window.etsFilesSent)),
+                            trend: "downloaded today", trendUp: window.etsFilesSent > 0, accent: "#c56bff"
+                        },
+                        {
+                            title: "Bytes Sent",
+                            value: window.etsBytesSent < 0 ? "—" : SizeFormat.format(window.etsBytesSent),
+                            trend: "on the wire today", trendUp: window.etsBytesSent > 0, accent: "#c56bff"
+                        }
+                    ]
+                    activity: [
+                        { initials: "ET", avatarColor: "#4f8cff", title: "Transfer servers reconciled", subtitle: "euclid-mgr · desired state", time: "live" },
+                        { initials: "ET", avatarColor: "#4cd97b", title: "FTP and SFTP endpoints front ESM buckets", subtitle: "storage · esm", time: "—" },
+                        { initials: "ET", avatarColor: "#ffb545", title: "Logins come from EAM users and groups", subtitle: "access · eam", time: "—" }
+                    ]
+                    onNavigate: (route) => {
+                        window.selectedTransferServerId = ""
+                        window.currentRoute = route
+                    }
+                }
+                EtsServersPage {
+                    anchors.fill: parent
+                    visible: window.currentRoute === "modules-ets-servers"
+                    loggedIn: window.loggedIn
+                    namespaceName: window.currentNamespace
+                    onBack: window.currentRoute = "modules-ets"
+                    onOpenServerDetails: (serverId, details) => {
+                        window.selectedTransferServerId = serverId
+                        window.selectedTransferServerDetails = details
+                        window.currentRoute = "modules-ets-server-details"
+                    }
+                }
+                EtsServerDetailsPage {
+                    anchors.fill: parent
+                    visible: window.currentRoute === "modules-ets-server-details"
+                    loggedIn: window.loggedIn
+                    namespaceName: window.currentNamespace
+                    serverId: window.selectedTransferServerId
+                    details: window.selectedTransferServerDetails
+                    onBack: window.currentRoute = "modules-ets-servers"
                 }
 
                 ModulePage {

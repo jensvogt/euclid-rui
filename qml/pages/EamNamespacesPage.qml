@@ -33,6 +33,7 @@ Item {
     }
 
     signal back()
+    signal openNamespaceDetails(string accountId, string namespaceName, var details)
 
     function refresh() {
         if (!root.loggedIn) {
@@ -253,7 +254,8 @@ Item {
                 lastUpdatedText: root.lastUpdatedText
                 searchPlaceholder: "Filter by namespace name prefix..."
                 emptyText: "No namespaces found in this account."
-                rowsClickable: false
+                rowsClickable: true
+                onRowClicked: (row) => root.openNamespaceDetails(row.accountId, row.name, row)
                 sortKey: root.sortColumn
                 sortAscending: root.sortAscending
 
@@ -275,6 +277,12 @@ Item {
                 }
 
                 contextMenuActions: [
+                    {
+                        text: "Details",
+                        action: function(row) {
+                            root.openNamespaceDetails(row.accountId, row.name, row)
+                        }
+                    },
                     {
                         text: "Delete",
                         action: function(row) {

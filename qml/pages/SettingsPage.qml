@@ -226,6 +226,28 @@ Item {
                             font.pixelSize: 11
                         }
                     }
+
+                    // Where the settings above (and the gateway from the sign-in dialog) end up.
+                    // Worth stating outright: a config file nobody can find is barely a config file.
+                    Column {
+                        width: content4.width
+                        spacing: 6
+
+                        Text { text: "Configuration file"; color: "#9aa1ac"; font.pixelSize: 12 }
+                        TextInput {
+                            width: content4.width
+                            text: appSettings.configFilePath
+                            color: "#c4c9d1"
+                            font.pixelSize: 12
+                            readOnly: true
+                            selectByMouse: true
+                        }
+                        Text {
+                            text: "Written as JSON whenever a setting changes; edit it by hand and restart to apply."
+                            color: "#6b7280"
+                            font.pixelSize: 11
+                        }
+                    }
                 }
             }
         }

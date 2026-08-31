@@ -11,11 +11,8 @@ Item {
     property string bucketErn: ""
     property string bucketName: ""
 
+    // Filter text, matched as a case-insensitive substring of the whole key by the tree.
     property string prefix: ""
-    property int pageIndex: 0
-    readonly property int pageSize: 10
-    property string sortKey: "created"
-    property bool sortAscending: true
 
     property var allObjects: []
     property int totalCount: 0
@@ -24,38 +21,6 @@ Item {
     property bool loading: false
     property string error: ""
     property string lastUpdatedText: "—"
-
-    readonly property var filteredObjects: prefix.length === 0
-        ? allObjects
-        : allObjects.filter(function (o) { return o.key.toLowerCase().indexOf(prefix.toLowerCase()) === 0 })
-
-    readonly property var sortedObjects: {
-        let arr = filteredObjects.slice()
-        const key = root.sortKey
-        const dir = root.sortAscending ? 1 : -1
-        arr.sort(function (a, b) {
-            const av = a[key]
-            const bv = b[key]
-            if (av === bv) return 0
-            return (av < bv ? -1 : 1) * dir
-        })
-        return arr
-    }
-    readonly property var pageRows: sortedObjects.slice(pageIndex * pageSize, (pageIndex + 1) * pageSize)
-
-    readonly property var columns: {
-        let cols = [
-            { title: "Key", key: "key", fill: true },
-            { title: "Content Type", key: "contentType" },
-            { title: "Status", key: "status", colorFor: function (v) { return root.statusColor(v) } },
-            { title: "Size", key: "size", formatter: function (v) { return SizeFormat.format(v) } },
-            { title: "Created", key: "created", formatter: function (v) { return DateFormat.format(v) } },
-            { title: "Modified", key: "modified", formatter: function (v) { return DateFormat.format(v) } },
-            { title: "BucketErn", key: "bucketErn", hidden: true },
-            { title: "ObjectErn", key: "ern", hidden: true }
-        ]
-        return cols
-    }
 
     signal back()
     signal openObjectDetails(string objectErn, string objectKey, string bucketName, var details)
@@ -81,12 +46,13 @@ Item {
             return
         }
         allObjects = []
+        totalCount = 0
         bucketLookup = {}
         pendingBucketErns = []
         error = ""
         loading = true
         if (root.bucketErn.length > 0)
-            esmClient.fetchObjects(root.bucketErn, "", 0, 200)
+            esmClient.fetchObjects(root.bucketErn, "", 0, 200, "key", "asc", true)
         else
             esmClient.fetchBuckets("", 0, 100)
     }
@@ -121,7 +87,7 @@ Item {
             root.bucketLookup = lookup
             root.pendingBucketErns = erns
             for (let i = 0; i < list.length; i++)
-                esmClient.fetchObjects(list[i].ern, "", 0, 200)
+                esmClient.fetchObjects(list[i].ern, "", 0, 200, "key", "asc", true)
         }
         function onBucketsFailed(message) {
             if (!root.loading || root.bucketErn.length > 0)
@@ -133,6 +99,9 @@ Item {
             if (!root.loading)
                 return
             root.allObjects = root.allObjects.concat(list)
+            // Set before the single-bucket branch returns - it used to be assigned only on the
+            // aggregate path below, so a single bucket always reported a total of 0.
+            root.totalCount = root.bucketErn.length > 0 ? total : root.totalCount + total
             if (root.bucketErn.length > 0) {
                 if (ern === root.bucketErn) {
                     root.loading = false
@@ -145,7 +114,6 @@ Item {
                 root.loading = false
                 root.lastUpdatedText = Qt.formatDateTime(new Date(), "hh:mm:ss")
             }
-            root.totalCount = total
         }
         function onObjectsFailed(ern, message) {
             if (!root.loading)
@@ -393,48 +361,108 @@ Item {
                 }
             }
 
-            DataTable {
+            Rectangle {
                 width: parent.width
-                columns: root.columns
-                rows: root.pageRows
-                totalCount: root.filteredObjects.length
-                pageSize: root.pageSize
-                pageIndex: root.pageIndex
-                loading: root.loading
-                error: root.error
-                lastUpdatedText: root.lastUpdatedText
-                searchPlaceholder: "Filter by object key prefix..."
-                emptyText: "No objects found."
-                rowsClickable: false
-                sortKey: root.sortKey
-                sortAscending: root.sortAscending
+                height: treeCol.implicitHeight + 32
+                radius: 14
+                color: "#20242e"
+                border.color: "#2c313c"
+                border.width: 1
 
-                onSearchChanged: (text) => {
-                    root.prefix = text
-                    root.pageIndex = 0
-                }
-                onRefreshRequested: root.refresh()
-                onPageChanged: (index) => root.pageIndex = index
-                onSortRequested: (key, ascending) => {
-                    root.sortKey = key
-                    root.sortAscending = ascending
-                    root.pageIndex = 0
-                }
+                Column {
+                    id: treeCol
+                    anchors.top: parent.top
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.margins: 16
+                    spacing: 12
 
-                contextMenuActions: [
-                    {
-                        text: "Details",
-                        action: function(row) {
-                            root.openObjectDetails(row.ern, row.key, root.bucketNameFor(row), row)
+                    Item {
+                        width: parent.width
+                        height: 36
+
+                        TextField {
+                            id: filterField
+                            width: Math.min(320, parent.width - 260)
+                            anchors.verticalCenter: parent.verticalCenter
+                            placeholderText: "Filter by any part of the key..."
+                            Material.accent: "#4f8cff"
+                            selectByMouse: true
+                            onTextChanged: root.prefix = text
                         }
-                    },
-                    {
-                        text: "Delete",
-                        action: function(row) {
-                            esmClient.deleteObject(row.bucketErn, row.ern)
+
+                        Row {
+                            anchors.right: parent.right
+                            anchors.verticalCenter: parent.verticalCenter
+                            spacing: 10
+
+                            Text {
+                                text: root.loading ? "Loading…"
+                                      : root.allObjects.length + " of " + root.totalCount + " object(s) · updated " + root.lastUpdatedText
+                                color: "#6b7280"
+                                font.pixelSize: 11
+                                anchors.verticalCenter: parent.verticalCenter
+                            }
+                            Button {
+                                text: "Expand all"
+                                flat: true
+                                Material.theme: Material.Dark
+                                onClicked: objectTree.expandAll()
+                            }
+                            Button {
+                                text: "Collapse all"
+                                flat: true
+                                Material.theme: Material.Dark
+                                onClicked: objectTree.collapseAll()
+                            }
+                            Button {
+                                text: "⟳"
+                                flat: true
+                                font.pixelSize: 16
+                                implicitWidth: 32
+                                Material.theme: Material.Dark
+                                onClicked: root.refresh()
+                            }
                         }
                     }
-                ]
+
+                    Text {
+                        visible: root.error.length > 0
+                        width: parent.width
+                        text: root.error
+                        color: "#ff6b6b"
+                        font.pixelSize: 12
+                        wrapMode: Text.WordWrap
+                    }
+
+                    Text {
+                        visible: !root.loading && root.error.length === 0 && objectTree.visibleRows.length === 0
+                        text: root.prefix.length > 0 ? "No objects match \"" + root.prefix + "\"." : "No objects found."
+                        color: "#6b7280"
+                        font.pixelSize: 12
+                    }
+
+                    ObjectTree {
+                        id: objectTree
+                        width: parent.width
+                        objects: root.allObjects
+                        filter: root.prefix
+                        onOpenObject: (object) => root.openObjectDetails(object.ern, object.key, root.bucketNameFor(object), object)
+                        onDeleteObject: (object) => esmClient.deleteObject(object.bucketErn, object.ern)
+                    }
+
+                    // The listing is capped at 200 objects per bucket; without saying so, a
+                    // truncated tree looks like a complete one.
+                    Text {
+                        visible: root.totalCount > root.allObjects.length
+                        width: parent.width
+                        text: "Showing the first " + root.allObjects.length + " of " + root.totalCount
+                              + " objects - narrow the filter to reach the rest."
+                        color: "#ffb545"
+                        font.pixelSize: 11
+                        wrapMode: Text.WordWrap
+                    }
+                }
             }
         }
     }

@@ -33,6 +33,7 @@ Item {
     }
 
     signal back()
+    signal openAccountDetails(string accountId, string accountName, var details)
 
     function refresh() {
         if (!root.loggedIn) {
@@ -268,7 +269,8 @@ Item {
                 lastUpdatedText: root.lastUpdatedText
                 searchPlaceholder: "Filter by account name prefix..."
                 emptyText: "No accounts found."
-                rowsClickable: false
+                rowsClickable: true
+                onRowClicked: (row) => root.openAccountDetails(row.accountId, row.name, row)
                 sortKey: root.sortColumn
                 sortAscending: root.sortAscending
 
@@ -290,6 +292,12 @@ Item {
                 }
 
                 contextMenuActions: [
+                    {
+                        text: "Details",
+                        action: function(row) {
+                            root.openAccountDetails(row.accountId, row.name, row)
+                        }
+                    },
                     {
                         text: "Delete",
                         action: function(row) {

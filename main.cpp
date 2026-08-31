@@ -14,6 +14,7 @@
 #include "client/EnsClient.h"
 #include "client/EqsClient.h"
 #include "client/EsmClient.h"
+#include "client/EtsClient.h"
 #include "client/EuclidBaseClient.h"
 
 int main(int argc, char *argv[]) {
@@ -42,8 +43,16 @@ int main(int argc, char *argv[]) {
     EsmClient esmClient(&euclidClient);
     EnsClient ensClient(&euclidClient);
     EkmClient ekmClient(&euclidClient);
+    EtsClient etsClient(&euclidClient);
     EmoClient emoClient(&euclidClient);
     AppSettings appSettings;
+
+    // The gateway address lives in AppSettings (which persists it) and is pushed into the client,
+    // so the client needs no settings dependency of its own. The login dialog edits the settings;
+    // this connection is what makes the next request actually go somewhere else.
+    euclidClient.setBaseUrl(appSettings.baseUrl());
+    QObject::connect(&appSettings, &AppSettings::baseUrlChanged, &euclidClient,
+                     [&appSettings, &euclidClient] { euclidClient.setBaseUrl(appSettings.baseUrl()); });
 
     QQmlApplicationEngine engine;
     engine.rootContext()->setContextProperty("euclidClient", &euclidClient);
@@ -53,6 +62,7 @@ int main(int argc, char *argv[]) {
     engine.rootContext()->setContextProperty("esmClient", &esmClient);
     engine.rootContext()->setContextProperty("ensClient", &ensClient);
     engine.rootContext()->setContextProperty("ekmClient", &ekmClient);
+    engine.rootContext()->setContextProperty("etsClient", &etsClient);
     engine.rootContext()->setContextProperty("emoClient", &emoClient);
     engine.rootContext()->setContextProperty("appSettings", &appSettings);
     engine.rootContext()->setContextProperty("cliUser", parser.value(userOption));

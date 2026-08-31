@@ -152,6 +152,11 @@ Rectangle {
                         selected: root.currentRoute === "modules-esm"
                         onClicked: root.navigate("modules-esm")
                     }
+                    SubNavButton {
+                        label: "ETS"
+                        selected: root.currentRoute.indexOf("modules-ets") === 0
+                        onClicked: root.navigate("modules-ets")
+                    }
                 }
             }
 
