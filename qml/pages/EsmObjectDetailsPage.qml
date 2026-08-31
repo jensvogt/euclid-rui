@@ -33,13 +33,22 @@ Item {
 
     readonly property string status: detail("status", "")
 
-    // Local copy of the object's user-defined attributes, {name: {type, value}}. Kept here rather
-    // than read straight from `details` because every edit sends the whole map (see
-    // EsmClient::setObjectAttributes) and the result comes back on a signal.
+    // The object's user-defined attributes, {name: {type, value}}. Seeded from the listing that
+    // opened this page so the card is populated immediately, then re-read from
+    // "list-object-attributes" - the authoritative source, and the only thing that reflects a
+    // change made anywhere else.
     property var attributes: ({})
     property string attributesError: ""
 
     onDetailsChanged: root.attributes = root.detail("attributes", ({}))
+    onObjectErnChanged: root.refreshAttributes()
+    onVisibleChanged: if (visible) root.refreshAttributes()
+
+    function refreshAttributes() {
+        if (!root.loggedIn || root.objectErn.length === 0)
+            return
+        esmClient.fetchObjectAttributes(root.objectErn)
+    }
 
     function attributeNames() {
         return Object.keys(root.attributes).sort()
@@ -58,28 +67,34 @@ Item {
         return attribute && attribute.type ? attribute.type : "string"
     }
 
-    function saveAttribute(name, type, value) {
-        const updated = Object.assign({}, root.attributes)
-        updated[name] = { type: type, value: value }
+    // Add and set are separate actions server-side and each is strict - add refuses a name that
+    // already exists, set refuses one that doesn't - so which to call follows from whether the
+    // dialog was opened on an existing attribute.
+    function saveAttribute(name, type, value, editing) {
         root.attributesError = ""
-        esmClient.setObjectAttributes(root.objectErn, updated)
+        if (editing) esmClient.setObjectAttribute(root.objectErn, name, type, value)
+        else esmClient.addObjectAttribute(root.objectErn, name, type, value)
     }
 
     function removeAttribute(name) {
-        const updated = Object.assign({}, root.attributes)
-        delete updated[name]
         root.attributesError = ""
-        esmClient.setObjectAttributes(root.objectErn, updated)
+        esmClient.deleteObjectAttribute(root.objectErn, name)
     }
 
     Connections {
         target: esmClient
-        function onObjectAttributesSaved(objectErn, attributes) {
+        function onObjectAttributesLoaded(objectErn, attributes) {
             if (objectErn !== root.objectErn) return
             root.attributes = attributes
             root.attributesError = ""
+        }
+        // A mutation returns only the attribute it touched, so the list is re-read rather than
+        // patched - that also picks up anything changed from elsewhere in the same round trip.
+        function onObjectAttributeChanged(objectErn, name) {
+            if (objectErn !== root.objectErn) return
             attributeDialog.saving = false
             attributeDialog.close()
+            root.refreshAttributes()
         }
         function onObjectAttributesFailed(message) {
             attributeDialog.saving = false
@@ -244,8 +259,8 @@ Item {
 
                     Text {
                         width: parent.width
-                        text: "User-defined, typed values stored with the object. Written as a set: adding, changing or "
-                              + "removing one rewrites them all."
+                        text: "User-defined, typed values stored with the object. Each one is added, changed or removed "
+                              + "on its own; a name can only be added once."
                         color: "#6b7280"
                         font.pixelSize: 11
                         wrapMode: Text.WordWrap
@@ -520,7 +535,8 @@ Item {
 
                         attributeDialog.errorText = ""
                         attributeDialog.saving = true
-                        root.saveAttribute(nameField.text.trim(), type, value)
+                        root.saveAttribute(nameField.text.trim(), type, value,
+                            attributeDialog.editingName.length > 0)
                     }
                 }
             }

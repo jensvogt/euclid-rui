@@ -18,14 +18,23 @@ Item {
     property string error: ""
     property string lastUpdatedText: "—"
 
+    // RUNNING green, STOPPED amber, anything else (UNKNOWN, or a server the reconciler has not
+    // reported on yet) grey - the same mapping the details page uses, so a server reads the same
+    // either way you look at it.
+    function stateColor(state) {
+        if (state === "RUNNING") return "#4cd97b"
+        if (state === "STOPPED") return "#ffb545"
+        return "#9aa1ac"
+    }
+
     readonly property var columns: [
         { title: "Server ID", key: "serverId", fill: true },
         { title: "Protocol", key: "protocol" },
         { title: "Address", key: "address" },
         { title: "Port", key: "port" },
         { title: "Bucket", key: "bucketName" },
-        { title: "State", key: "state" },
-        { title: "Desired", key: "desiredState" },
+        { title: "State", key: "state", colorFor: function (v) { return root.stateColor(v) } },
+        { title: "Desired", key: "desiredState", colorFor: function (v) { return root.stateColor(v) } },
         { title: "Users", key: "userIds", formatter: function (v) { return v ? v.length : 0 } },
         { title: "Created", key: "created", formatter: function (v) { return DateFormat.format(v) } },
         { title: "Ern", key: "ern", hidden: true }

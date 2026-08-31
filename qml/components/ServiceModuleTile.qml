@@ -17,12 +17,26 @@ FoldableTile {
     // Passed through to both charts - see LineChart.timeFormat.
     property string timeFormat: "hh:mm"
     property string footerText: ""
+    // Which of the two charts this tile draws, set from its settings dialog. An invisible child of
+    // a Column is skipped by the positioner, so hiding one closes the gap it left.
+    property bool showCount: true
+    property bool showTime: true
 
     signal refreshRequested()
+    signal settingsRequested()
 
     expanded: true
 
     headerContent: [
+        Button {
+            text: "⚙"
+            font.pixelSize: 16
+            flat: true
+            implicitWidth: 32
+            implicitHeight: 32
+            Material.theme: Material.Dark
+            onClicked: root.settingsRequested()
+        },
         Button {
             text: "⟳"
             font.pixelSize: 16
@@ -42,6 +56,7 @@ FoldableTile {
             Column {
                 width: parent.width
                 spacing: 8
+                visible: root.showCount
                 Text { text: "Request Count"; color: "#c4c9d1"; font.pixelSize: 12; font.bold: true }
                 LineChart {
                     width: parent.width
@@ -54,6 +69,7 @@ FoldableTile {
             Column {
                 width: parent.width
                 spacing: 8
+                visible: root.showTime
                 Text { text: "Request Time"; color: "#c4c9d1"; font.pixelSize: 12; font.bold: true }
                 LineChart {
                     width: parent.width
