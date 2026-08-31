@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.15](https://github.com/jensvogt/euclid-rui/compare/1.0.14...v1.0.15) (2026-08-31)
+
+
+### Bug Fixes
+
+* linux deb/rpm installation ([818de00](https://github.com/jensvogt/euclid-rui/commit/818de00cd888fa713f95ebc605fa28f01b85503e))
+
 ## [1.0.14](https://github.com/jensvogt/euclid-rui/compare/1.0.13...v1.0.14) (2026-08-31)
 
 
