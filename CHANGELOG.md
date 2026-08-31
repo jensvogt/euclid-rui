@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.19](https://github.com/jensvogt/euclid-rui/compare/1.0.18...v1.0.19) (2026-08-31)
+
+
+### Bug Fixes
+
+* add RFC9421 message signature ([5365157](https://github.com/jensvogt/euclid-rui/commit/5365157e440820f1fdb827c8216a80f5daf7df75))
+
 ## [1.0.18](https://github.com/jensvogt/euclid-rui/compare/1.0.17...v1.0.18) (2026-08-31)
 
 
