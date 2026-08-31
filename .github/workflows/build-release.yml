@@ -51,6 +51,21 @@ env:
   APP_NAME: "euclid-rui"
   BIN_NAME: "euclid_rui"
   INSTALLER_ID: "de.jensvogt.euclidrui" # Qt Installer Framework package path (Windows only)
+  # Every -dev package Qt's "xcb_syslibs" configure test links against (qtbase
+  # src/gui/configure.cmake: XCB::CURSOR ICCCM UTIL IMAGE KEYSYMS RANDR RENDER RENDERUTIL SHAPE
+  # SHM SYNC XFIXES XKB XCB), plus xkbcommon-x11/fontconfig/freetype. Missing *any one* of them
+  # makes TEST_xcb_syslibs FALSE, which with -xcb below is a hard configure failure. The same
+  # list is needed by the app build jobs, not just the Qt build: because Qt is linked -static,
+  # the xcb platform plugin is pulled into the app binary and its libraries must be resolvable
+  # at *app* link time too.
+  X11_DEV_PACKAGES: >-
+    libfontconfig1-dev libfreetype6-dev
+    libx11-dev libx11-xcb-dev libxext-dev libxfixes-dev libxi-dev libxrender-dev
+    libxkbcommon-dev libxkbcommon-x11-dev
+    libxcb1-dev libxcb-cursor-dev libxcb-glx0-dev libxcb-keysyms1-dev libxcb-image0-dev
+    libxcb-shm0-dev libxcb-icccm4-dev libxcb-sync-dev libxcb-xfixes0-dev libxcb-shape0-dev
+    libxcb-randr0-dev libxcb-render0-dev libxcb-render-util0-dev libxcb-util-dev
+    libxcb-xinerama0-dev libxcb-xkb-dev libxcb-xinput-dev
 
 permissions:
   contents: write       # required for tagging + releasing
@@ -100,12 +115,8 @@ jobs:
         run: |
           sudo apt update
           sudo apt install -y build-essential cmake ninja-build git perl python3 pkg-config \
-            libssl-dev libfontconfig1-dev libfreetype6-dev libglib2.0-dev libgl1-mesa-dev \
-            libx11-dev libx11-xcb-dev libxext-dev libxfixes-dev libxi-dev libxrender-dev \
-            libxkbcommon-dev libxkbcommon-x11-dev \
-            libxcb1-dev libxcb-cursor-dev libxcb-glx0-dev libxcb-keysyms1-dev libxcb-image0-dev \
-            libxcb-shm0-dev libxcb-icccm4-dev libxcb-sync-dev libxcb-xfixes0-dev libxcb-shape0-dev \
-            libxcb-randr0-dev libxcb-render-util0-dev libxcb-xinerama0-dev libxcb-xkb-dev
+            libssl-dev libglib2.0-dev libgl1-mesa-dev libegl1-mesa-dev \
+            ${{ env.X11_DEV_PACKAGES }}
 
       - name: Clone Qt sources
         if: steps.cache.outputs.cache-hit != 'true'
@@ -129,6 +140,25 @@ jobs:
             -nomake examples -nomake tests \
             -submodules ${{ env.QT_MODULES }} \
             -qt-tiff -no-icu -qt-pcre -qt-libpng -qt-libjpeg -xcb
+
+      # configure only reports *that* a compile test failed ("TEST_xcb_syslibs = FALSE"), never
+      # which library was missing - that's only in CMake's own logs. Dump them so the next
+      # missing -dev package is identifiable from the run log alone.
+      - name: Dump CMake logs on configure failure
+        if: failure() && steps.cache.outputs.cache-hit != 'true'
+        run: |
+          for f in qt-build/CMakeFiles/CMakeError.log \
+                   qt-build/CMakeFiles/CMakeConfigureLog.yaml \
+                   qt-build/config.summary; do
+            [ -f "$f" ] && { echo "::group::$f"; cat "$f"; echo "::endgroup::"; }
+          done
+          echo "::group::pkg-config probe"
+          for m in xcb xcb-cursor xcb-icccm xcb-util xcb-image xcb-keysyms xcb-randr xcb-render \
+                   xcb-renderutil xcb-shape xcb-shm xcb-sync xcb-xfixes xcb-xkb xcb-xinput \
+                   xkbcommon-x11 x11-xcb; do
+            printf '%-16s %s\n' "$m" "$(pkg-config --modversion "$m" 2>&1)"
+          done
+          echo "::endgroup::"
 
       - name: Build static Qt
         if: steps.cache.outputs.cache-hit != 'true'
@@ -257,7 +287,7 @@ jobs:
         run: |
           sudo apt update
           sudo apt install -y build-essential cmake ninja-build ruby ruby-dev libgl1-mesa-dev libegl1-mesa-dev
-          sudo apt install -y libx11-dev libx11-xcb-dev libxcb1-dev libxcb-xkb-dev libxkbcommon-dev libxkbcommon-x11-dev
+          sudo apt install -y ${{ env.X11_DEV_PACKAGES }}
           sudo gem install --no-document fpm
 
       - name: Configure (Linux)
@@ -310,7 +340,7 @@ jobs:
         run: |
           sudo apt update
           sudo apt install -y build-essential cmake ninja-build ruby ruby-dev libgl1-mesa-dev libegl1-mesa-dev
-          sudo apt install -y libx11-dev libx11-xcb-dev libxcb1-dev libxcb-xkb-dev libxkbcommon-dev libxkbcommon-x11-dev
+          sudo apt install -y ${{ env.X11_DEV_PACKAGES }}
           sudo gem install --no-document fpm
 
       - name: Configure (Linux)
