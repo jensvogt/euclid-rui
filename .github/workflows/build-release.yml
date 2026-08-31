@@ -14,6 +14,20 @@ name: Release + Build (Linux / macOS / Windows, static Qt)
 # by installer/config/config.xml + installer/packages/<id>/ scaffolding that only exists in that
 # repo. Rather than fabricate an untested IFW config here, Windows is packaged as a plain zip of
 # the standalone .exe.
+#
+# APT repository: the "build-apt-repo" job turns the .deb built by "build-linux-deb" into a real
+# signed APT repository (Packages/Release/InRelease under dists/, the .deb itself under pool/) so
+# `sudo apt update && sudo apt upgrade` picks up new releases, instead of users having to manually
+# download a new .deb every time. GitHub Pages deployment (actions/deploy-pages) is stateless -
+# each deploy replaces the whole site - so the repository tree is *not* rebuilt from scratch every
+# run; it's persisted across releases in a dedicated "apt-repo" branch that this job checks out,
+# adds the new package to, re-signs, and pushes back. The "deploy" job then copies that branch's
+# contents into public/apt/ alongside the other installers. This requires three repo secrets that
+# aren't needed by the rest of the workflow, generated once by the maintainer
+# (`gpg --full-generate-key`, then `gpg --export-secret-keys --armor <key-id>`):
+#   - APT_GPG_PRIVATE_KEY: ASCII-armored exported private signing key
+#   - APT_GPG_KEY_ID: that key's ID/fingerprint (used as --default-key when signing)
+#   - APT_GPG_PASSPHRASE: the key's passphrase (set to an empty secret if the key has none)
 
 on:
   push:
@@ -313,6 +327,93 @@ jobs:
           name: rpm-package-linux
           path: ${{ env.APP_NAME }}-${{ env.SEMVER }}-amd64.rpm
 
+  build-apt-repo:
+    name: Publish APT Repository
+    runs-on: ubuntu-22.04
+    needs: [ release-please, build-linux-deb ]
+    env:
+      SEMVER: "${{ needs.release-please.outputs.tag_name }}"
+      REPO_BRANCH: "apt-repo"
+      APT_DIST: "stable"
+      APT_COMPONENT: "main"
+      APT_ARCH: "amd64"
+    steps:
+      - name: Install apt-ftparchive + gnupg
+        run: |
+          sudo apt update
+          sudo apt install -y apt-utils gnupg
+
+      - name: Download .deb package
+        uses: actions/download-artifact@v4
+        with:
+          name: deb-package-linux
+          path: artifacts/linux
+
+      - name: Checkout or initialize apt-repo branch
+        run: |
+          set -euo pipefail
+          if git ls-remote --exit-code --heads "https://github.com/${{ github.repository }}.git" "$REPO_BRANCH" >/dev/null; then
+            git clone --branch "$REPO_BRANCH" --single-branch "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" apt-repo
+          else
+            mkdir apt-repo
+            cd apt-repo
+            git init -b "$REPO_BRANCH"
+            cd ..
+          fi
+
+      - name: Add package to pool
+        run: |
+          set -euo pipefail
+          POOL_DIR="apt-repo/pool/main/e/euclid-rui"
+          mkdir -p "$POOL_DIR"
+          cp artifacts/linux/*.deb "$POOL_DIR/"
+
+      - name: Import GPG signing key
+        run: echo "${{ secrets.APT_GPG_PRIVATE_KEY }}" | gpg --batch --import
+
+      - name: Generate Packages + Release indices
+        run: |
+          set -euo pipefail
+          cd apt-repo
+          DIST_DIR="dists/$APT_DIST/$APT_COMPONENT/binary-$APT_ARCH"
+          mkdir -p "$DIST_DIR"
+
+          apt-ftparchive packages pool > "$DIST_DIR/Packages"
+          gzip -kf "$DIST_DIR/Packages"
+
+          printf '%s\n' \
+            "APT::FTPArchive::Release::Origin \"Euclid RUI\";" \
+            "APT::FTPArchive::Release::Label \"Euclid RUI\";" \
+            "APT::FTPArchive::Release::Suite \"$APT_DIST\";" \
+            "APT::FTPArchive::Release::Codename \"$APT_DIST\";" \
+            "APT::FTPArchive::Release::Architectures \"$APT_ARCH\";" \
+            "APT::FTPArchive::Release::Components \"$APT_COMPONENT\";" \
+            > apt-ftparchive.conf
+          apt-ftparchive -c apt-ftparchive.conf release "dists/$APT_DIST" > "dists/$APT_DIST/Release"
+          rm apt-ftparchive.conf
+
+      - name: Sign repository metadata
+        run: |
+          set -euo pipefail
+          cd apt-repo
+          gpg --batch --yes --pinentry-mode loopback --passphrase "${{ secrets.APT_GPG_PASSPHRASE }}" \
+            --default-key "${{ secrets.APT_GPG_KEY_ID }}" \
+            -abs -o "dists/$APT_DIST/Release.gpg" "dists/$APT_DIST/Release"
+          gpg --batch --yes --pinentry-mode loopback --passphrase "${{ secrets.APT_GPG_PASSPHRASE }}" \
+            --default-key "${{ secrets.APT_GPG_KEY_ID }}" \
+            --clearsign -o "dists/$APT_DIST/InRelease" "dists/$APT_DIST/Release"
+          gpg --export --armor "${{ secrets.APT_GPG_KEY_ID }}" > euclid-rui.gpg.asc
+
+      - name: Commit and push apt-repo branch
+        run: |
+          set -euo pipefail
+          cd apt-repo
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "chore: publish euclid-rui ${SEMVER} to apt repo" || { echo "Nothing to commit"; exit 0; }
+          git push "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" "HEAD:$REPO_BRANCH"
+
   build-macos:
     name: Build & Package (macOS)
     runs-on: macos-latest
@@ -464,6 +565,7 @@ jobs:
   deploy:
     needs:
       - publish
+      - build-apt-repo
     runs-on: ubuntu-latest
 
     # Required permissions for actions/deploy-pages
@@ -480,6 +582,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Checkout apt-repo branch
+        uses: actions/checkout@v4
+        with:
+          ref: apt-repo
+          path: apt-repo-content
+
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
@@ -495,6 +603,8 @@ jobs:
           cp -r ./artifacts/repository/* public/ || true
           cp .github/pages/index.html public/index.html || true
           cp version.txt public/version.txt || true
+          mkdir -p public/apt
+          cp -r apt-repo-content/* public/apt/
 
       - name: Generate files.json
         run: |

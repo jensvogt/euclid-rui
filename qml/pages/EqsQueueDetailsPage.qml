@@ -157,6 +157,8 @@ Item {
                         DetailField { width: (identityCol.width - 48) / 3; label: "Created"; value: DateFormat.format(root.detail("created", "")) }
                         DetailField { width: (identityCol.width - 48) / 3; label: "Modified"; value: DateFormat.format(root.detail("modified", "")) }
                     }
+
+                    DetailField { width: identityCol.width; label: "Queue ERN"; value: root.queueErn; copyable: true }
                 }
             }
 
