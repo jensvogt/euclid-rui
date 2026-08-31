@@ -402,6 +402,7 @@ ApplicationWindow {
                 AnalyticsPage {
                     anchors.fill: parent
                     visible: window.currentRoute === "analytics"
+                    loggedIn: window.loggedIn
                 }
                 SettingsPage {
                     anchors.fill: parent

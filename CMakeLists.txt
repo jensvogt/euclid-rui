@@ -83,6 +83,8 @@ qt_add_qml_module(euclid_rui
         qml/components/DateFormat.qml
         qml/components/SizeFormat.qml
         qml/components/Gauge.qml
+        qml/components/LineChart.qml
+        qml/components/FoldableTile.qml
         qml/components/ToggleSwitch.qml
         qml/components/SectionHeader.qml
         qml/components/ActivityRow.qml

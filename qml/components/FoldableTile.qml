@@ -9,6 +9,9 @@ Item {
     property string title: "Tile Header"
     property bool expanded: false
     property alias contentData: contentArea.data // Allows placing any QML elements inside
+    // Extra header content (e.g. a refresh button, a "last updated" label), placed between the
+    // title and the expand/collapse arrow.
+    property alias headerContent: headerExtra.data
 
     // Automatic height calculation based on state
     implicitWidth: 300
@@ -37,10 +40,22 @@ Item {
             color: headerMouseArea.containsMouse ? "#383838" : "transparent"
             radius: 8
 
+            // Declared before the RowLayout below so it sits underneath in paint/hit-test order -
+            // any interactive item placed via headerContent (e.g. a refresh Button) then wins hit
+            // testing over this MouseArea for its own bounds, instead of the MouseArea (being on
+            // top) swallowing every click on the header including ones meant for that button.
+            MouseArea {
+                id: headerMouseArea
+                anchors.fill: parent
+                hoverEnabled: true
+                onClicked: root.expanded = !root.expanded
+            }
+
             RowLayout {
                 anchors.fill: parent
                 anchors.leftMargin: 16
                 anchors.rightMargin: 16
+                spacing: 12
 
                 Text {
                     text: root.title
@@ -48,6 +63,11 @@ Item {
                     font.pixelSize: 15
                     font.bold: true
                     Layout.fillWidth: true
+                }
+
+                Row {
+                    id: headerExtra
+                    spacing: 12
                 }
 
                 // Expand/Collapse Arrow Indicator
@@ -62,20 +82,16 @@ Item {
                     }
                 }
             }
-
-            MouseArea {
-                id: headerMouseArea
-                anchors.fill: parent
-                hoverEnabled: true
-                onClicked: root.expanded = !root.expanded
-            }
         }
 
         // 2. Expandable Content Container
         Item {
             id: contentContainer
             Layout.fillWidth: true
-            Layout.preferredHeight: root.expanded ? contentArea.implicitHeight : 0
+            // +32 accounts for contentArea's own top+bottom anchors.margins (16 each), which
+            // aren't part of its implicitHeight - without this, the last ~16-32px of content
+            // (e.g. a trailing label) gets clipped instead of pushing the tile taller.
+            Layout.preferredHeight: root.expanded ? contentArea.implicitHeight + 32 : 0
             clip: true // Prevents child components from rendering outside while collapsed
 
             // Smooth expansion/collapse animation
