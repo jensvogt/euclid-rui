@@ -1,5 +1,24 @@
 cmake_minimum_required(VERSION 3.16)
-project(euclid-rui)
+
+file(READ "${CMAKE_SOURCE_DIR}/version.txt" VERSION_STRING_RAW)
+string(STRIP "${VERSION_STRING_RAW}" VERSION_STRING)
+
+project(euclid-rui VERSION ${VERSION_STRING})
+
+# Resolves the Qt Installer Framework config/package XML templates (dist/win32/installer/**/*.xml.in)
+# against the version above and the current timestamp - mirrors ~/work/awsmock-qt-ui's
+# CMakeLists.txt. Only meaningful for the Windows installer build, but harmless to run on every
+# platform/configure (the generated .xml files are gitignored, regenerated each time).
+string(TIMESTAMP RELEASE_DATE "%Y-%m-%d %H:%M:%S")
+
+file(READ "${CMAKE_SOURCE_DIR}/dist/win32/installer/config/config.xml.in" _CONFIG_XML)
+string(REPLACE "@VERSION_STRING@" "${VERSION_STRING}" _CONFIG_XML "${_CONFIG_XML}")
+file(WRITE "${CMAKE_SOURCE_DIR}/dist/win32/installer/config/config.xml" "${_CONFIG_XML}")
+
+file(READ "${CMAKE_SOURCE_DIR}/dist/win32/installer/packages/de.jensvogt.euclidrui/meta/package.xml.in" _PACKAGE_XML)
+string(REPLACE "@VERSION_STRING@" "${VERSION_STRING}" _PACKAGE_XML "${_PACKAGE_XML}")
+string(REPLACE "@RELEASE_DATE@" "${RELEASE_DATE}" _PACKAGE_XML "${_PACKAGE_XML}")
+file(WRITE "${CMAKE_SOURCE_DIR}/dist/win32/installer/packages/de.jensvogt.euclidrui/meta/package.xml" "${_PACKAGE_XML}")
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_AUTOMOC ON)

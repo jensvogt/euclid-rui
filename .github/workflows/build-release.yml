@@ -9,11 +9,17 @@ name: Release + Build (Linux / macOS / Windows, static Qt)
 #
 # Because the app binary is statically linked against Qt, packaging is simpler than the template
 # in one respect: there's no Qt runtime (shared libs/plugins/qml modules) to bundle alongside it
-# with windeployqt/macdeployqt - the executable is already self-contained. One deviation from the
-# template: awsmock-qt-ui's Windows job produces a Qt Installer Framework (IFW) installer, backed
-# by installer/config/config.xml + installer/packages/<id>/ scaffolding that only exists in that
-# repo. Rather than fabricate an untested IFW config here, Windows is packaged as a plain zip of
-# the standalone .exe.
+# with windeployqt/macdeployqt - the executable is already self-contained.
+#
+# Windows installer: like awsmock-qt-ui, Windows is packaged as a real Qt Installer Framework
+# (IFW) installer (dist/win32/installer/config + dist/win32/installer/packages/<id>/), not just a
+# zipped exe - this gives Windows users the same "check for updates" capability the IFW
+# maintenance tool provides, pointed at a repogen-generated online repository (RemoteRepositories
+# in config.xml, published to GitHub Pages by the "deploy" job, same idea as the "build-apt-repo"
+# job below but using IFW's own repository format instead of APT's). The config.xml/package.xml
+# IFW reads are generated from *.xml.in templates by CMakeLists.txt at configure time (gitignored,
+# not committed) - unlike awsmock-qt-ui, no windeployqt step is needed here since the exe is
+# already statically self-contained; it's just copied straight into the package's data/ folder.
 #
 # APT repository: the "build-apt-repo" job turns the .deb built by "build-linux-deb" into a real
 # signed APT repository (Packages/Release/InRelease under dists/, the .deb itself under pool/) so
@@ -41,9 +47,10 @@ env:
   # required build dependency of qtdeclarative, not directly used by the app.
   QT_MODULES: "qtbase,qtdeclarative,qtshadertools"
   # Bump to force every static-Qt cache to rebuild from scratch (e.g. after changing QT_MODULES).
-  QT_CACHE_VERSION: "v1"
+  QT_CACHE_VERSION: "v2"
   APP_NAME: "euclid-rui"
   BIN_NAME: "euclid_rui"
+  INSTALLER_ID: "de.jensvogt.euclidrui" # Qt Installer Framework package path (Windows only)
 
 permissions:
   contents: write       # required for tagging + releasing
@@ -98,7 +105,7 @@ jobs:
             libxkbcommon-dev libxkbcommon-x11-dev \
             libxcb1-dev libxcb-cursor-dev libxcb-glx0-dev libxcb-keysyms1-dev libxcb-image0-dev \
             libxcb-shm0-dev libxcb-icccm4-dev libxcb-sync-dev libxcb-xfixes0-dev libxcb-shape0-dev \
-            libxcb-randr0-dev libxcb-render-util0-dev libxcb-xinerama0-dev
+            libxcb-randr0-dev libxcb-render-util0-dev libxcb-xinerama0-dev libxcb-xkb-dev
 
       - name: Clone Qt sources
         if: steps.cache.outputs.cache-hit != 'true'
@@ -112,11 +119,16 @@ jobs:
         run: |
           mkdir -p qt-build
           cd qt-build
+          # -xcb (rather than leaving xcb support to auto-detection) turns a missing X11/xcb dev
+          # package into a hard configure failure instead of a silently xcb-less Qt6Gui - which is
+          # exactly how euclid-rui 1.0.14 shipped with no working platform plugin at all and every
+          # install crashed on startup with "Could not find the Qt platform plugin 'xcb'" (the
+          # actual bug was libxcb-xkb-dev missing from the dependency list above).
           ../qt-src/configure -static -release -opensource -confirm-license \
             -prefix "${{ github.workspace }}/qt-static" \
             -nomake examples -nomake tests \
             -submodules ${{ env.QT_MODULES }} \
-            -qt-tiff -no-icu -qt-pcre -qt-libpng -qt-libjpeg
+            -qt-tiff -no-icu -qt-pcre -qt-libpng -qt-libjpeg -xcb
 
       - name: Build static Qt
         if: steps.cache.outputs.cache-hit != 'true'
@@ -471,6 +483,7 @@ jobs:
     needs: [ release-please, build-qt-static-windows ]
     env:
       BUILD_DIR: "${{ github.workspace }}\\build-windows"
+      INSTALLER_DIR: "${{ github.workspace }}\\dist\\win32\\installer"
       SEMVER: "${{ needs.release-please.outputs.tag_name }}"
     steps:
       - name: Checkout
@@ -492,6 +505,19 @@ jobs:
       - name: Install Ninja
         run: choco install ninja -y
 
+      - name: Install Python & aqtinstall
+        shell: powershell
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -U aqtinstall
+
+      - name: Install Qt Installer Framework (IFW)
+        shell: powershell
+        run: python -m aqt install-tool windows desktop tools_ifw --outputdir "${{ github.workspace }}\ifw-tools"
+
+      # Also regenerates dist/win32/installer/{config/config.xml,packages/*/meta/package.xml}
+      # from their *.xml.in templates (version.txt -> VERSION_STRING), same as every other
+      # platform's configure step - see CMakeLists.txt.
       - name: Configure (Windows)
         shell: powershell
         run: |
@@ -501,21 +527,46 @@ jobs:
         shell: powershell
         run: cmake --build $env:BUILD_DIR --parallel
 
-      - name: Package as zip
+      - name: Stage exe into installer package
         shell: powershell
         run: |
-          $stageDir = "dist\$env:APP_NAME-$env:SEMVER-windows"
-          New-Item -ItemType Directory -Path $stageDir -Force | Out-Null
           # Statically linked (and -static-runtime, so the MSVC runtime is embedded too) - the
-          # single .exe is self-contained, no windeployqt needed.
-          Copy-Item "$env:BUILD_DIR\$env:BIN_NAME.exe" "$stageDir\$env:APP_NAME.exe"
-          Compress-Archive -Path "$stageDir\*" -DestinationPath "dist\$env:APP_NAME-$env:SEMVER-windows.zip"
+          # single .exe is self-contained, no windeployqt needed, unlike awsmock-qt-ui's Windows
+          # job (which installs a dynamic Qt via aqtinstall and has to bundle its runtime).
+          $dataDir = "$env:INSTALLER_DIR\packages\$env:INSTALLER_ID\data"
+          New-Item -ItemType Directory -Path $dataDir -Force | Out-Null
+          Copy-Item "$env:BUILD_DIR\$env:BIN_NAME.exe" "$dataDir\$env:APP_NAME.exe"
 
-      - name: Upload Windows package
+      - name: Build Qt Installer Framework installer (binarycreator)
+        shell: powershell
+        run: |
+          $ifwRoot = Get-ChildItem "${{ github.workspace }}\ifw-tools\Tools\QtInstallerFramework" -Directory | Sort-Object Name -Descending | Select-Object -First 1
+          if (-not $ifwRoot) { Write-Error "IFW not found"; exit 1 }
+          $ifwBin = Join-Path $ifwRoot.FullName "bin"
+          & "$ifwBin\binarycreator.exe" -c "$env:INSTALLER_DIR\config\config.xml" -p "$env:INSTALLER_DIR\packages" "$env:INSTALLER_DIR\$env:APP_NAME-$env:SEMVER-windows.exe"
+
+      - name: Upload Windows installer
         uses: actions/upload-artifact@v4
         with:
           name: installer-windows
-          path: dist/${{ env.APP_NAME }}-${{ env.SEMVER }}-windows.zip
+          path: dist/win32/installer/${{ env.APP_NAME }}-${{ env.SEMVER }}-windows.exe
+
+      # Online repository the installed app's maintenance tool checks against (config.xml's
+      # RemoteRepositories, published by the "deploy" job) - this is what makes "check for
+      # updates" work for Windows users after install, same idea as the APT repo for Linux.
+      - name: Generate update repository (repogen)
+        shell: powershell
+        run: |
+          $ifwRoot = Get-ChildItem "${{ github.workspace }}\ifw-tools\Tools\QtInstallerFramework" -Directory | Sort-Object Name -Descending | Select-Object -First 1
+          if (-not $ifwRoot) { Write-Error "IFW not found"; exit 1 }
+          $ifwBin = Join-Path $ifwRoot.FullName "bin"
+          & "$ifwBin\repogen.exe" -p "$env:INSTALLER_DIR\packages" "$env:INSTALLER_DIR\repository"
+
+      - name: Upload update repository
+        uses: actions/upload-artifact@v4
+        with:
+          name: repository
+          path: dist/win32/installer/repository
 
   publish:
     name: Publish Release & Attach Packages
@@ -555,7 +606,7 @@ jobs:
             artifacts/linux/*.deb
             artifacts/linux/*.rpm
             artifacts/macos/*.dmg
-            artifacts/windows/*.zip
+            artifacts/windows/*.exe
           name: Release ${{ env.SEMVER }}
           tag_name: ${{ env.SEMVER }}
           body: "Automated release for ${{ env.SEMVER }}"
@@ -596,7 +647,7 @@ jobs:
       - name: Create site folder
         run: |
           mkdir public
-          cp ./artifacts/installer-windows/*.zip public/ || true
+          cp ./artifacts/installer-windows/*.exe public/ || true
           cp ./artifacts/installer-macos/*.dmg public/ || true
           cp ./artifacts/deb-package-linux/*.deb public/ || true
           cp ./artifacts/rpm-package-linux/*.rpm public/ || true

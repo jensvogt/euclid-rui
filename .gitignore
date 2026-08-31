@@ -9,3 +9,12 @@ out/
 
 # OS
 .DS_Store
+
+# Generated from dist/win32/installer/**/*.xml.in by CMakeLists.txt at configure time
+dist/win32/installer/config/config.xml
+dist/win32/installer/packages/de.jensvogt.euclidrui/meta/package.xml
+
+# Windows installer build output (binarycreator/repogen)
+dist/win32/installer/packages/de.jensvogt.euclidrui/data/
+dist/win32/installer/*.exe
+dist/win32/installer/repository/
