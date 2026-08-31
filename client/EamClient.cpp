@@ -269,6 +269,50 @@ void EamClient::deleteUser(const QString &userId) {
          });
 }
 
+void EamClient::fetchAccessKeys() {
+    m_base->post("eam", "list-access-keys", QJsonObject(), true,
+         [this](const QJsonObject &response) {
+             QVariantList keys;
+             for (const QJsonArray array = response.value("accessKeys").toArray(); const auto &value : array) {
+                 const QJsonObject key = value.toObject();
+                 QVariantMap entry;
+                 entry["accessKeyId"] = key.value("accessKeyId").toString();
+                 entry["active"] = key.value("active").toBool();
+                 entry["createdAt"] = key.value("createdAt").toString();
+                 keys << entry;
+             }
+             emit accessKeysLoaded(keys);
+         },
+         [this](const QString &message) {
+             emit accessKeysFailed(message);
+         });
+}
+
+void EamClient::createAccessKey() {
+    m_base->post("eam", "create-access-key", QJsonObject(), true,
+         [this](const QJsonObject &response) {
+             emit accessKeyCreated(response.value("accessKeyId").toString(), response.value("secretAccessKey").toString());
+             emit accessKeysReload();
+         },
+         [this](const QString &message) {
+             emit accessKeyCreateFailed(message);
+         });
+}
+
+void EamClient::deleteAccessKey(const QString &accessKeyId) {
+    QJsonObject body;
+    body["accessKeyId"] = accessKeyId;
+
+    m_base->post("eam", "delete-access-key", body, true,
+         [this, accessKeyId](const QJsonObject &response) {
+             emit accessKeyDeleted(accessKeyId);
+             emit accessKeysReload();
+         },
+         [this](const QString &message) {
+             emit accessKeysFailed(message);
+         });
+}
+
 void EamClient::fetchGroupMemberships(const QString &userId) {
     QJsonObject body;
     body["prefix"] = "";

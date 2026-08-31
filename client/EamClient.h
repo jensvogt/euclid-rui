@@ -57,6 +57,15 @@ public:
     // replace what those tables are showing.
     Q_INVOKABLE void fetchGroupMemberships(const QString &userId);
 
+    // Access keys of the *signed-in user*, always - "create-access-key"/"list-access-keys"/
+    // "delete-access-key" act on whoever the request authenticates as (see EamServer's handlers),
+    // so there is no admin view of somebody else's keys to build here.
+    Q_INVOKABLE void fetchAccessKeys();
+    // The secret comes back exactly once, in this response; the list action never returns it
+    // again. Whoever handles accessKeyCreated() has to keep it or lose it.
+    Q_INVOKABLE void createAccessKey();
+    Q_INVOKABLE void deleteAccessKey(const QString &accessKeyId);
+
     // The mirror image, for a group details page: every user in the deployment, each flagged with
     // whether they are in the group named by groupErn. Costs two round trips - the group record
     // carries the membership (UserGroup.userIds) and the user records carry the ERNs that
@@ -107,6 +116,14 @@ signals:
     void usersReload();
     void userCreated(const QString &userId);
     void userCreateFailed(const QString &message);
+
+    // Each entry: {accessKeyId, active, createdAt}. Never a secret.
+    void accessKeysLoaded(const QVariantList &accessKeys);
+    void accessKeysFailed(const QString &message);
+    void accessKeyCreated(const QString &accessKeyId, const QString &secretAccessKey);
+    void accessKeyCreateFailed(const QString &message);
+    void accessKeyDeleted(const QString &accessKeyId);
+    void accessKeysReload();
 
     // Each entry: {name, ern, description, member: bool}. userId echoes the request, so a details
     // page can ignore a response for someone else.

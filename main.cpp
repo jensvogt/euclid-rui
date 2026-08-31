@@ -54,6 +54,15 @@ int main(int argc, char *argv[]) {
     QObject::connect(&appSettings, &AppSettings::baseUrlChanged, &euclidClient,
                      [&appSettings, &euclidClient] { euclidClient.setBaseUrl(appSettings.baseUrl()); });
 
+    // Same arrangement for how requests authenticate: the setting is the source of truth, the
+    // client is told about it, and neither knows about the other's storage.
+    const auto applyCredentials = [&appSettings, &euclidClient] {
+        euclidClient.setAuthMode(appSettings.authMode());
+        euclidClient.setAccessKey(appSettings.accessKeyId(), appSettings.secretAccessKey());
+    };
+    applyCredentials();
+    QObject::connect(&appSettings, &AppSettings::credentialsChanged, &euclidClient, applyCredentials);
+
     QQmlApplicationEngine engine;
     engine.rootContext()->setContextProperty("euclidClient", &euclidClient);
     engine.rootContext()->setContextProperty("eamClient", &eamClient);

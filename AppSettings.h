@@ -19,6 +19,9 @@ class AppSettings : public QObject {
     Q_PROPERTY(int port READ port WRITE setPort NOTIFY baseUrlChanged)
     Q_PROPERTY(bool useTls READ useTls WRITE setUseTls NOTIFY baseUrlChanged)
     Q_PROPERTY(QString baseUrl READ baseUrl NOTIFY baseUrlChanged)
+    Q_PROPERTY(QString authMode READ authMode WRITE setAuthMode NOTIFY credentialsChanged)
+    Q_PROPERTY(QString accessKeyId READ accessKeyId WRITE setAccessKeyId NOTIFY credentialsChanged)
+    Q_PROPERTY(QString secretAccessKey READ secretAccessKey WRITE setSecretAccessKey NOTIFY credentialsChanged)
     Q_PROPERTY(QString configFilePath READ configFilePath CONSTANT)
 
 public:
@@ -51,6 +54,25 @@ public:
     [[nodiscard]]
     QString baseUrl() const;
 
+    // How requests authenticate once signed in: "bearer" (the JWT the password login returns),
+    // "sigv4" (AWS Signature Version 4) or "rfc9421" (HTTP Message Signatures). The gateway
+    // accepts all three - see Core::HttpActionServer::Authenticate - but the two signature modes
+    // need an EAM access key, since they authenticate every request by key rather than by token.
+    [[nodiscard]]
+    QString authMode() const { return m_authMode; }
+    Q_INVOKABLE void setAuthMode(const QString &authMode);
+
+    [[nodiscard]]
+    QString accessKeyId() const { return m_accessKeyId; }
+    Q_INVOKABLE void setAccessKeyId(const QString &accessKeyId);
+
+    // Stored in the config file in the clear, like the euclid CLI stores its own in
+    // $HOME/.euclid/credentials; the file is written owner-readable only. Anything stronger needs
+    // a keychain per platform, which is a bigger decision than this setting.
+    [[nodiscard]]
+    QString secretAccessKey() const { return m_secretAccessKey; }
+    Q_INVOKABLE void setSecretAccessKey(const QString &secretAccessKey);
+
     // Absolute path of the JSON file above, e.g. "/home/alice/.euclid/rui.json". Shown in the
     // settings page so the file this writes is findable without guessing.
     [[nodiscard]]
@@ -61,6 +83,8 @@ signals:
     // One signal for host/port/useTls: they only matter as the URL they compose into, and every
     // consumer cares about that rather than the individual parts.
     void baseUrlChanged();
+    // One signal for the three above: they are only meaningful together, as "how to authenticate".
+    void credentialsChanged();
 
 private:
     // Reads configFilePath() into the members, leaving anything absent or unusable at its default.
@@ -74,4 +98,7 @@ private:
     QString m_host;
     int m_port;
     bool m_useTls;
+    QString m_authMode;
+    QString m_accessKeyId;
+    QString m_secretAccessKey;
 };
