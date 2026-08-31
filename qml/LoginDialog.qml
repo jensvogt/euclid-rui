@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Controls.Material
+import "components"
 
 Dialog {
     id: root
@@ -20,6 +21,15 @@ Dialog {
     property bool suppressOpenReset: false
 
     signal loggedIn(string username, string namespaceName)
+
+    // Applies whatever gateway the connection fields currently show. Persisted by AppSettings and
+    // pushed into euclidClient from main.cpp, so it takes effect from the very next request - the
+    // sign-in below already goes to the new host.
+    function applyGateway() {
+        appSettings.setHost(hostField.text)
+        appSettings.setPort(parseInt(portField.text, 10))
+        appSettings.setUseTls(tlsSwitch.checked)
+    }
 
     // Signs in without showing the dialog (e.g. credentials supplied via
     // --user/--password command-line options). Reuses the normal login/
@@ -52,6 +62,11 @@ Dialog {
             namespaceErrorText.text = ""
             namespaceCombo.model = []
         }
+        // Always re-read the gateway fields, including on the suppressed-reset path: they show
+        // where the attempt that just failed was actually sent, which is half the diagnosis.
+        hostField.text = appSettings.host
+        portField.text = appSettings.port
+        tlsSwitch.checked = appSettings.useTls
         usernameField.forceActiveFocus()
     }
 
@@ -108,6 +123,69 @@ Dialog {
                 opacity: root.step === 0 ? 1 : 0
                 visible: opacity > 0
                 Behavior on opacity { NumberAnimation { duration: 150 } }
+
+                // Which euclid-mgr to talk to. Editable here rather than in the settings page
+                // because a wrong gateway and a wrong password fail at the same moment, and this
+                // is where you are when that happens.
+                Column {
+                    width: parent.width
+                    spacing: 6
+
+                    Text { text: "Gateway"; color: "#9aa1ac"; font.pixelSize: 12 }
+
+                    Row {
+                        width: parent.width
+                        spacing: 8
+
+                        TextField {
+                            id: hostField
+                            width: parent.width - portField.width - 8
+                            placeholderText: "hostname or IP"
+                            Material.accent: "#4f8cff"
+                            selectByMouse: true
+                            KeyNavigation.tab: portField
+                        }
+                        TextField {
+                            id: portField
+                            width: 84
+                            placeholderText: "port"
+                            inputMethodHints: Qt.ImhDigitsOnly
+                            validator: IntValidator { bottom: 1; top: 65535 }
+                            Material.accent: "#4f8cff"
+                            selectByMouse: true
+                            KeyNavigation.tab: usernameField
+                        }
+                    }
+
+                    Row {
+                        width: parent.width
+                        height: 26
+                        spacing: 10
+
+                        ToggleSwitch {
+                            id: tlsSwitch
+                            anchors.verticalCenter: parent.verticalCenter
+                            checked: true
+                        }
+                        Text {
+                            // The gateway only serves https when euclid.gateway.tls.enabled is set
+                            // server-side, and that defaults to off - so this has to be a choice.
+                            text: "TLS (https)"
+                            color: "#c4c9d1"
+                            font.pixelSize: 12
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+                        Text {
+                            text: (tlsSwitch.checked ? "https://" : "http://")
+                                  + (hostField.text.length > 0 ? hostField.text : "…") + ":" + portField.text
+                            color: "#6b7280"
+                            font.pixelSize: 11
+                            elide: Text.ElideMiddle
+                            width: parent.width - tlsSwitch.width - 100
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+                    }
+                }
 
                 Column {
                     width: parent.width
@@ -243,11 +321,13 @@ Dialog {
                 Material.accent: "#4f8cff"
                 enabled: !euclidClient.busy && (root.step === 0
                     ? usernameField.text.length > 0 && passwordField.text.length > 0
+                      && hostField.text.trim().length > 0 && portField.acceptableInput
                     : namespaceCombo.count > 0)
 
                 onClicked: {
                     if (root.step === 0) {
                         errorText.text = ""
+                        root.applyGateway()
                         euclidClient.login(usernameField.text, passwordField.text)
                     } else {
                         root.selectedNamespace = namespaceCombo.currentText

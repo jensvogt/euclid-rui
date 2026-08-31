@@ -18,12 +18,25 @@ class EuclidBaseClient : public QObject {
     Q_PROPERTY(bool busy READ busy NOTIFY busyChanged)
     Q_PROPERTY(QString accountId READ accountId NOTIFY accountIdChanged)
     Q_PROPERTY(QString region READ region NOTIFY regionChanged)
+    Q_PROPERTY(QString baseUrl READ baseUrl WRITE setBaseUrl NOTIFY baseUrlChanged)
 
 public:
     explicit EuclidBaseClient(QObject *parent = nullptr);
 
     [[nodiscard]]
     bool busy() const { return m_busy; }
+
+    // The euclid-mgr gateway every request is posted to, e.g. "https://localhost:5566/". Owned by
+    // AppSettings (which persists it and composes it from host/port/scheme) and pushed in from
+    // main.cpp, so this class stays free of any settings dependency.
+    [[nodiscard]]
+    QString baseUrl() const { return m_baseUrl; }
+
+    // Pointing at a different gateway invalidates the session: a token minted by one euclid-mgr
+    // means nothing to another, and the account/region/namespace it resolved belong to that
+    // backend too. So this drops all of it and reports the session as ended, rather than letting
+    // the next request fail in a way that looks like a server error.
+    Q_INVOKABLE void setBaseUrl(const QString &baseUrl);
 
     // Empty until login() succeeds.
     [[nodiscard]]
@@ -55,6 +68,10 @@ signals:
     void busyChanged();
     void accountIdChanged();
     void regionChanged();
+    void baseUrlChanged();
+    // The session was dropped without the user signing out - currently only because the gateway
+    // address changed under it (see setBaseUrl()).
+    void sessionCleared();
     void loginSucceeded();
     void loginFailed(const QString &message);
     void namespacesLoaded(const QStringList &namespaces);
@@ -64,6 +81,7 @@ private:
     void setBusy(bool busy);
 
     QNetworkAccessManager m_networkManager;
+    QString m_baseUrl;
     QString m_token;
     QString m_accountId;
     QString m_region;

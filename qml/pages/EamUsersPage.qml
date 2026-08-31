@@ -34,6 +34,7 @@ Item {
     }
 
     signal back()
+    signal openUserDetails(string userErn, string userId, var details)
 
     function refresh() {
         if (!root.loggedIn) {
@@ -312,7 +313,8 @@ Item {
                 lastUpdatedText: root.lastUpdatedText
                 searchPlaceholder: "Filter by user ID prefix..."
                 emptyText: "No users found."
-                rowsClickable: false
+                rowsClickable: true
+                onRowClicked: (row) => root.openUserDetails(row.ern, row.userId, row)
                 sortKey: root.sortColumn
                 sortAscending: root.sortAscending
 
@@ -334,6 +336,12 @@ Item {
                 }
 
                 contextMenuActions: [
+                    {
+                        text: "Details",
+                        action: function(row) {
+                            root.openUserDetails(row.ern, row.userId, row)
+                        }
+                    },
                     {
                         text: "Delete",
                         action: function(row) {

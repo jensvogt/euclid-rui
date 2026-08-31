@@ -120,7 +120,7 @@ void EsmClient::deleteBucketTag(const QString &bucketErn, const QString &key) {
          });
 }
 
-void EsmClient::fetchObjects(const QString &bucketErn, const QString &prefix, const int pageIndex, const int pageSize, const QString &sortColumn, const QString &sortDirection) {
+void EsmClient::fetchObjects(const QString &bucketErn, const QString &prefix, const int pageIndex, const int pageSize, const QString &sortColumn, const QString &sortDirection, const bool includeDirectories) {
     QJsonObject body;
     body["bucketErn"] = bucketErn;
     body["prefix"] = prefix;
@@ -128,6 +128,7 @@ void EsmClient::fetchObjects(const QString &bucketErn, const QString &prefix, co
     body["pageIndex"] = pageIndex;
     body["sortColumn"] = sortColumn;
     body["sortDirection"] = sortDirection;
+    body["includeDirectories"] = includeDirectories;
 
     m_base->post("esm", "list-objects", body, true,
          [this, bucketErn](const QJsonObject &response) {
@@ -135,13 +136,20 @@ void EsmClient::fetchObjects(const QString &bucketErn, const QString &prefix, co
              for (const QJsonArray array = response.value("objects").toArray(); const auto &value : array) {
                  const QJsonObject object = value.toObject();
                  QVariantMap entry;
-                 entry["key"] = object.value("key").toString();
+                 const QString key = object.value("key").toString();
+                 entry["key"] = key;
+                 // Derived, not sent: the wire format has no directory flag, the trailing "/" in
+                 // the key IS the flag (Entity::ESM::IsDirectoryKey server-side).
+                 entry["isDirectory"] = key.endsWith(QLatin1Char('/'));
                  entry["ern"] = object.value("ern").toString();
                  entry["bucketErn"] = object.value("bucketErn").toString();
                  entry["size"] = object.value("size").toInteger();
                  entry["status"] = object.value("status").toString();
                  entry["contentType"] = object.value("contentType").toString();
                  entry["md5Sum"] = object.value("md5Sum").toString();
+                 // {name: {type, value}} - user-defined attributes, typed server-side by
+                 // Dto::COM::Variant rather than being plain strings.
+                 entry["attributes"] = object.value("attributes").toObject().toVariantMap();
                  entry["created"] = object.value("created").toString();
                  entry["modified"] = object.value("modified").toString();
                  objects << entry;
@@ -163,6 +171,41 @@ void EsmClient::deleteObject(const QString &bucketErn, const QString &objectErn)
          },
          [this](const QString &message) {
              emit objectsFailed(QString(), message);
+         });
+}
+
+void EsmClient::setObjectAttributes(const QString &objectErn, const QVariantMap &attributes) {
+    QJsonObject wire;
+    for (auto it = attributes.constBegin(); it != attributes.constEnd(); ++it) {
+        const QVariantMap attribute = it.value().toMap();
+        // Each value travels as {"type": ..., "value": ...}; a bare value would be rejected,
+        // since Variant reads the type first and then the matching JSON type.
+        const QString type = attribute.value("type", QStringLiteral("string")).toString();
+        const QVariant value = attribute.value("value");
+
+        QJsonValue encoded;
+        if (type == QLatin1String("int") || type == QLatin1String("long"))
+            encoded = QJsonValue(value.toLongLong());
+        else if (type == QLatin1String("double") || type == QLatin1String("float"))
+            encoded = QJsonValue(value.toDouble());
+        else if (type == QLatin1String("bool"))
+            encoded = QJsonValue(value.toBool());
+        else
+            encoded = QJsonValue(value.toString());
+
+        wire[it.key()] = QJsonObject{{"type", type}, {"value", encoded}};
+    }
+
+    QJsonObject body;
+    body["ern"] = objectErn;
+    body["attributes"] = wire;
+
+    m_base->post("esm", "set-object-attributes", body, true,
+         [this, objectErn](const QJsonObject &response) {
+             emit objectAttributesSaved(objectErn, response.value("attributes").toObject().toVariantMap());
+         },
+         [this](const QString &message) {
+             emit objectAttributesFailed(message);
          });
 }
 

@@ -53,6 +53,7 @@ qt_add_executable(euclid_rui main.cpp
         client/EmmClient.h client/EmmClient.cpp
         client/EqsClient.h client/EqsClient.cpp
         client/EsmClient.h client/EsmClient.cpp
+        client/EtsClient.h client/EtsClient.cpp
         client/EnsClient.h client/EnsClient.cpp
         client/EkmClient.h client/EkmClient.cpp
         client/EmoClient.h client/EmoClient.cpp
@@ -78,6 +79,10 @@ qt_add_qml_module(euclid_rui
         qml/pages/EamAccountsPage.qml
         qml/pages/EamNamespacesPage.qml
         qml/pages/EamUsersPage.qml
+        qml/pages/EamUserDetailsPage.qml
+        qml/pages/EamUserGroupDetailsPage.qml
+        qml/pages/EamAccountDetailsPage.qml
+        qml/pages/EamNamespaceDetailsPage.qml
         qml/pages/EamUserGroupsPage.qml
         qml/pages/EqsQueuesPage.qml
         qml/pages/EqsQueueDetailsPage.qml
@@ -86,6 +91,8 @@ qt_add_qml_module(euclid_rui
         qml/pages/EsmBucketsPage.qml
         qml/pages/EsmBucketDetailsPage.qml
         qml/pages/EsmObjectsPage.qml
+        qml/pages/EtsServersPage.qml
+        qml/pages/EtsServerDetailsPage.qml
         qml/pages/EsmObjectDetailsPage.qml
         qml/pages/EnsTopicsPage.qml
         qml/pages/EnsTopicDetailsPage.qml
@@ -103,12 +110,23 @@ qt_add_qml_module(euclid_rui
         qml/components/SizeFormat.qml
         qml/components/Gauge.qml
         qml/components/LineChart.qml
+        qml/components/ObjectTree.qml
         qml/components/FoldableTile.qml
         qml/components/ServiceModuleTile.qml
         qml/components/ToggleSwitch.qml
         qml/components/SectionHeader.qml
         qml/components/ActivityRow.qml
 )
+
+# Build against the Windows GUI subsystem rather than the console one. qt_add_executable() does
+# NOT do this for you - it forwards to a plain add_executable() without WIN32 - so without this the
+# linker produces a console application and Windows opens a CMD window behind the app every time it
+# starts, including from the installer's shortcuts. Ignored on Linux and macOS.
+#
+# This also brings in Qt's entry point shim: Qt6::Core only pulls in Qt6::EntryPointPrivate (which
+# provides WinMain and calls main) when WIN32_EXECUTABLE is set - see qtbase/src/corelib
+# /CMakeLists.txt:1569-1581 - so the two have to be turned on together, and are.
+set_target_properties(euclid_rui PROPERTIES WIN32_EXECUTABLE TRUE)
 
 target_link_libraries(euclid_rui
         PRIVATE

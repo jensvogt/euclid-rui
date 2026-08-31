@@ -9,15 +9,49 @@
 #include <QUrl>
 
 namespace {
-constexpr auto kBaseUrl = "https://localhost:5566/";
+// Only the starting value: main.cpp overwrites it with the persisted AppSettings::baseUrl() before
+// the first request, and the login dialog can point it somewhere else at any time.
+constexpr auto kDefaultBaseUrl = "https://localhost:5566/";
 // The gateway (and/or intermediate infra) can silently close an idle keep-alive connection;
 // QNetworkAccessManager doesn't always notice before trying to reuse it, which otherwise leaves
 // the request hanging forever with no error and no timeout. Bound every request so a stale
 // connection surfaces as a normal, retryable error instead.
 constexpr int kTransferTimeoutMs = 15000;
+
+// A reply that never received a body - a connection the gateway had already closed, a TLS
+// handshake that failed, a request the transfer timeout aborted - finishes *closed*. Calling
+// readAll() on it is harmless but makes Qt print "QIODevice::read (QNetworkReplyHttpImpl): device
+// not open" for each one, which with several pages polling on a timer fills the log with warnings
+// that say nothing the error handler below doesn't already report.
+QJsonObject replyBody(QNetworkReply *reply) {
+    if (!reply->isOpen())
+        return {};
+    return QJsonDocument::fromJson(reply->readAll()).object();
+}
 }
 
-EuclidBaseClient::EuclidBaseClient(QObject *parent) : QObject(parent) {}
+EuclidBaseClient::EuclidBaseClient(QObject *parent) : QObject(parent), m_baseUrl(QString::fromLatin1(kDefaultBaseUrl)) {}
+
+void EuclidBaseClient::setBaseUrl(const QString &baseUrl) {
+    if (baseUrl.isEmpty() || baseUrl == m_baseUrl)
+        return;
+    m_baseUrl = baseUrl;
+    emit baseUrlChanged();
+
+    const bool hadSession = !m_token.isEmpty();
+    m_token.clear();
+    m_namespace.clear();
+    if (!m_accountId.isEmpty()) {
+        m_accountId.clear();
+        emit accountIdChanged();
+    }
+    if (!m_region.isEmpty()) {
+        m_region.clear();
+        emit regionChanged();
+    }
+    if (hadSession)
+        emit sessionCleared();
+}
 
 void EuclidBaseClient::setBusy(const bool busy) {
     if (m_busy == busy)
@@ -29,7 +63,7 @@ void EuclidBaseClient::setBusy(const bool busy) {
 void EuclidBaseClient::post(const QString &target, const QString &action, const QJsonObject &body, bool authorized,
                              const std::function<void(const QJsonObject &)> &onSuccess,
                              const std::function<void(const QString &)> &onError) {
-    QNetworkRequest request{QUrl(kBaseUrl)};
+    QNetworkRequest request{QUrl(m_baseUrl)};
     request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
     request.setRawHeader("x-euclid-target", target.toUtf8());
     request.setRawHeader("x-euclid-action", action.toUtf8());
@@ -49,11 +83,15 @@ void EuclidBaseClient::post(const QString &target, const QString &action, const 
     QNetworkReply *reply = m_networkManager.post(request, QJsonDocument(body).toJson(QJsonDocument::Compact));
     connect(reply, &QNetworkReply::finished, this, [reply, onSuccess, onError]() {
         reply->deleteLater();
-        const QByteArray data = reply->readAll();
-        const QJsonObject obj = QJsonDocument::fromJson(data).object();
+        const QJsonObject obj = replyBody(reply);
 
         if (reply->error() != QNetworkReply::NoError) {
-            onError(obj.value("message").toString(reply->errorString()));
+            // euclid puts the reason in "error" (Core::HttpActionServer::ErrorResponse builds
+            // {"error": ...}); "message" is tried first only because some responses have carried
+            // it. Without the "error" fallback every server-side reason - "Invalid credentials",
+            // "Namespace does not exist" - was replaced by Qt's generic transport string.
+            const QString reason = obj.value("message").toString(obj.value("error").toString());
+            onError(reason.isEmpty() ? reply->errorString() : reason);
             return;
         }
         onSuccess(obj);
@@ -63,7 +101,7 @@ void EuclidBaseClient::post(const QString &target, const QString &action, const 
 void EuclidBaseClient::postRaw(const QString &target, const QString &action, const QVariantMap &extraHeaders, const QByteArray &body,
                                 const std::function<void(const QJsonObject &)> &onSuccess,
                                 const std::function<void(const QString &)> &onError) {
-    QNetworkRequest request{QUrl(kBaseUrl)};
+    QNetworkRequest request{QUrl(m_baseUrl)};
     request.setHeader(QNetworkRequest::ContentTypeHeader, "application/octet-stream");
     request.setRawHeader("x-euclid-target", target.toUtf8());
     request.setRawHeader("x-euclid-action", action.toUtf8());
@@ -83,11 +121,15 @@ void EuclidBaseClient::postRaw(const QString &target, const QString &action, con
     QNetworkReply *reply = m_networkManager.post(request, body);
     connect(reply, &QNetworkReply::finished, this, [reply, onSuccess, onError]() {
         reply->deleteLater();
-        const QByteArray data = reply->readAll();
-        const QJsonObject obj = QJsonDocument::fromJson(data).object();
+        const QJsonObject obj = replyBody(reply);
 
         if (reply->error() != QNetworkReply::NoError) {
-            onError(obj.value("message").toString(reply->errorString()));
+            // euclid puts the reason in "error" (Core::HttpActionServer::ErrorResponse builds
+            // {"error": ...}); "message" is tried first only because some responses have carried
+            // it. Without the "error" fallback every server-side reason - "Invalid credentials",
+            // "Namespace does not exist" - was replaced by Qt's generic transport string.
+            const QString reason = obj.value("message").toString(obj.value("error").toString());
+            onError(reason.isEmpty() ? reply->errorString() : reason);
             return;
         }
         onSuccess(obj);

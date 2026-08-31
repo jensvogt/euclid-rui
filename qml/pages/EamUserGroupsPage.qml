@@ -35,6 +35,7 @@ Item {
     }
 
     signal back()
+    signal openGroupDetails(string groupErn, string groupName, var details)
 
     function refresh() {
         if (!root.loggedIn) {
@@ -255,7 +256,8 @@ Item {
                 lastUpdatedText: root.lastUpdatedText
                 searchPlaceholder: "Filter by group name prefix..."
                 emptyText: "No user groups found."
-                rowsClickable: false
+                rowsClickable: true
+                onRowClicked: (row) => root.openGroupDetails(row.ern, row.name, row)
                 sortKey: root.sortColumn
                 sortAscending: root.sortAscending
 
@@ -277,6 +279,12 @@ Item {
                 }
 
                 contextMenuActions: [
+                    {
+                        text: "Details",
+                        action: function(row) {
+                            root.openGroupDetails(row.ern, row.name, row)
+                        }
+                    },
                     {
                         text: "Delete",
                         action: function(row) {

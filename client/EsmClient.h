@@ -27,10 +27,22 @@ public:
     Q_INVOKABLE void deleteBucketTag(const QString &bucketErn, const QString &key);
 
     // Objects
+    // A bucket is flat: a directory exists only as a zero-byte object whose key ends in "/" (the
+    // marker a transfer server writes on MKD). The server leaves those out of listings unless
+    // `includeDirectories` is set, so a tree view has to ask for them - otherwise a folder that
+    // holds no files, or holds only other empty folders, is invisible.
     Q_INVOKABLE void fetchObjects(const QString &bucketErn, const QString &prefix = QString(), int pageIndex = 0, int pageSize = 100,
                                   const QString &sortColumn = QStringLiteral("key"),
-                                  const QString &sortDirection = QStringLiteral("asc"));
+                                  const QString &sortDirection = QStringLiteral("asc"),
+                                  bool includeDirectories = false);
     Q_INVOKABLE void deleteObject(const QString &bucketErn, const QString &objectErn);
+
+    // Replaces an object's user-defined attributes with `attributes`, a {name: {type, value}} map
+    // where type is one of string/int/long/float/double/bool (the JSON shape Dto::COM::Variant
+    // reads). "set-object-attributes" writes the map as a whole - anything the map does not name
+    // is dropped server-side - so adding or removing one attribute means sending all of them,
+    // which is why callers hand over the finished map rather than a single change.
+    Q_INVOKABLE void setObjectAttributes(const QString &objectErn, const QVariantMap &attributes);
     // Uploads the local file at fileUrl (e.g. from a QML FileDialog's selectedFile) as an object
     // under the given key. Files under kMultipartThreshold go through "put-object" in one request;
     // larger files are split into kMultipartThreshold-sized parts and sent through the
@@ -57,6 +69,10 @@ signals:
     // Emitted after each part of a multipart upload completes; bytesTotal is the whole file's size.
     // Never emitted for single-request ("put-object") uploads.
     void uploadProgress(const QString &bucketErn, const QString &key, qint64 bytesSent, qint64 bytesTotal);
+    // Carries the attributes the server stored, read back out of its response, so a details page
+    // shows what was actually saved rather than what it hoped it sent.
+    void objectAttributesSaved(const QString &objectErn, const QVariantMap &attributes);
+    void objectAttributesFailed(const QString &message);
 
 private:
     void uploadSinglePart(const QString &bucketErn, const QString &key, const QByteArray &data);

@@ -22,6 +22,18 @@ public:
     Q_INVOKABLE void deleteAccount(const QString &accountId);
 
     Q_INVOKABLE void fetchNamespaces(const QString &accountId, const QString &prefix = QString(), int pageIndex = 0, int pageSize = 10, const QString &sortColumn = QStringLiteral("name"), const QString &sortDirection = QStringLiteral("asc"));
+
+    // Every namespace of one account, unpaged, for the account details page. Separate from
+    // fetchNamespaces()/namespacesLoaded() so a details page doesn't replace what the paged
+    // namespaces table is showing.
+    Q_INVOKABLE void fetchAccountNamespaces(const QString &accountId);
+
+    // Every user in the deployment, each annotated with how they relate to accountId: `home` if
+    // it is their registered account, and `namespaces` listing the ones they hold an explicit
+    // grant for there (empty for most users). Serves both the account details page ("who can
+    // reach this account") and the namespace details page, which reads `namespaces` to decide
+    // whether a given user is granted the namespace it is showing.
+    Q_INVOKABLE void fetchAccountUsers(const QString &accountId);
     // Requires account-admin (global admin or a per-account grant) on accountId.
     Q_INVOKABLE void createNamespace(const QString &accountId, const QString &name, const QString &description = QString());
     // Requires account-admin; fails (409) if any user still has a grant naming this namespace.
@@ -35,6 +47,33 @@ public:
                                  const QString &accountId, const QString &region, bool isAdmin = false);
     // Admin-only; deletes unconditionally (no check for group membership).
     Q_INVOKABLE void deleteUser(const QString &userId);
+
+    // Every user group in the deployment, each flagged with whether userId is currently a member -
+    // which is how one user's memberships are read, there being no "list groups of user" action
+    // server-side (membership lives on the group, in UserGroup.userIds).
+    //
+    // Deliberately not reusing fetchUsers()/fetchUserGroups() and their signals: those drive the
+    // paged tables on the users and user-groups pages, and a details page borrowing them would
+    // replace what those tables are showing.
+    Q_INVOKABLE void fetchGroupMemberships(const QString &userId);
+
+    // The mirror image, for a group details page: every user in the deployment, each flagged with
+    // whether they are in the group named by groupErn. Costs two round trips - the group record
+    // carries the membership (UserGroup.userIds) and the user records carry the ERNs that
+    // addUserToGroup()/removeUserFromGroup() need - and re-reads the group rather than trusting a
+    // caller-supplied member list, so it stays correct after a membership change.
+    Q_INVOKABLE void fetchGroupMembers(const QString &groupErn);
+
+    // Both take ERNs, not names - "user-group-add-user"/"user-group-remove-user" resolve their
+    // arguments by ERN server-side. Admin-only.
+    Q_INVOKABLE void addUserToGroup(const QString &groupErn, const QString &userErn);
+    Q_INVOKABLE void removeUserFromGroup(const QString &groupErn, const QString &userErn);
+
+    // Grants/revokes one user's access to one namespace of one account, on top of their home
+    // account. Requires account-admin on accountId (not necessarily global admin). userErn is an
+    // ERN; the namespace must already exist.
+    Q_INVOKABLE void grantNamespaceAccess(const QString &userErn, const QString &accountId, const QString &namespaceName);
+    Q_INVOKABLE void revokeNamespaceAccess(const QString &userErn, const QString &accountId, const QString &namespaceName);
 
     Q_INVOKABLE void fetchUserGroups(const QString &prefix = QString(), int pageIndex = 0, int pageSize = 10, const QString &sortColumn = QStringLiteral("userId"), const QString &sortDirection = QStringLiteral("asc"));
     // Admin-only; group name must be unique across the deployment. Starts empty - members are
@@ -50,6 +89,13 @@ signals:
     void accountCreated(const QString &accountId);
     void accountCreateFailed(const QString &message);
 
+    // Each entry: {accountId, name, ern, description, created, modified}.
+    void accountNamespacesLoaded(const QString &accountId, const QVariantList &namespaces);
+    void accountNamespacesFailed(const QString &message);
+    // Each entry: {userId, ern, email, home: bool, namespaces: [string]}.
+    void accountUsersLoaded(const QString &accountId, const QVariantList &users);
+    void accountUsersFailed(const QString &message);
+
     void namespacesLoaded(const QVariantList &keys, int total);
     void namespacesFailed(const QString &message);
     void namespacesReload();
@@ -61,6 +107,21 @@ signals:
     void usersReload();
     void userCreated(const QString &userId);
     void userCreateFailed(const QString &message);
+
+    // Each entry: {name, ern, description, member: bool}. userId echoes the request, so a details
+    // page can ignore a response for someone else.
+    void groupMembershipsLoaded(const QString &userId, const QVariantList &groups);
+    void groupMembershipsFailed(const QString &message);
+    // Each entry: {userId, ern, email, member: bool}. groupErn echoes the request.
+    void groupMembersLoaded(const QString &groupErn, const QVariantList &users);
+    void groupMembersFailed(const QString &message);
+    // Emitted once the server has confirmed the change; `member` says which way it went.
+    void groupMembershipChanged(const QString &groupErn, const QString &userErn, bool member);
+    void groupMembershipFailed(const QString &message);
+
+    // Likewise for namespace grants: `granted` false means the grant was revoked.
+    void namespaceAccessChanged(const QString &userErn, const QString &accountId, const QString &namespaceName, bool granted);
+    void namespaceAccessFailed(const QString &message);
 
     void userGroupsLoaded(const QVariantList &groups, int total);
     void userGroupsFailed(const QString &message);
