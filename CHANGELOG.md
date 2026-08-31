@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.17](https://github.com/jensvogt/euclid-rui/compare/1.0.16...v1.0.17) (2026-08-31)
+
+
+### Bug Fixes
+
+* add ETS module ([0e8a5ce](https://github.com/jensvogt/euclid-rui/commit/0e8a5ceea674c7be026025555e2dec2297cd6ce0))
+
 ## [1.0.16](https://github.com/jensvogt/euclid-rui/compare/v1.0.15...v1.0.16) (2026-08-31)
 
 
