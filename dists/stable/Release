@@ -1,0 +1,23 @@
+Architectures: amd64
+Codename: stable
+Components: main
+Date: Mon, 31 Aug 2026 13:11:48 +0000
+Label: Euclid RUI
+Origin: Euclid RUI
+Suite: stable
+MD5Sum:
+ 9ccc147db2829fef89f120b9e3d8d348              144 Release
+ 07186f813898304bcbfcc68ffa47dd20              630 main/binary-amd64/Packages
+ 2f7858bd6468caaf1a52ea503e1dc1a0              458 main/binary-amd64/Packages.gz
+SHA1:
+ 189fd786589b207a99b4fe4b2bcdae4acfb87c7e              144 Release
+ d4fb774d00b50c2a1fb817406112a2e98098ac17              630 main/binary-amd64/Packages
+ 72c740bec00e7cfe5286968f2e5279419edece57              458 main/binary-amd64/Packages.gz
+SHA256:
+ 4f74c07319944653513c30229c0ee73098c44d358af52ca8b6cdf80ad700c346              144 Release
+ 43ca109c389010b3987bd430dedfc50804ac52c8605c0cd76fd854fe3d9dfc09              630 main/binary-amd64/Packages
+ 700695ec2a547a0a75d2f4b4fe270999bb98aa69c24d15a2b621411798b51b6e              458 main/binary-amd64/Packages.gz
+SHA512:
+ 5e0cee911c626bcedf61ea49a3d4d16b5c0d068d39bb19ba2faaa497989e723fffcf91133e356069602bd83f319a470d1df905a7c5979995d42cdd28c8c67065              144 Release
+ ce86c5b427c352d012e0d7560b11f64482829244578aa5c7133d0a0447ab83de968969265048ccb0d8f685f653d1e0b1e258b5cadd0019891ac2a2900afd7e00              630 main/binary-amd64/Packages
+ 850354c4bfe846982dc9bfdd1c465412b6687ffbfcb3bcf01c4fff9ec25fdf1965570dc476b0126fe2c94a553c2210998f6831503ecd0b7366a57747322eacd2              458 main/binary-amd64/Packages.gz
