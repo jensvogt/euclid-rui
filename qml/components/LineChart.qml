@@ -12,6 +12,10 @@ Item {
     property var series: []
     property string valueSuffix: ""
     property int decimals: 0
+    // Qt.formatDateTime() format for the first/last point labels under the X axis. The default
+    // suits points minutes apart; a chart spanning days or months should widen it (e.g. "dd MMM"),
+    // otherwise both ends read "00:00".
+    property string timeFormat: "hh:mm"
 
     readonly property bool hasData: series.some(s => s.points && s.points.length > 0)
 
@@ -24,7 +28,7 @@ Item {
     function formatTime(iso) {
         if (!iso) return ""
         const d = new Date(iso)
-        return isNaN(d.getTime()) ? "" : Qt.formatTime(d, "hh:mm")
+        return isNaN(d.getTime()) ? "" : Qt.formatDateTime(d, root.timeFormat)
     }
 
     Text {
@@ -117,7 +121,10 @@ Item {
                     for (let i = 0; i < pts.length; i++) ctx.lineTo(xFor(pts, i), yFor(pts[i].value))
                     ctx.lineTo(xFor(pts, pts.length - 1), topPad + plotHeight)
                     ctx.closePath()
-                    ctx.fillStyle = Qt.rgba(s.color.r, s.color.g, s.color.b, 0.12)
+                    // Qt.alpha() rather than Qt.rgba(s.color.r, ...): series come from plain JS
+                    // objects, so s.color is usually still the "#rrggbb" string it was written as,
+                    // and a string has no .r/.g/.b - that read yields undefined and paints nothing.
+                    ctx.fillStyle = Qt.alpha(s.color, 0.12)
                     ctx.fill()
                 }
 
