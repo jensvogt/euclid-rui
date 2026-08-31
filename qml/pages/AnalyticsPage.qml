@@ -30,15 +30,17 @@ Item {
         { id: "eqs", title: "EQS Traffic", description: "All EQS actions" },
         { id: "esm", title: "ESM Traffic", description: "All ESM actions" },
         { id: "ens", title: "ENS Traffic", description: "All ENS actions" },
-        { id: "eam", title: "EAM Traffic", description: "All EAM actions" }
+        { id: "eam", title: "EAM Traffic", description: "All EAM actions" },
+        { id: "ets", title: "ETS Traffic", description: "All ETS actions" }
     ]
 
     // {module id: points}, one entry per tile above.
     property var moduleCountPoints: ({})
     property var moduleTimePoints: ({})
 
-    // All tiles are fetched in the same pass, so one timestamp covers them.
-    property string metricsUpdatedText: "—"
+    // {tileId: "hh:mm:ss"}. Per tile rather than one page-wide stamp: each tile now refreshes on
+    // its own period, so they no longer come back together.
+    property var updatedByTile: ({})
 
     // Row cap multiplier for the aggregated per-module queries: one bucket costs one row per
     // action, so the cap has to be buckets * actions. The busiest module instruments 23 actions,
@@ -58,13 +60,73 @@ Item {
         { label: "This year",  resolution: "DAY",  limit: 366, timeFormat: "dd MMM" }
     ]
 
-    // User-configurable via the chart settings dialog (gear icon). enabledMethods is a
-    // {methodName: bool} map - all four methods are always fetched (cheap, and switching one
-    // back on shouldn't need a refetch), visibility is purely a client-side display filter.
-    property int historyRangeIndex: 0
+    // Every tile has its own gear, so every tile has its own period: {tileId: rangeIndex}, keyed
+    // by "gateway" or a module id. Absent means the first range (Today).
+    property var rangeIndexByTile: ({})
+    // Gateway only. All four methods are always fetched (cheap, and switching one back on
+    // shouldn't need a refetch), visibility is purely a client-side display filter.
     property var enabledMethods: ({ GET: true, POST: true, PUT: true, DELETE: true })
+    // {tileId: {count: bool, time: bool}} - which of a module tile's two charts to draw. Absent
+    // means both, so a tile the user has never configured needs no entry.
+    property var chartsByTile: ({})
 
-    readonly property var historyRange: root.historyRanges[root.historyRangeIndex]
+    function rangeIndexFor(tileId) {
+        const index = root.rangeIndexByTile[tileId]
+        return index === undefined ? 0 : index
+    }
+
+    function rangeFor(tileId) {
+        return root.historyRanges[root.rangeIndexFor(tileId)]
+    }
+
+    function chartVisible(tileId, which) {
+        const charts = root.chartsByTile[tileId]
+        return !charts || charts[which] !== false
+    }
+
+    function setChartVisible(tileId, which, visible) {
+        const updated = Object.assign({}, root.chartsByTile)
+        const charts = Object.assign({ count: true, time: true }, updated[tileId])
+        charts[which] = visible
+        updated[tileId] = charts
+        root.chartsByTile = updated
+    }
+
+    // Changing a period invalidates only that tile: its points came back at the old resolution and
+    // would be plotted against the new period's axis until its own responses land.
+    function setRangeIndex(tileId, index) {
+        const updated = Object.assign({}, root.rangeIndexByTile)
+        updated[tileId] = index
+        root.rangeIndexByTile = updated
+        root.clearTile(tileId)
+        root.refreshTile(tileId)
+    }
+
+    function clearTile(tileId) {
+        if (tileId === "gateway") {
+            root.requestCountByMethod = ({})
+            root.requestTimeByMethod = ({})
+            return
+        }
+        const counts = Object.assign({}, root.moduleCountPoints)
+        const times = Object.assign({}, root.moduleTimePoints)
+        delete counts[tileId]
+        delete times[tileId]
+        root.moduleCountPoints = counts
+        root.moduleTimePoints = times
+    }
+
+    // Which tile a metric belongs to, so a response can be filtered against that tile's period
+    // rather than some page-wide one. Empty for a name this page doesn't draw.
+    function tileForMetric(name) {
+        if (name === "gateway-service-count" || name === "gateway-service-time")
+            return "gateway"
+        for (const m of root.serviceModules) {
+            if (name === m.id + "-service-count" || name === m.id + "-service-time")
+                return m.id
+        }
+        return ""
+    }
 
     // Start of the selected calendar period. "limit" alone would give the last N buckets, which
     // at 09:00 would reach back into yesterday and make the "Today" label a lie, so points before
@@ -74,9 +136,9 @@ Item {
     // local-midnight boundary would drop the 1st's bucket in every zone west of Greenwich.
     // Today/this week use local midnight, which is what those words mean to the user, and their
     // buckets are at most an hour wide so the boundary is off by at most one point.
-    function historyRangeStart() {
+    function historyRangeStart(rangeIndex) {
         const now = new Date()
-        switch (root.historyRangeIndex) {
+        switch (rangeIndex) {
         // This week - back to the most recent Monday (getDay() counts Sunday as 0)
         case 1: {
             const start = new Date(now.getFullYear(), now.getMonth(), now.getDate())
@@ -92,8 +154,8 @@ Item {
         }
     }
 
-    function pointsInRange(points) {
-        const start = root.historyRangeStart().getTime()
+    function pointsInRange(points, tileId) {
+        const start = root.historyRangeStart(root.rangeIndexFor(tileId)).getTime()
         return points.filter(p => {
             const t = new Date(p.timestamp).getTime()
             return !isNaN(t) && t >= start
@@ -111,18 +173,26 @@ Item {
         return result
     }
 
-    function refreshMetrics() {
+    // One tile's worth of requests, at that tile's own period.
+    function refreshTile(tileId) {
         if (!root.loggedIn)
             return
-        const range = root.historyRange
-        for (const m of root.httpMethods) {
-            emoClient.fetchSeries("gateway-service-count", "method", m.name, range.limit, range.resolution)
-            emoClient.fetchSeries("gateway-service-time", "method", m.name, range.limit, range.resolution)
+        const range = root.rangeFor(tileId)
+        if (tileId === "gateway") {
+            for (const m of root.httpMethods) {
+                emoClient.fetchSeries("gateway-service-count", "method", m.name, range.limit, range.resolution)
+                emoClient.fetchSeries("gateway-service-time", "method", m.name, range.limit, range.resolution)
+            }
+            return
         }
-        for (const m of root.serviceModules) {
-            emoClient.fetchAggregatedSeries(m.id + "-service-count", range.limit * root.maxServiceActions, range.resolution)
-            emoClient.fetchAggregatedSeries(m.id + "-service-time", range.limit * root.maxServiceActions, range.resolution)
-        }
+        emoClient.fetchAggregatedSeries(tileId + "-service-count", range.limit * root.maxServiceActions, range.resolution)
+        emoClient.fetchAggregatedSeries(tileId + "-service-time", range.limit * root.maxServiceActions, range.resolution)
+    }
+
+    function refreshMetrics() {
+        root.refreshTile("gateway")
+        for (const m of root.serviceModules)
+            root.refreshTile(m.id)
     }
 
     // Files `points` under the module a "<id>-service-count"/"-service-time" metric belongs to,
@@ -155,7 +225,9 @@ Item {
     Connections {
         target: emoClient
         function onSeriesLoaded(name, labelValue, points) {
-            const inRange = root.pointsInRange(points)
+            const tileId = root.tileForMetric(name)
+            if (tileId.length === 0) return
+            const inRange = root.pointsInRange(points, tileId)
             if (name === "gateway-service-count") {
                 const byMethod = Object.assign({}, root.requestCountByMethod)
                 byMethod[labelValue] = inRange
@@ -164,8 +236,12 @@ Item {
                 const byMethod = Object.assign({}, root.requestTimeByMethod)
                 byMethod[labelValue] = inRange
                 root.requestTimeByMethod = byMethod
-            } else if (!root.setModulePoints(name, inRange)) return
-            root.metricsUpdatedText = Qt.formatDateTime(new Date(), "hh:mm:ss")
+            } else {
+                root.setModulePoints(name, inRange)
+            }
+            const updated = Object.assign({}, root.updatedByTile)
+            updated[tileId] = Qt.formatDateTime(new Date(), "hh:mm:ss")
+            root.updatedByTile = updated
         }
         function onSeriesFailed(name, labelValue, message) {
             if (name === "gateway-service-count") {
@@ -212,7 +288,7 @@ Item {
                         implicitWidth: 32
                         implicitHeight: 32
                         Material.theme: Material.Dark
-                        onClicked: chartSettingsDialog.open()
+                        onClicked: chartSettingsDialog.openFor("gateway", "Gateway Traffic")
                     },
                     Button {
                         text: "⟳"
@@ -221,7 +297,7 @@ Item {
                         implicitWidth: 32
                         implicitHeight: 32
                         Material.theme: Material.Dark
-                        onClicked: root.refreshMetrics()
+                        onClicked: root.refreshTile("gateway")
                     }
                 ]
 
@@ -233,11 +309,12 @@ Item {
                         Column {
                             width: parent.width
                             spacing: 8
+                            visible: root.chartVisible("gateway", "count")
                             Text { text: "Request Count"; color: "#c4c9d1"; font.pixelSize: 12; font.bold: true }
                             LineChart {
                                 width: parent.width
                                 height: 160
-                                timeFormat: root.historyRange.timeFormat
+                                timeFormat: root.rangeFor("gateway").timeFormat
                                 series: root.seriesFor(root.requestCountByMethod)
                             }
                         }
@@ -245,19 +322,21 @@ Item {
                         Column {
                             width: parent.width
                             spacing: 8
+                            visible: root.chartVisible("gateway", "time")
                             Text { text: "Request Time"; color: "#c4c9d1"; font.pixelSize: 12; font.bold: true }
                             LineChart {
                                 width: parent.width
                                 height: 160
                                 valueSuffix: " ms"
                                 decimals: 1
-                                timeFormat: root.historyRange.timeFormat
+                                timeFormat: root.rangeFor("gateway").timeFormat
                                 series: root.seriesFor(root.requestTimeByMethod)
                             }
                         }
 
                         Text {
-                            text: root.historyRange.label + " · updated " + root.metricsUpdatedText
+                            text: root.rangeFor("gateway").label + " · updated "
+                                  + (root.updatedByTile["gateway"] || "—")
                             color: "#6b7280"
                             font.pixelSize: 11
                         }
@@ -265,9 +344,9 @@ Item {
                 ]
             }
 
-            // One tile per instrumented module. No gear on these: the period set in the Gateway
-            // tile's chart settings applies to every chart on the page, and they have no
-            // per-series toggles of their own.
+            // One tile per instrumented module, each with its own gear: period, and which of its
+            // two charts to draw, are per tile - comparing a module's month against the gateway's
+            // today is a normal thing to want.
             Repeater {
                 model: root.serviceModules
                 delegate: ServiceModuleTile {
@@ -275,12 +354,15 @@ Item {
 
                     width: contentColumn.width
                     title: modelData.title
-                    timeFormat: root.historyRange.timeFormat
+                    timeFormat: root.rangeFor(modelData.id).timeFormat
                     countPoints: root.moduleCountPoints[modelData.id] || []
                     timePoints: root.moduleTimePoints[modelData.id] || []
-                    footerText: modelData.description + " · " + root.historyRange.label
-                                + " · updated " + root.metricsUpdatedText
-                    onRefreshRequested: root.refreshMetrics()
+                    showCount: root.chartVisible(modelData.id, "count")
+                    showTime: root.chartVisible(modelData.id, "time")
+                    footerText: modelData.description + " · " + root.rangeFor(modelData.id).label
+                                + " · updated " + (root.updatedByTile[modelData.id] || "—")
+                    onRefreshRequested: root.refreshTile(modelData.id)
+                    onSettingsRequested: chartSettingsDialog.openFor(modelData.id, modelData.title)
                 }
             }
 
@@ -436,6 +518,8 @@ Item {
         }
     }
 
+    // One dialog serving every tile: they configure the same things, and `tileId` is what decides
+    // whose period is being edited and whether the gateway's per-method toggles apply.
     Dialog {
         id: chartSettingsDialog
         modal: true
@@ -446,10 +530,19 @@ Item {
         bottomPadding: 24
         standardButtons: Dialog.NoButton
 
+        property string tileId: "gateway"
+        property string tileTitle: "Gateway Traffic"
+        readonly property bool gateway: chartSettingsDialog.tileId === "gateway"
+
         // ComboBox's currentIndex binding gets clobbered by its own internal model-populate
         // logic, same as every other dialog's combo/spinbox in this app - set it imperatively
         // on open instead (see createKeyDialog's onOpened in EkmKeysPage.qml for the same idiom).
-        onOpened: historyCombo.currentIndex = root.historyRangeIndex
+        function openFor(tileId, tileTitle) {
+            chartSettingsDialog.tileId = tileId
+            chartSettingsDialog.tileTitle = tileTitle
+            chartSettingsDialog.open()
+            historyCombo.currentIndex = root.rangeIndexFor(tileId)
+        }
 
         background: Rectangle {
             radius: 16
@@ -465,9 +558,15 @@ Item {
             Column {
                 width: parent.width
                 spacing: 4
-                Text { text: "Chart Settings"; color: "white"; font.pixelSize: 18; font.bold: true }
                 Text {
-                    text: "The period applies to every chart on this page; the method toggles to the Gateway Traffic charts."
+                    text: chartSettingsDialog.tileTitle + " Settings"
+                    color: "white"
+                    font.pixelSize: 18
+                    font.bold: true
+                }
+                Text {
+                    text: "Applies to this tile only - each tile keeps its own period, so one can show today "
+                          + "while another shows the year."
                     color: "#9aa1ac"
                     font.pixelSize: 12
                     wrapMode: Text.WordWrap
@@ -486,21 +585,11 @@ Item {
                     model: root.historyRanges.map(r => r.label)
                     Material.theme: Material.Dark
                     Material.accent: "#4f8cff"
-                    onActivated: {
-                        root.historyRangeIndex = currentIndex
-                        // The points already on screen are of the previous period's resolution and
-                        // would be plotted against the new period's axis labels until its responses
-                        // land - drop them rather than show a chart that mixes bucket widths.
-                        root.requestCountByMethod = ({})
-                        root.requestTimeByMethod = ({})
-                        root.moduleCountPoints = ({})
-                        root.moduleTimePoints = ({})
-                        root.refreshMetrics()
-                    }
+                    onActivated: root.setRangeIndex(chartSettingsDialog.tileId, currentIndex)
                 }
                 Text {
                     text: {
-                        const r = root.historyRange
+                        const r = root.rangeFor(chartSettingsDialog.tileId)
                         return r.resolution === "RAW" ? "One point per emo flush period (5 min)"
                              : r.resolution === "HOUR" ? "One point per hour" : "One point per day"
                     }
@@ -511,15 +600,21 @@ Item {
                 }
             }
 
+            // Gateway: one line per HTTP method, since its metrics are labelled by method.
             Column {
                 id: methodsColumn
                 width: parent.width
                 spacing: 10
+                visible: chartSettingsDialog.gateway
+
                 Text { text: "HTTP Methods"; color: "#9aa1ac"; font.pixelSize: 12 }
 
                 Repeater {
                     model: root.httpMethods
                     delegate: Row {
+                        id: methodRow
+                        required property var modelData
+
                         width: methodsColumn.width
                         height: 28
                         spacing: 10
@@ -528,24 +623,64 @@ Item {
                             width: 10
                             height: 10
                             radius: 5
-                            color: modelData.color
+                            color: methodRow.modelData.color
                             anchors.verticalCenter: parent.verticalCenter
                         }
                         Text {
-                            text: modelData.name
+                            text: methodRow.modelData.name
                             color: "#e5e7eb"
                             font.pixelSize: 13
                             anchors.verticalCenter: parent.verticalCenter
-                            width: parent.width - 66
+                            width: methodRow.width - 66
                         }
                         ToggleSwitch {
                             anchors.verticalCenter: parent.verticalCenter
-                            checked: root.enabledMethods[modelData.name]
+                            checked: root.enabledMethods[methodRow.modelData.name]
                             onToggled: (checked) => {
                                 const updated = Object.assign({}, root.enabledMethods)
-                                updated[modelData.name] = checked
+                                updated[methodRow.modelData.name] = checked
                                 root.enabledMethods = updated
                             }
+                        }
+                    }
+                }
+            }
+
+            // Module tiles: a single aggregated line per chart, so what there is to switch is the
+            // charts themselves.
+            Column {
+                id: chartsColumn
+                width: parent.width
+                spacing: 10
+                visible: !chartSettingsDialog.gateway
+
+                Text { text: "Charts"; color: "#9aa1ac"; font.pixelSize: 12 }
+
+                Repeater {
+                    model: [
+                        { key: "count", label: "Request Count" },
+                        { key: "time", label: "Request Time" }
+                    ]
+                    delegate: Row {
+                        id: chartRow
+                        required property var modelData
+
+                        width: chartsColumn.width
+                        height: 28
+                        spacing: 10
+
+                        Text {
+                            text: chartRow.modelData.label
+                            color: "#e5e7eb"
+                            font.pixelSize: 13
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: chartRow.width - 56
+                        }
+                        ToggleSwitch {
+                            anchors.verticalCenter: parent.verticalCenter
+                            checked: root.chartVisible(chartSettingsDialog.tileId, chartRow.modelData.key)
+                            onToggled: (checked) => root.setChartVisible(chartSettingsDialog.tileId,
+                                                                        chartRow.modelData.key, checked)
                         }
                     }
                 }

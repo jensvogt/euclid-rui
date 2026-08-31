@@ -37,12 +37,17 @@ public:
                                   bool includeDirectories = false);
     Q_INVOKABLE void deleteObject(const QString &bucketErn, const QString &objectErn);
 
-    // Replaces an object's user-defined attributes with `attributes`, a {name: {type, value}} map
-    // where type is one of string/int/long/float/double/bool (the JSON shape Dto::COM::Variant
-    // reads). "set-object-attributes" writes the map as a whole - anything the map does not name
-    // is dropped server-side - so adding or removing one attribute means sending all of them,
-    // which is why callers hand over the finished map rather than a single change.
-    Q_INVOKABLE void setObjectAttributes(const QString &objectErn, const QVariantMap &attributes);
+    // User-defined object attributes. One call changes one attribute: ESM replaced the old
+    // bulk "set-object-attributes" with add/set/delete/list, each strict about whether the name
+    // already exists - add fails with 409 on a duplicate, set and delete with 404 on a name that
+    // was never stored, so a typo cannot quietly create or drop the wrong thing.
+    //
+    // `type` is one of string/int/long/float/double/bool and decides how `value` is encoded, the
+    // JSON shape Dto::COM::Variant reads: {"type": ..., "value": ...}.
+    Q_INVOKABLE void fetchObjectAttributes(const QString &objectErn);
+    Q_INVOKABLE void addObjectAttribute(const QString &objectErn, const QString &name, const QString &type, const QVariant &value);
+    Q_INVOKABLE void setObjectAttribute(const QString &objectErn, const QString &name, const QString &type, const QVariant &value);
+    Q_INVOKABLE void deleteObjectAttribute(const QString &objectErn, const QString &name);
     // Uploads the local file at fileUrl (e.g. from a QML FileDialog's selectedFile) as an object
     // under the given key. Files under kMultipartThreshold go through "put-object" in one request;
     // larger files are split into kMultipartThreshold-sized parts and sent through the
@@ -69,9 +74,12 @@ signals:
     // Emitted after each part of a multipart upload completes; bytesTotal is the whole file's size.
     // Never emitted for single-request ("put-object") uploads.
     void uploadProgress(const QString &bucketErn, const QString &key, qint64 bytesSent, qint64 bytesTotal);
-    // Carries the attributes the server stored, read back out of its response, so a details page
-    // shows what was actually saved rather than what it hoped it sent.
-    void objectAttributesSaved(const QString &objectErn, const QVariantMap &attributes);
+    // The object's whole attribute map, {name: {type, value}}, as "list-object-attributes"
+    // returned it.
+    void objectAttributesLoaded(const QString &objectErn, const QVariantMap &attributes);
+    // One attribute was added, changed or removed. Carries no value: each mutation returns only
+    // the attribute it touched, and re-reading the list is what keeps the view authoritative.
+    void objectAttributeChanged(const QString &objectErn, const QString &name);
     void objectAttributesFailed(const QString &message);
 
 private:

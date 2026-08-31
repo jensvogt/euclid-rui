@@ -174,35 +174,75 @@ void EsmClient::deleteObject(const QString &bucketErn, const QString &objectErn)
          });
 }
 
-void EsmClient::setObjectAttributes(const QString &objectErn, const QVariantMap &attributes) {
-    QJsonObject wire;
-    for (auto it = attributes.constBegin(); it != attributes.constEnd(); ++it) {
-        const QVariantMap attribute = it.value().toMap();
-        // Each value travels as {"type": ..., "value": ...}; a bare value would be rejected,
-        // since Variant reads the type first and then the matching JSON type.
-        const QString type = attribute.value("type", QStringLiteral("string")).toString();
-        const QVariant value = attribute.value("value");
+namespace {
+// {"type": ..., "value": ...} - the JSON shape Dto::COM::Variant reads. The value has to carry the
+// JSON type its "type" field names: a "long" holding a string makes the server throw rather than
+// answer, so callers validate before getting here.
+QJsonObject variantValue(const QString &type, const QVariant &value) {
+    QJsonValue encoded;
+    if (type == QLatin1String("int") || type == QLatin1String("long"))
+        encoded = QJsonValue(value.toLongLong());
+    else if (type == QLatin1String("double") || type == QLatin1String("float"))
+        encoded = QJsonValue(value.toDouble());
+    else if (type == QLatin1String("bool"))
+        encoded = QJsonValue(value.toBool());
+    else
+        encoded = QJsonValue(value.toString());
+    return QJsonObject{{"type", type}, {"value", encoded}};
+}
+}
 
-        QJsonValue encoded;
-        if (type == QLatin1String("int") || type == QLatin1String("long"))
-            encoded = QJsonValue(value.toLongLong());
-        else if (type == QLatin1String("double") || type == QLatin1String("float"))
-            encoded = QJsonValue(value.toDouble());
-        else if (type == QLatin1String("bool"))
-            encoded = QJsonValue(value.toBool());
-        else
-            encoded = QJsonValue(value.toString());
-
-        wire[it.key()] = QJsonObject{{"type", type}, {"value", encoded}};
-    }
-
+void EsmClient::fetchObjectAttributes(const QString &objectErn) {
     QJsonObject body;
     body["ern"] = objectErn;
-    body["attributes"] = wire;
 
-    m_base->post("esm", "set-object-attributes", body, true,
+    m_base->post("esm", "list-object-attributes", body, true,
          [this, objectErn](const QJsonObject &response) {
-             emit objectAttributesSaved(objectErn, response.value("attributes").toObject().toVariantMap());
+             emit objectAttributesLoaded(objectErn, response.value("attributes").toObject().toVariantMap());
+         },
+         [this](const QString &message) {
+             emit objectAttributesFailed(message);
+         });
+}
+
+void EsmClient::addObjectAttribute(const QString &objectErn, const QString &name, const QString &type, const QVariant &value) {
+    QJsonObject body;
+    body["ern"] = objectErn;
+    body["name"] = name;
+    body["value"] = variantValue(type, value);
+
+    m_base->post("esm", "add-object-attribute", body, true,
+         [this, objectErn, name](const QJsonObject &response) {
+             emit objectAttributeChanged(objectErn, name);
+         },
+         [this](const QString &message) {
+             emit objectAttributesFailed(message);
+         });
+}
+
+void EsmClient::setObjectAttribute(const QString &objectErn, const QString &name, const QString &type, const QVariant &value) {
+    QJsonObject body;
+    body["ern"] = objectErn;
+    body["name"] = name;
+    body["value"] = variantValue(type, value);
+
+    m_base->post("esm", "set-object-attribute", body, true,
+         [this, objectErn, name](const QJsonObject &response) {
+             emit objectAttributeChanged(objectErn, name);
+         },
+         [this](const QString &message) {
+             emit objectAttributesFailed(message);
+         });
+}
+
+void EsmClient::deleteObjectAttribute(const QString &objectErn, const QString &name) {
+    QJsonObject body;
+    body["ern"] = objectErn;
+    body["name"] = name;
+
+    m_base->post("esm", "delete-object-attribute", body, true,
+         [this, objectErn, name](const QJsonObject &response) {
+             emit objectAttributeChanged(objectErn, name);
          },
          [this](const QString &message) {
              emit objectAttributesFailed(message);

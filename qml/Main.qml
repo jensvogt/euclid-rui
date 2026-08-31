@@ -60,6 +60,14 @@ ApplicationWindow {
     property string selectedMessageId: ""
     property string selectedMessageQueueName: ""
     property var selectedMessageDetails: ({})
+    // Message and byte volume through the queues, labelled per queue ERN server-side and summed
+    // across them here. "Sent" is what went into a queue, "received" what a consumer took back
+    // out - a redelivered message counts again, which is what makes the gap between the two
+    // visible. -1 means "not loaded yet", as distinct from a genuine zero.
+    property double eqsMessagesSent: -1
+    property double eqsMessagesReceived: -1
+    property double eqsBytesSent: -1
+    property double eqsBytesReceived: -1
 
     // ESM
     property int esmBucketCount: -1
@@ -86,14 +94,23 @@ ApplicationWindow {
     property string selectedEnsMessageId: ""
     property string selectedEnsMessageTopicName: ""
     property var selectedEnsMessageDetails: ({})
+    // Per-topic volume, summed across topics here. Read like the EQS pair with one difference
+    // worth remembering: "received" is what was handed to a topic's subscriptions, so one publish
+    // to three subscriptions counts once sent and three times received - the fan-out factor.
+    property double ensMessagesSent: -1
+    property double ensMessagesReceived: -1
+    property double ensBytesSent: -1
+    property double ensBytesReceived: -1
 
-    // ETS. No service count/time here, unlike every other module: ETS has no MonitoringTimer
-    // instrumentation server-side, so emo holds no "ets-service-*" series to average. What it does
-    // have is transfer counters, recorded by the euclid-ftp/euclid-sftp processes themselves
-    // (extern/common/include/TransferMetrics.h) and labelled by server; -1 means "not loaded yet",
-    // which is what distinguishes it from a genuine zero.
+    // ETS. Two kinds of metric: the per-action service count/time every module records through
+    // Core::Monitoring::MonitoringTimer, and the transfer counters recorded by the
+    // euclid-ftp/euclid-sftp processes themselves (extern/common/include/TransferMetrics.h),
+    // labelled by server. -1 means "not loaded yet", which is what distinguishes it from a
+    // genuine zero.
     property int etsServerCount: -1
     property int etsRunningCount: -1
+    property double etsServiceCount: -1
+    property double etsServiceTime: -1
     property double etsFilesSent: -1
     property double etsFilesReceived: -1
     // Bytes are counted at the protocol rather than at the bucket, so they are what the client
@@ -148,6 +165,12 @@ ApplicationWindow {
         eqsClient.fetchQueues("", 0, 100)
         emoClient.fetchAverage("eqs-service-count")
         emoClient.fetchAverage("eqs-service-time")
+        // Aggregated across the "queue" label for a deployment total, then summed over today (see
+        // sumToday). The row cap is a day of 5-minute buckets times room for eight queues.
+        emoClient.fetchAggregatedSeries("eqs-messages-sent", 288 * 8, "RAW")
+        emoClient.fetchAggregatedSeries("eqs-messages-received", 288 * 8, "RAW")
+        emoClient.fetchAggregatedSeries("eqs-bytes-sent", 288 * 8, "RAW")
+        emoClient.fetchAggregatedSeries("eqs-bytes-received", 288 * 8, "RAW")
     }
 
     function refreshEsmSummary() {
@@ -164,6 +187,12 @@ ApplicationWindow {
         ensClient.fetchTopics("", 0, 100)
         emoClient.fetchAverage("ens-service-count")
         emoClient.fetchAverage("ens-service-time")
+        // Aggregated across the "topic" label, then summed over today (see sumToday). The row cap
+        // is a day of 5-minute buckets times room for eight topics.
+        emoClient.fetchAggregatedSeries("ens-messages-sent", 288 * 8, "RAW")
+        emoClient.fetchAggregatedSeries("ens-messages-received", 288 * 8, "RAW")
+        emoClient.fetchAggregatedSeries("ens-bytes-sent", 288 * 8, "RAW")
+        emoClient.fetchAggregatedSeries("ens-bytes-received", 288 * 8, "RAW")
     }
 
     function refreshEkmSummary() {
@@ -193,6 +222,8 @@ ApplicationWindow {
         if (!window.loggedIn)
             return
         etsClient.fetchServers("")
+        emoClient.fetchAverage("ets-service-count")
+        emoClient.fetchAverage("ets-service-time")
         // Aggregated across the "server" label, so the dashboard shows the deployment's total
         // rather than one server's. The row cap counts rows, and one bucket costs one row per
         // server, so it is a day of 5-minute buckets times room for eight transfer servers.
@@ -209,12 +240,28 @@ ApplicationWindow {
             else if (name === "ets-files-sent") window.etsFilesSent = window.sumToday(points)
             else if (name === "ets-bytes-received") window.etsBytesReceived = window.sumToday(points)
             else if (name === "ets-bytes-sent") window.etsBytesSent = window.sumToday(points)
+            else if (name === "eqs-messages-received") window.eqsMessagesReceived = window.sumToday(points)
+            else if (name === "eqs-messages-sent") window.eqsMessagesSent = window.sumToday(points)
+            else if (name === "eqs-bytes-received") window.eqsBytesReceived = window.sumToday(points)
+            else if (name === "eqs-bytes-sent") window.eqsBytesSent = window.sumToday(points)
+            else if (name === "ens-messages-received") window.ensMessagesReceived = window.sumToday(points)
+            else if (name === "ens-messages-sent") window.ensMessagesSent = window.sumToday(points)
+            else if (name === "ens-bytes-received") window.ensBytesReceived = window.sumToday(points)
+            else if (name === "ens-bytes-sent") window.ensBytesSent = window.sumToday(points)
         }
         function onSeriesFailed(name, labelValue, message) {
             if (name === "ets-files-received") window.etsFilesReceived = -1
             else if (name === "ets-files-sent") window.etsFilesSent = -1
             else if (name === "ets-bytes-received") window.etsBytesReceived = -1
             else if (name === "ets-bytes-sent") window.etsBytesSent = -1
+            else if (name === "eqs-messages-received") window.eqsMessagesReceived = -1
+            else if (name === "eqs-messages-sent") window.eqsMessagesSent = -1
+            else if (name === "eqs-bytes-received") window.eqsBytesReceived = -1
+            else if (name === "eqs-bytes-sent") window.eqsBytesSent = -1
+            else if (name === "ens-messages-received") window.ensMessagesReceived = -1
+            else if (name === "ens-messages-sent") window.ensMessagesSent = -1
+            else if (name === "ens-bytes-received") window.ensBytesReceived = -1
+            else if (name === "ens-bytes-sent") window.ensBytesSent = -1
         }
     }
 
@@ -401,6 +448,10 @@ ApplicationWindow {
                 window.ekmServiceCount = value
             else if(name === "ekm-service-time")
                 window.ekmServiceTime = value
+            else if(name === "ets-service-count")
+                window.etsServiceCount = value
+            else if(name === "ets-service-time")
+                window.etsServiceTime = value
         }
     }
 
@@ -739,6 +790,14 @@ ApplicationWindow {
                             trend: "not accepting logins", trendUp: false, accent: "#ffb545"
                         },
                         {
+                            title: "Service Count", value: window.etsServiceCount < 0 ? "—" : window.etsServiceCount.toFixed(1),
+                            trend: "per flush period", trendUp: true, accent: "#9aa1ac"
+                        },
+                        {
+                            title: "Service Time", value: window.etsServiceTime < 0 ? "—" : window.etsServiceTime.toFixed(1) + " ms",
+                            trend: "per action", trendUp: true, accent: "#9aa1ac"
+                        },
+                        {
                             title: "Files Received",
                             value: window.etsFilesReceived < 0 ? "—" : String(Math.round(window.etsFilesReceived)),
                             trend: "uploaded today", trendUp: window.etsFilesReceived > 0, accent: "#4cd97b"
@@ -811,6 +870,26 @@ ApplicationWindow {
                         {
                             title: "Service Time", value: window.eqsServiceTime < 0 ? "—" : window.eqsServiceTime.toFixed(1) + " ms",
                             trend: "+0.5% today", trendUp: true, accent: "#c56bff"
+                        },
+                        {
+                            title: "Messages Sent",
+                            value: window.eqsMessagesSent < 0 ? "—" : String(Math.round(window.eqsMessagesSent)),
+                            trend: "into queues today", trendUp: window.eqsMessagesSent > 0, accent: "#4f8cff"
+                        },
+                        {
+                            title: "Bytes Sent",
+                            value: window.eqsBytesSent < 0 ? "—" : SizeFormat.format(window.eqsBytesSent),
+                            trend: "into queues today", trendUp: window.eqsBytesSent > 0, accent: "#4f8cff"
+                        },
+                        {
+                            title: "Messages Received",
+                            value: window.eqsMessagesReceived < 0 ? "—" : String(Math.round(window.eqsMessagesReceived)),
+                            trend: "consumed today", trendUp: window.eqsMessagesReceived > 0, accent: "#4cd97b"
+                        },
+                        {
+                            title: "Bytes Received",
+                            value: window.eqsBytesReceived < 0 ? "—" : SizeFormat.format(window.eqsBytesReceived),
+                            trend: "consumed today", trendUp: window.eqsBytesReceived > 0, accent: "#4cd97b"
                         }
                     ]
                     activity: [
@@ -1005,6 +1084,26 @@ ApplicationWindow {
                         {
                             title: "Service Time", value: window.ensServiceTime < 0 ? "—" : window.ensServiceTime.toFixed(1) + " ms",
                             trend: "+0.5% today", trendUp: true, accent: "#c56bff"
+                        },
+                        {
+                            title: "Messages Published",
+                            value: window.ensMessagesSent < 0 ? "—" : String(Math.round(window.ensMessagesSent)),
+                            trend: "into topics today", trendUp: window.ensMessagesSent > 0, accent: "#4f8cff"
+                        },
+                        {
+                            title: "Bytes Published",
+                            value: window.ensBytesSent < 0 ? "—" : SizeFormat.format(window.ensBytesSent),
+                            trend: "into topics today", trendUp: window.ensBytesSent > 0, accent: "#4f8cff"
+                        },
+                        {
+                            title: "Messages Delivered",
+                            value: window.ensMessagesReceived < 0 ? "—" : String(Math.round(window.ensMessagesReceived)),
+                            trend: "to subscriptions today", trendUp: window.ensMessagesReceived > 0, accent: "#4cd97b"
+                        },
+                        {
+                            title: "Bytes Delivered",
+                            value: window.ensBytesReceived < 0 ? "—" : SizeFormat.format(window.ensBytesReceived),
+                            trend: "to subscriptions today", trendUp: window.ensBytesReceived > 0, accent: "#4cd97b"
                         }
                     ]
                     activity: [
