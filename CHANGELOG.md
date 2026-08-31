@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.13](https://github.com/jensvogt/euclid-rui/compare/1.0.12...v1.0.13) (2026-08-31)
+
+
+### Bug Fixes
+
+* add apt update support ([7b31df6](https://github.com/jensvogt/euclid-rui/commit/7b31df6cf5d309b28598073b555f34112f851089))
+
 ## [1.0.12](https://github.com/jensvogt/euclid-rui/compare/1.0.11...v1.0.12) (2026-08-30)
 
 
