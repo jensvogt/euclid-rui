@@ -22,7 +22,16 @@ constexpr auto kHostKey = "host";
 constexpr auto kPortKey = "port";
 constexpr auto kUseTlsKey = "useTls";
 
+constexpr auto kDefaultAuthMode = "bearer";
+constexpr auto kAuthModeKey = "authMode";
+constexpr auto kAccessKeyIdKey = "accessKeyId";
+constexpr auto kSecretAccessKeyKey = "secretAccessKey";
+
 bool isValidPort(const int port) { return port > 0 && port <= 65535; }
+
+bool isKnownAuthMode(const QString &mode) {
+    return mode == QLatin1String("bearer") || mode == QLatin1String("sigv4") || mode == QLatin1String("rfc9421");
+}
 }
 
 QString AppSettings::configFilePath() {
@@ -37,7 +46,8 @@ AppSettings::AppSettings(QObject *parent)
       m_autoRefreshSeconds(QSettings().value(kAutoRefreshSecondsKey, kDefaultAutoRefreshSeconds).toInt()),
       m_host(kDefaultHost),
       m_port(kDefaultPort),
-      m_useTls(kDefaultUseTls) {
+      m_useTls(kDefaultUseTls),
+      m_authMode(kDefaultAuthMode) {
 
     load();
 
@@ -49,6 +59,10 @@ AppSettings::AppSettings(QObject *parent)
         m_host = kDefaultHost;
     if (!isValidPort(m_port))
         m_port = kDefaultPort;
+    // An unknown mode would leave every request unauthenticated in a way that looks like a server
+    // problem, so fall back rather than trust the file.
+    if (!isKnownAuthMode(m_authMode))
+        m_authMode = kDefaultAuthMode;
 
     // Write the file out on first run, so it exists to be found and edited before anything in the
     // UI has been changed.
@@ -79,6 +93,13 @@ void AppSettings::load() {
     if (const QJsonValue value = root.value(kAutoRefreshSecondsKey); value.isDouble())
         m_autoRefreshSeconds = value.toInt();
 
+    if (const QJsonValue value = root.value(kAuthModeKey); value.isString())
+        m_authMode = value.toString();
+    if (const QJsonValue value = root.value(kAccessKeyIdKey); value.isString())
+        m_accessKeyId = value.toString();
+    if (const QJsonValue value = root.value(kSecretAccessKeyKey); value.isString())
+        m_secretAccessKey = value.toString();
+
     const QJsonObject gateway = root.value(kGatewayKey).toObject();
     if (const QJsonValue value = gateway.value(kHostKey); value.isString())
         m_host = value.toString().trimmed();
@@ -103,6 +124,9 @@ void AppSettings::save() const {
 
     QJsonObject root;
     root[kAutoRefreshSecondsKey] = m_autoRefreshSeconds;
+    root[kAuthModeKey] = m_authMode;
+    root[kAccessKeyIdKey] = m_accessKeyId;
+    root[kSecretAccessKeyKey] = m_secretAccessKey;
     root[kGatewayKey] = gateway;
 
     QFile file(path);
@@ -113,6 +137,36 @@ void AppSettings::save() const {
     // Indented, not compact: the whole point of putting this in the home directory rather than in
     // ~/.config is that it can be opened and edited by hand.
     file.write(QJsonDocument(root).toJson(QJsonDocument::Indented));
+    file.close();
+    // The file holds a secret access key once signature auth is configured, so it is owner-only -
+    // the same footing the euclid CLI puts $HOME/.euclid/credentials on.
+    file.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner);
+}
+
+void AppSettings::setAuthMode(const QString &authMode) {
+    if (!isKnownAuthMode(authMode) || authMode == m_authMode)
+        return;
+    m_authMode = authMode;
+    save();
+    emit credentialsChanged();
+}
+
+void AppSettings::setAccessKeyId(const QString &accessKeyId) {
+    const QString trimmed = accessKeyId.trimmed();
+    if (trimmed == m_accessKeyId)
+        return;
+    m_accessKeyId = trimmed;
+    save();
+    emit credentialsChanged();
+}
+
+void AppSettings::setSecretAccessKey(const QString &secretAccessKey) {
+    const QString trimmed = secretAccessKey.trimmed();
+    if (trimmed == m_secretAccessKey)
+        return;
+    m_secretAccessKey = trimmed;
+    save();
+    emit credentialsChanged();
 }
 
 void AppSettings::setAutoRefreshSeconds(const int seconds) {

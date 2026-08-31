@@ -38,6 +38,13 @@ public:
     // the next request fail in a way that looks like a server error.
     Q_INVOKABLE void setBaseUrl(const QString &baseUrl);
 
+    // How authorized requests prove who they are: "bearer" sends the JWT the password login
+    // returned, "sigv4" and "rfc9421" sign every request with an EAM access key instead. Pushed
+    // in from main.cpp out of AppSettings, same as the base URL. A signature mode with no key
+    // configured falls back to the bearer token rather than sending an unauthenticated request.
+    Q_INVOKABLE void setAuthMode(const QString &authMode);
+    Q_INVOKABLE void setAccessKey(const QString &accessKeyId, const QString &secretAccessKey);
+
     // Empty until login() succeeds.
     [[nodiscard]]
     QString accountId() const { return m_accountId; }
@@ -80,9 +87,18 @@ signals:
 private:
     void setBusy(bool busy);
 
+    // Applies whichever scheme m_authMode names to a request that is about to be sent. `target`
+    // and `action` are already on the request; the body is passed separately because the
+    // signature covers it and QNetworkRequest cannot be asked for it afterwards.
+    void authorize(QNetworkRequest &request, const QByteArray &body);
+
     QNetworkAccessManager m_networkManager;
     QString m_baseUrl;
+    QString m_authMode{QStringLiteral("bearer")};
+    QString m_accessKeyId;
+    QString m_secretAccessKey;
     QString m_token;
+    QString m_userId;
     QString m_accountId;
     QString m_region;
     QString m_namespace;

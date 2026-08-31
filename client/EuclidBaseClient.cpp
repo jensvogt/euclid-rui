@@ -1,4 +1,5 @@
 #include "EuclidBaseClient.h"
+#include "RequestSigner.h"
 
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -53,6 +54,67 @@ void EuclidBaseClient::setBaseUrl(const QString &baseUrl) {
         emit sessionCleared();
 }
 
+void EuclidBaseClient::setAuthMode(const QString &authMode) {
+    m_authMode = authMode;
+}
+
+void EuclidBaseClient::setAccessKey(const QString &accessKeyId, const QString &secretAccessKey) {
+    m_accessKeyId = accessKeyId;
+    m_secretAccessKey = secretAccessKey;
+}
+
+// Everything an authorized request needs to prove itself. The x-euclid-* headers are set here
+// rather than at the call sites because both signature schemes cover them: a header added after
+// signing would not be covered, and one changed afterwards would break the signature.
+void EuclidBaseClient::authorize(QNetworkRequest &request, const QByteArray &body) {
+
+    const QUrl url(m_baseUrl);
+    // Same spelling Qt puts in the Host header, which is what the server signs against: the port
+    // is only part of the authority when it isn't the scheme's default.
+    const int defaultPort = url.scheme() == QLatin1String("https") ? 443 : 80;
+    const int port = url.port(defaultPort);
+    const QString authority = port == defaultPort ? url.host() : url.host() + ":" + QString::number(port);
+
+    // Signed either way, so they go on the request before the signature is computed. account-id
+    // and user-id are informational to the server - it resolves the caller from the key - but
+    // RFC 9421 refuses to build a signature base over a component that is missing or empty.
+    request.setRawHeader("x-euclid-region", m_region.toUtf8());
+    request.setRawHeader("x-euclid-account-id", m_accountId.isEmpty() ? QByteArrayLiteral("-") : m_accountId.toUtf8());
+    request.setRawHeader("x-euclid-user-id", m_userId.isEmpty() ? QByteArrayLiteral("-") : m_userId.toUtf8());
+    if (!m_namespace.isEmpty())
+        request.setRawHeader("x-euclid-namespace", m_namespace.toUtf8());
+
+    const bool signing = (m_authMode == QLatin1String("sigv4") || m_authMode == QLatin1String("rfc9421"))
+                         && !m_accessKeyId.isEmpty() && !m_secretAccessKey.isEmpty();
+    if (!signing) {
+        request.setRawHeader("Authorization", "Bearer " + m_token.toUtf8());
+        return;
+    }
+
+    RequestSigner::Request signable;
+    signable.method = QStringLiteral("POST");
+    signable.path = url.path().isEmpty() ? QStringLiteral("/") : url.path();
+    signable.authority = authority;
+    signable.body = body;
+    for (const QByteArray &name: request.rawHeaderList())
+        signable.headers.insert(QString::fromLatin1(name).toLower(), QString::fromUtf8(request.rawHeader(name)));
+    signable.headers.insert(QStringLiteral("host"), authority);
+
+    RequestSigner::Credentials credentials;
+    credentials.accessKeyId = m_accessKeyId;
+    credentials.secretAccessKey = m_secretAccessKey;
+    credentials.region = m_region;
+    // SigV4 scopes a signature to a service; the server re-derives the key from whatever the
+    // credential scope names, so the routed module is the honest choice.
+    credentials.service = QString::fromUtf8(request.rawHeader("x-euclid-target"));
+
+    const auto signed_ = m_authMode == QLatin1String("sigv4")
+                                 ? RequestSigner::signSigV4(signable, credentials)
+                                 : RequestSigner::signRfc9421(signable, credentials);
+    for (auto it = signed_.constBegin(); it != signed_.constEnd(); ++it)
+        request.setRawHeader(it.key().toUtf8(), it.value().toUtf8());
+}
+
 void EuclidBaseClient::setBusy(const bool busy) {
     if (m_busy == busy)
         return;
@@ -67,11 +129,9 @@ void EuclidBaseClient::post(const QString &target, const QString &action, const 
     request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
     request.setRawHeader("x-euclid-target", target.toUtf8());
     request.setRawHeader("x-euclid-action", action.toUtf8());
+    const QByteArray payload = QJsonDocument(body).toJson(QJsonDocument::Compact);
     if (authorized) {
-        request.setRawHeader("Authorization", "Bearer " + m_token.toUtf8());
-        request.setRawHeader("x-euclid-region", m_region.toUtf8());
-        if (!m_namespace.isEmpty())
-            request.setRawHeader("x-euclid-namespace", m_namespace.toUtf8());
+        authorize(request, payload);
     }
 
     // The local gateway runs with a self-signed dev certificate.
@@ -80,7 +140,7 @@ void EuclidBaseClient::post(const QString &target, const QString &action, const 
     request.setSslConfiguration(sslConfig);
     request.setTransferTimeout(kTransferTimeoutMs);
 
-    QNetworkReply *reply = m_networkManager.post(request, QJsonDocument(body).toJson(QJsonDocument::Compact));
+    QNetworkReply *reply = m_networkManager.post(request, payload);
     connect(reply, &QNetworkReply::finished, this, [reply, onSuccess, onError]() {
         reply->deleteLater();
         const QJsonObject obj = replyBody(reply);
@@ -105,12 +165,10 @@ void EuclidBaseClient::postRaw(const QString &target, const QString &action, con
     request.setHeader(QNetworkRequest::ContentTypeHeader, "application/octet-stream");
     request.setRawHeader("x-euclid-target", target.toUtf8());
     request.setRawHeader("x-euclid-action", action.toUtf8());
-    request.setRawHeader("Authorization", "Bearer " + m_token.toUtf8());
-    request.setRawHeader("x-euclid-region", m_region.toUtf8());
-    if (!m_namespace.isEmpty())
-        request.setRawHeader("x-euclid-namespace", m_namespace.toUtf8());
+    // Extra headers first: they are part of the request the signature covers.
     for (auto it = extraHeaders.constBegin(); it != extraHeaders.constEnd(); ++it)
         request.setRawHeader(it.key().toUtf8(), it.value().toString().toUtf8());
+    authorize(request, body);
 
     // The local gateway runs with a self-signed dev certificate.
     QSslConfiguration sslConfig = request.sslConfiguration();
@@ -147,7 +205,8 @@ void EuclidBaseClient::login(const QString &userId, const QString &password) {
     body["password"] = password;
 
     post("eam", "login", body, false,
-         [this](const QJsonObject &response) {
+         [this, userId](const QJsonObject &response) {
+             m_userId = userId;
              const QJsonObject metadata = response.value("metadata").toObject();
              m_token = response.value("token").toString();
              m_accountId = metadata.value("accountId").toString();

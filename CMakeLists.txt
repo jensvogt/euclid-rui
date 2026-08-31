@@ -49,6 +49,7 @@ qt_policy(SET QTP0004 NEW)
 qt_add_executable(euclid_rui main.cpp
         AppSettings.h AppSettings.cpp
         client/EuclidBaseClient.h client/EuclidBaseClient.cpp
+        client/RequestSigner.h client/RequestSigner.cpp
         client/EamClient.h client/EamClient.cpp
         client/EmmClient.h client/EmmClient.cpp
         client/EqsClient.h client/EqsClient.cpp
