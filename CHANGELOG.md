@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.16](https://github.com/jensvogt/euclid-rui/compare/v1.0.15...v1.0.16) (2026-08-31)
+
+
+### Bug Fixes
+
+* add ESM,EAM and ENS line chart ([0ea4013](https://github.com/jensvogt/euclid-rui/commit/0ea4013132faa9595a1fbcbe1cb2bfa76b94e631))
+
 ## [1.0.15](https://github.com/jensvogt/euclid-rui/compare/1.0.14...v1.0.15) (2026-08-31)
 
 
