@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.18](https://github.com/jensvogt/euclid-rui/compare/1.0.17...v1.0.18) (2026-08-31)
+
+
+### Bug Fixes
+
+* add ETS on the analytics page. ([0929ec8](https://github.com/jensvogt/euclid-rui/commit/0929ec8e2a2a512d400dbdb0aec2c7ff276a3f38))
+
 ## [1.0.17](https://github.com/jensvogt/euclid-rui/compare/1.0.16...v1.0.17) (2026-08-31)
 
 
