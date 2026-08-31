@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.14](https://github.com/jensvogt/euclid-rui/compare/1.0.13...v1.0.14) (2026-08-31)
+
+
+### Bug Fixes
+
+* add gateway line chart ([6322b44](https://github.com/jensvogt/euclid-rui/commit/6322b44f73ac2a7f63877da139193c6b0b4b84a2))
+
 ## [1.0.13](https://github.com/jensvogt/euclid-rui/compare/1.0.12...v1.0.13) (2026-08-31)
 
 
