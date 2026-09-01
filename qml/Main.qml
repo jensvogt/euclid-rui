@@ -102,6 +102,16 @@ ApplicationWindow {
     property double ensBytesSent: -1
     property double ensBytesReceived: -1
 
+    // EAP. Same control-plane shape as ETS: the module owns application definitions and a desired
+    // state, and euclid-mgr's reconciler runs the processes.
+    property int eapApplicationCount: -1
+    property int eapRunningCount: -1
+    property int eapInstanceCount: -1
+    property double eapServiceCount: -1
+    property double eapServiceTime: -1
+    property string selectedApplicationId: ""
+    property var selectedApplicationDetails: ({})
+
     // ETS. Two kinds of metric: the per-action service count/time every module records through
     // Core::Monitoring::MonitoringTimer, and the transfer counters recorded by the
     // euclid-ftp/euclid-sftp processes themselves (extern/common/include/TransferMetrics.h),
@@ -140,7 +150,7 @@ ApplicationWindow {
 
     readonly property var moduleRoutes: ({
         "eam": "modules-eam", "eqs": "modules-eqs", "esm": "modules-esm",
-        "ekm": "modules-ekm", "ens": "modules-ens", "ets": "modules-ets"
+        "ekm": "modules-ekm", "ens": "modules-ens", "ets": "modules-ets", "eap": "modules-eap"
     })
 
     function moduleRouteFor(query) {
@@ -216,6 +226,32 @@ ApplicationWindow {
                 total += point.value
         }
         return total
+    }
+
+    function refreshEapSummary() {
+        if (!window.loggedIn)
+            return
+        eapClient.fetchApplications("")
+        emoClient.fetchAverage("eap-service-count")
+        emoClient.fetchAverage("eap-service-time")
+    }
+
+    Connections {
+        target: eapClient
+        function onApplicationsLoaded(list, total) {
+            window.eapApplicationCount = total
+            // Counted on `state`, not `desiredState`: the module page should say what is actually
+            // up, not what was asked for.
+            window.eapRunningCount = list.filter(a => a.state === "RUNNING").length
+            let instances = 0
+            for (const application of list) instances += application.instances
+            window.eapInstanceCount = instances
+        }
+        function onApplicationsFailed(message) {
+            window.eapApplicationCount = -1
+            window.eapRunningCount = -1
+            window.eapInstanceCount = -1
+        }
     }
 
     function refreshEtsSummary() {
@@ -317,6 +353,7 @@ ApplicationWindow {
         if (currentRoute === "modules-ens") refreshEnsSummary()
         if (currentRoute === "modules-ekm") refreshEkmSummary()
         if (currentRoute === "modules-ets") refreshEtsSummary()
+        if (currentRoute === "modules-eap") refreshEapSummary()
     }
     onLoggedInChanged: {
         if (loggedIn && currentRoute === "modules-eam") refreshEamSummary()
@@ -325,6 +362,7 @@ ApplicationWindow {
         if (loggedIn && currentRoute === "modules-ens") refreshEnsSummary()
         if (loggedIn && currentRoute === "modules-ekm") refreshEkmSummary()
         if (loggedIn && currentRoute === "modules-ets") refreshEtsSummary()
+        if (loggedIn && currentRoute === "modules-eap") refreshEapSummary()
     }
 
     Timer {
@@ -367,6 +405,13 @@ ApplicationWindow {
         running: appSettings.autoRefreshSeconds > 0 && window.currentRoute === "modules-ets" && window.loggedIn
         repeat: true
         onTriggered: window.refreshEtsSummary()
+    }
+
+    Timer {
+        interval: appSettings.autoRefreshSeconds * 1000
+        running: appSettings.autoRefreshSeconds > 0 && window.currentRoute === "modules-eap" && window.loggedIn
+        repeat: true
+        onTriggered: window.refreshEapSummary()
     }
 
     Connections {
@@ -452,6 +497,10 @@ ApplicationWindow {
                 window.etsServiceCount = value
             else if(name === "ets-service-time")
                 window.etsServiceTime = value
+            else if(name === "eap-service-count")
+                window.eapServiceCount = value
+            else if(name === "eap-service-time")
+                window.eapServiceTime = value
         }
     }
 
@@ -766,6 +815,67 @@ ApplicationWindow {
                     keyName: window.selectedKeyName
                     details: window.selectedKeyDetails
                     onBack: window.currentRoute = "modules-ekm-keys"
+                }
+
+                // EAP
+                ModulePage {
+                    anchors.fill: parent
+                    visible: window.currentRoute === "modules-eap"
+                    moduleName: "EAP"
+                    loggedIn: window.loggedIn
+                    stats: [
+                        {
+                            title: "Applications", value: window.eapApplicationCount < 0 ? "—" : String(window.eapApplicationCount),
+                            trend: "live", trendUp: true, accent: "#4f8cff", route: "modules-eap-applications"
+                        },
+                        {
+                            title: "Running", value: window.eapRunningCount < 0 ? "—" : String(window.eapRunningCount),
+                            trend: window.eapApplicationCount > 0 ? "of " + window.eapApplicationCount + " defined" : "none defined",
+                            trendUp: window.eapRunningCount > 0, accent: "#4cd97b", route: "modules-eap-applications"
+                        },
+                        {
+                            title: "Instances", value: window.eapInstanceCount < 0 ? "—" : String(window.eapInstanceCount),
+                            trend: "processes up", trendUp: window.eapInstanceCount > 0, accent: "#c56bff"
+                        },
+                        {
+                            title: "Service Count", value: window.eapServiceCount < 0 ? "—" : window.eapServiceCount.toFixed(1),
+                            trend: "per flush period", trendUp: true, accent: "#9aa1ac"
+                        },
+                        {
+                            title: "Service Time", value: window.eapServiceTime < 0 ? "—" : window.eapServiceTime.toFixed(1) + " ms",
+                            trend: "per action", trendUp: true, accent: "#9aa1ac"
+                        }
+                    ]
+                    activity: [
+                        { initials: "AP", avatarColor: "#4f8cff", title: "Applications reconciled", subtitle: "euclid-mgr · desired state", time: "live" },
+                        { initials: "AP", avatarColor: "#4cd97b", title: "Artifacts come out of ESM buckets", subtitle: "storage · esm", time: "—" },
+                        { initials: "AP", avatarColor: "#ffb545", title: "Each runs as an EAM user's access key", subtitle: "access · eam", time: "—" }
+                    ]
+                    onNavigate: (route) => {
+                        window.selectedApplicationId = ""
+                        window.currentRoute = route
+                    }
+                }
+                EapApplicationsPage {
+                    anchors.fill: parent
+                    visible: window.currentRoute === "modules-eap-applications"
+                    loggedIn: window.loggedIn
+                    namespaceName: window.currentNamespace
+                    onBack: window.currentRoute = "modules-eap"
+                    onOpenApplicationDetails: (applicationId, details) => {
+                        window.selectedApplicationId = applicationId
+                        window.selectedApplicationDetails = details
+                        window.currentRoute = "modules-eap-application-details"
+                    }
+                }
+                EapApplicationDetailsPage {
+                    anchors.fill: parent
+                    visible: window.currentRoute === "modules-eap-application-details"
+                    loggedIn: window.loggedIn
+                    namespaceName: window.currentNamespace
+                    applicationId: window.selectedApplicationId
+                    details: window.selectedApplicationDetails
+                    onBack: window.currentRoute = "modules-eap-applications"
                 }
 
                 // ETS
