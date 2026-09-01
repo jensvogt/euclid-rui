@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.21](https://github.com/jensvogt/euclid-rui/compare/1.0.20...v1.0.21) (2026-09-01)
+
+
+### Bug Fixes
+
+* websocket support ([4425998](https://github.com/jensvogt/euclid-rui/commit/44259987819ecef696f49400df02d61e4a2ec722))
+
 ## [1.0.20](https://github.com/jensvogt/euclid-rui/compare/1.0.19...v1.0.20) (2026-09-01)
 
 
