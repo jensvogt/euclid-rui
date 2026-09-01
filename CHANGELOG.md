@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.20](https://github.com/jensvogt/euclid-rui/compare/1.0.19...v1.0.20) (2026-09-01)
+
+
+### Bug Fixes
+
+* add AboutDialog.qml ([ff82de7](https://github.com/jensvogt/euclid-rui/commit/ff82de79952516cececdd1a05a0842688bb4939f))
+* add eap module ([491a604](https://github.com/jensvogt/euclid-rui/commit/491a60494005d776b7493397aa543989091d917f))
+
 ## [1.0.19](https://github.com/jensvogt/euclid-rui/compare/1.0.18...v1.0.19) (2026-08-31)
 
 
