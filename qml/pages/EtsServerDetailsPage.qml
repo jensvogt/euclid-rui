@@ -15,6 +15,7 @@ Item {
 
     property string error: ""
     property bool deleting: false
+    property bool savingAccess: false
 
     signal back()
 
@@ -27,6 +28,26 @@ Item {
     readonly property string serverState: detail("state", "")
     readonly property string desiredState: detail("desiredState", "")
     readonly property bool ftp: detail("protocol", "") === "FTP"
+
+    // "update-server" replaces each field it is given, so adding or removing one user means
+    // sending the resulting list - the server has no add/remove for these.
+    function addUser(userId) {
+        const users = root.detail("userIds", []).slice()
+        if (users.indexOf(userId) >= 0) {
+            root.error = "\"" + userId + "\" is already allowed to log in."
+            return
+        }
+        users.push(userId)
+        root.error = ""
+        root.savingAccess = true
+        etsClient.updateServer(root.serverId, { userIds: users })
+    }
+
+    function removeUser(userId) {
+        root.error = ""
+        root.savingAccess = true
+        etsClient.updateServer(root.serverId, { userIds: root.detail("userIds", []).filter(u => u !== userId) })
+    }
 
     function serverStateColor(value) {
         if (value === "RUNNING") return "#4cd97b"
@@ -76,7 +97,16 @@ Item {
         }
         function onServerStateFailed(message) {
             root.deleting = false
-            root.error = message
+            root.savingAccess = false
+            if (addUserDialog.opened) addUserDialog.errorText = message
+            else root.error = message
+        }
+        function onServerStateChanged(serverId, desiredState) {
+            if (serverId !== root.serverId) return
+            root.savingAccess = false
+            addUserDialog.close()
+            // The change is already stored; re-reading is what puts the new list on screen.
+            root.refresh()
         }
     }
 
@@ -257,12 +287,40 @@ Item {
                     anchors.margins: 20
                     spacing: 14
 
-                    Text { text: "Who may log in"; color: "white"; font.pixelSize: 15; font.bold: true }
+                    Item {
+                        width: parent.width
+                        height: accessHeaderRow.implicitHeight
+
+                        Row {
+                            id: accessHeaderRow
+                            spacing: 10
+                            Text { text: "Who may log in"; color: "white"; font.pixelSize: 15; font.bold: true }
+                            BusyIndicator {
+                                running: root.savingAccess
+                                visible: root.savingAccess
+                                width: 18
+                                height: 18
+                                anchors.verticalCenter: parent.verticalCenter
+                            }
+                        }
+
+                        Button {
+                            text: "+ Add user"
+                            highlighted: true
+                            anchors.right: parent.right
+                            anchors.verticalCenter: accessHeaderRow.verticalCenter
+                            Material.theme: Material.Dark
+                            Material.accent: "#4f8cff"
+                            enabled: !root.savingAccess
+                            onClicked: addUserDialog.open()
+                        }
+                    }
 
                     Text {
                         width: parent.width
                         text: "EAM users listed directly, plus every member of the listed groups - a union, not an "
-                              + "intersection. Edited through the ETS API; this page shows the current definition."
+                              + "intersection. A running server keeps its current list until the reconciler next "
+                              + "restarts it. Groups are edited through the ETS API."
                         color: "#6b7280"
                         font.pixelSize: 11
                         wrapMode: Text.WordWrap
@@ -288,13 +346,36 @@ Item {
                                 radius: 8
                                 color: "#2c3648"
                                 height: 26
-                                width: userChipText.implicitWidth + 20
-                                Text {
-                                    id: userChipText
+                                width: userChipRow.implicitWidth + 20
+                                Row {
+                                    id: userChipRow
                                     anchors.centerIn: parent
-                                    text: "user · " + userChip.modelData
-                                    color: "#c4c9d1"
-                                    font.pixelSize: 11
+                                    spacing: 6
+
+                                    Text {
+                                        id: userChipText
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        text: "user · " + userChip.modelData
+                                        color: "#c4c9d1"
+                                        font.pixelSize: 11
+                                    }
+                                    Text {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        text: "×"
+                                        color: removeUserArea.containsMouse ? "#ff6b6b" : "#9aa1ac"
+                                        font.pixelSize: 13
+                                        font.bold: true
+
+                                        MouseArea {
+                                            id: removeUserArea
+                                            anchors.fill: parent
+                                            anchors.margins: -4
+                                            hoverEnabled: true
+                                            cursorShape: Qt.PointingHandCursor
+                                            enabled: !root.savingAccess
+                                            onClicked: root.removeUser(userChip.modelData)
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -318,6 +399,112 @@ Item {
                                 }
                             }
                         }
+                    }
+                }
+            }
+        }
+    }
+
+    Dialog {
+        id: addUserDialog
+        modal: true
+        anchors.centerIn: parent
+        width: 380
+        padding: 28
+        topPadding: 24
+        bottomPadding: 24
+        standardButtons: Dialog.NoButton
+
+        property string errorText: ""
+
+        background: Rectangle {
+            radius: 16
+            color: "#1b1e25"
+            border.color: "#2c313c"
+            border.width: 1
+        }
+
+        onOpened: {
+            userIdField.text = ""
+            addUserDialog.errorText = ""
+            userIdField.forceActiveFocus()
+        }
+
+        contentItem: Column {
+            width: addUserDialog.availableWidth
+            spacing: 20
+
+            Column {
+                width: parent.width
+                spacing: 4
+                Text { text: "Allow a user to log in"; color: "white"; font.pixelSize: 18; font.bold: true }
+                Text {
+                    text: "The EAM user ID, as it appears under EAM · users. The transfer server authenticates "
+                          + "logins against EAM, so the user needs no separate FTP password."
+                    color: "#9aa1ac"
+                    font.pixelSize: 12
+                    wrapMode: Text.WordWrap
+                    width: parent.width
+                }
+            }
+
+            Column {
+                width: parent.width
+                spacing: 6
+                Text { text: "User ID"; color: "#9aa1ac"; font.pixelSize: 12 }
+                TextField {
+                    id: userIdField
+                    width: parent.width
+                    placeholderText: "e.g. jvo"
+                    Material.accent: "#4f8cff"
+                    selectByMouse: true
+                    Keys.onReturnPressed: if (addUserButton.enabled) addUserButton.clicked()
+                }
+                Text {
+                    text: addUserDialog.errorText
+                    color: "#ff6b6b"
+                    font.pixelSize: 12
+                    wrapMode: Text.WordWrap
+                    width: parent.width
+                    visible: text.length > 0
+                }
+            }
+
+            Item {
+                width: parent.width
+                height: 40
+
+                Button {
+                    text: "Cancel"
+                    flat: true
+                    anchors.left: parent.left
+                    anchors.verticalCenter: parent.verticalCenter
+                    Material.theme: Material.Dark
+                    onClicked: addUserDialog.close()
+                }
+
+                BusyIndicator {
+                    running: root.savingAccess
+                    visible: root.savingAccess
+                    width: 22
+                    height: 22
+                    anchors.right: addUserButton.left
+                    anchors.rightMargin: 12
+                    anchors.verticalCenter: parent.verticalCenter
+                }
+
+                Button {
+                    id: addUserButton
+                    text: "Add"
+                    highlighted: true
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    Material.theme: Material.Dark
+                    Material.accent: "#4f8cff"
+                    enabled: !root.savingAccess && userIdField.text.trim().length > 0
+                    onClicked: {
+                        addUserDialog.errorText = ""
+                        root.addUser(userIdField.text.trim())
                     }
                 }
             }

@@ -670,6 +670,7 @@ Item {
                         TextField {
                             id: filterField
                             width: Math.min(320, parent.width - 260)
+                            height: 40
                             anchors.verticalCenter: parent.verticalCenter
                             placeholderText: "Filter by any part of the key..."
                             Material.accent: "#4f8cff"
