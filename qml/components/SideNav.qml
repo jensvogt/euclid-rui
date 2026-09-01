@@ -128,6 +128,11 @@ Rectangle {
                     height: root.modulesExpanded ? implicitHeight : 0
 
                     SubNavButton {
+                        label: "EAP"
+                        selected: root.currentRoute.indexOf("modules-eap") === 0
+                        onClicked: root.navigate("modules-eap")
+                    }
+                    SubNavButton {
                         label: "EAM"
                         selected: root.currentRoute.indexOf("modules-eam") === 0
                         onClicked: root.navigate("modules-eam")
