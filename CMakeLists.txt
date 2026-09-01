@@ -114,6 +114,7 @@ qt_add_qml_module(euclid_rui
         qml/components/SizeFormat.qml
         qml/components/Gauge.qml
         qml/components/LineChart.qml
+        qml/components/AboutDialog.qml
         qml/components/ObjectTree.qml
         qml/components/FoldableTile.qml
         qml/components/ServiceModuleTile.qml
@@ -131,6 +132,11 @@ qt_add_qml_module(euclid_rui
 # provides WinMain and calls main) when WIN32_EXECUTABLE is set - see qtbase/src/corelib
 # /CMakeLists.txt:1569-1581 - so the two have to be turned on together, and are.
 set_target_properties(euclid_rui PROPERTIES WIN32_EXECUTABLE TRUE)
+
+# version.txt is already the single source of the version (release-please updates it, and the
+# Windows installer templates are filled from it above); this hands the same string to the app so
+# the window title cannot drift from what was shipped.
+target_compile_definitions(euclid_rui PRIVATE APP_VERSION="${VERSION_STRING}" BUILD_DATE="${RELEASE_DATE}")
 
 target_link_libraries(euclid_rui
         PRIVATE

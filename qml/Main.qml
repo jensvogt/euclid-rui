@@ -12,7 +12,7 @@ ApplicationWindow {
     minimumWidth: 960
     minimumHeight: 600
     visible: true
-    title: "Euclid RUI"
+    title: "Euclid RUI " + appVersion
 
     Material.theme: Material.Dark
     Material.accent: "#4f8cff"
@@ -315,6 +315,13 @@ ApplicationWindow {
         }
     }
 
+    AboutDialog {
+        id: aboutDialog
+        currentUser: window.currentUser
+        currentNamespace: window.currentNamespace
+        signedIn: window.loggedIn
+    }
+
     LoginDialog {
         id: loginDialog
         onLoggedIn: (username, namespaceName) => {
@@ -562,6 +569,28 @@ ApplicationWindow {
                             text: window.currentNamespace + " · " + appSettings.host + ":" + appSettings.port
                             color: "#9aa1ac"
                             font.pixelSize: 11
+                        }
+                    }
+
+                    Rectangle {
+                        id: aboutButton
+                        width: 40
+                        height: 40
+                        radius: 10
+                        color: aboutMouse.containsMouse ? "#2c3648" : "#20242e"
+                        anchors.verticalCenter: parent.verticalCenter
+                        Text {
+                            anchors.centerIn: parent
+                            text: "ⓘ"
+                            color: "#c4c9d1"
+                            font.pixelSize: 18
+                        }
+                        MouseArea {
+                            id: aboutMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: aboutDialog.open()
                         }
                     }
 

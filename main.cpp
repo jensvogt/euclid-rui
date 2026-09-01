@@ -23,6 +23,7 @@ int main(int argc, char *argv[]) {
     const QGuiApplication app(argc, argv);
     QGuiApplication::setOrganizationName("Euclid");
     QGuiApplication::setApplicationName("Euclid RUI");
+    QGuiApplication::setApplicationVersion(QStringLiteral(APP_VERSION));
 
     QCommandLineParser parser;
     parser.setApplicationDescription("Euclid RUI - Qt6/QML dashboard for the euclid backend");
@@ -77,6 +78,11 @@ int main(int argc, char *argv[]) {
     engine.rootContext()->setContextProperty("etsClient", &etsClient);
     engine.rootContext()->setContextProperty("emoClient", &emoClient);
     engine.rootContext()->setContextProperty("appSettings", &appSettings);
+    // QML has no way to read QCoreApplication::applicationVersion() on its own, nor the Qt
+    // version it is running on; the about box shows both.
+    engine.rootContext()->setContextProperty("appVersion", QGuiApplication::applicationVersion());
+    engine.rootContext()->setContextProperty("qtVersion", QStringLiteral(QT_VERSION_STR));
+    engine.rootContext()->setContextProperty("buildDate", QStringLiteral(BUILD_DATE));
     engine.rootContext()->setContextProperty("cliUser", parser.value(userOption));
     engine.rootContext()->setContextProperty("cliPassword", parser.value(passwordOption));
     engine.rootContext()->setContextProperty("cliNamespace", parser.value(namespaceOption));
