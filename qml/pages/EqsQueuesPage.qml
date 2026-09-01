@@ -59,6 +59,21 @@ Item {
         onTriggered: root.refresh()
     }
 
+    // Events are what actually changed something; the timer above stays as the fallback for an
+    // installation without the event service, and for anything that changes without an event.
+    Connections {
+        target: eventStream
+        function onEventReceived(eventType, payload) {
+            if (!root.visible || !root.loggedIn)
+                return
+            if (["eqs.message.sent"].indexOf(eventType) >= 0) {
+                // The listing shows message counts, so a message sent to any queue in view
+                // changes it.
+                root.refresh()
+            }
+        }
+    }
+
     Connections {
         target: eqsClient
         function onQueuesLoaded(list, total) {

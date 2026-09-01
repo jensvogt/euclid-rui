@@ -36,19 +36,14 @@ Dialog {
         Row {
             spacing: 14
 
-            Rectangle {
+            Image {
+                source: "qrc:/EuclidRui/dist/branding/euclid-icon.svg"
                 width: 44
                 height: 44
-                radius: 10
-                color: "#4f8cff"
+                sourceSize.width: 88
+                sourceSize.height: 88
+                fillMode: Image.PreserveAspectFit
                 anchors.verticalCenter: parent.verticalCenter
-                Text {
-                    anchors.centerIn: parent
-                    text: "E"
-                    color: "white"
-                    font.pixelSize: 22
-                    font.bold: true
-                }
             }
 
             Column {

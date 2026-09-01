@@ -60,9 +60,13 @@ public:
     // POSTs a euclid gateway request (header-routed via x-euclid-target/
     // x-euclid-action). Public so module client classes can issue requests
     // through this shared session instead of duplicating auth/session state.
+    // timeoutMs overrides the default transfer timeout, for the one request that is meant to sit
+    // there: EES's "receive-events" waits on the server for as long as it is told to, so a client
+    // that long-polls has to be willing to wait longer than a normal call ever should.
     void post(const QString &target, const QString &action, const QJsonObject &body, bool authorized,
               const std::function<void(const QJsonObject &)> &onSuccess,
-              const std::function<void(const QString &)> &onError);
+              const std::function<void(const QString &)> &onError,
+              int timeoutMs = 0);
 
     // Like post(), but sends a raw binary body (e.g. file contents) with extra raw headers, instead
     // of a JSON body. Always authorized - every raw-upload action needs a session. Used for actions

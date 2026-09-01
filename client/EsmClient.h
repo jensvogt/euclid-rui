@@ -37,6 +37,22 @@ public:
                                   bool includeDirectories = false);
     Q_INVOKABLE void deleteObject(const QString &bucketErn, const QString &objectErn);
 
+    // Renaming and copying are key operations, not data ones: an object's bytes live in a file
+    // named after an internal ID and only its row says which key that file answers to, so a rename
+    // costs the same whatever the object's size. A copy is the one that duplicates the file, since
+    // the two objects have to be able to outlive each other.
+    //
+    // Both refuse rather than overwrite when something is already stored at the target key, which
+    // is why they report failure separately from a listing that failed to load.
+    Q_INVOKABLE void renameObject(const QString &bucketErn, const QString &key, const QString &newKey);
+    Q_INVOKABLE void copyObject(const QString &sourceBucketErn, const QString &sourceKey,
+                                const QString &targetBucketErn, const QString &targetKey);
+    // Same request shape as copyObject(), and the same freedom to cross buckets - the difference
+    // is that the source object is gone afterwards, and its bytes are handed to the target rather
+    // than duplicated.
+    Q_INVOKABLE void moveObject(const QString &sourceBucketErn, const QString &sourceKey,
+                                const QString &targetBucketErn, const QString &targetKey);
+
     // User-defined object attributes. One call changes one attribute: ESM replaced the old
     // bulk "set-object-attributes" with add/set/delete/list, each strict about whether the name
     // already exists - add fails with 409 on a duplicate, set and delete with 404 on a name that
@@ -71,6 +87,15 @@ signals:
     void objectsReload(const QString &bucketErn);
     void objectUploaded(const QString &bucketErn, const QString &key);
     void objectUploadFailed(const QString &message);
+    // Carries the key it ended up under, so a view can say what happened rather than only that
+    // something did.
+    void objectRenamed(const QString &bucketErn, const QString &key);
+    void objectCopied(const QString &bucketErn, const QString &key);
+    void objectMoved(const QString &bucketErn, const QString &key);
+    // Rename and copy share one failure signal: both fail for the same reasons (the target key is
+    // taken, the object is gone, the caller may not write that bucket) and both are reported in
+    // the dialog the user is looking at.
+    void objectTransferFailed(const QString &message);
     // Emitted after each part of a multipart upload completes; bytesTotal is the whole file's size.
     // Never emitted for single-request ("put-object") uploads.
     void uploadProgress(const QString &bucketErn, const QString &key, qint64 bytesSent, qint64 bytesTotal);

@@ -174,6 +174,66 @@ void EsmClient::deleteObject(const QString &bucketErn, const QString &objectErn)
          });
 }
 
+void EsmClient::renameObject(const QString &bucketErn, const QString &key, const QString &newKey) {
+    QJsonObject body;
+    body["bucketErn"] = bucketErn;
+    body["key"] = key;
+    body["newKey"] = newKey;
+
+    m_base->post("esm", "rename-object", body, true,
+         [this, bucketErn, newKey](const QJsonObject &response) {
+             emit objectRenamed(bucketErn, newKey);
+             emit objectsReload(bucketErn);
+         },
+         [this](const QString &message) {
+             emit objectTransferFailed(message);
+         });
+}
+
+void EsmClient::copyObject(const QString &sourceBucketErn, const QString &sourceKey,
+                           const QString &targetBucketErn, const QString &targetKey) {
+    QJsonObject body;
+    body["sourceBucketErn"] = sourceBucketErn;
+    body["sourceKey"] = sourceKey;
+    body["targetBucketErn"] = targetBucketErn;
+    body["targetKey"] = targetKey;
+
+    m_base->post("esm", "copy-object", body, true,
+         [this, sourceBucketErn, targetBucketErn, targetKey](const QJsonObject &response) {
+             emit objectCopied(targetBucketErn, targetKey);
+             // The target listing gained an object; the source is what the user is most likely
+             // looking at, so reload it too when the copy crossed buckets.
+             emit objectsReload(targetBucketErn);
+             if (sourceBucketErn != targetBucketErn)
+                 emit objectsReload(sourceBucketErn);
+         },
+         [this](const QString &message) {
+             emit objectTransferFailed(message);
+         });
+}
+
+void EsmClient::moveObject(const QString &sourceBucketErn, const QString &sourceKey,
+                           const QString &targetBucketErn, const QString &targetKey) {
+    QJsonObject body;
+    body["sourceBucketErn"] = sourceBucketErn;
+    body["sourceKey"] = sourceKey;
+    body["targetBucketErn"] = targetBucketErn;
+    body["targetKey"] = targetKey;
+
+    m_base->post("esm", "move-object", body, true,
+         [this, sourceBucketErn, targetBucketErn, targetKey](const QJsonObject &response) {
+             emit objectMoved(targetBucketErn, targetKey);
+             // Unlike a copy, both listings always changed: the object left one and arrived in the
+             // other, so the source is reloaded even when it is the same bucket.
+             emit objectsReload(targetBucketErn);
+             if (sourceBucketErn != targetBucketErn)
+                 emit objectsReload(sourceBucketErn);
+         },
+         [this](const QString &message) {
+             emit objectTransferFailed(message);
+         });
+}
+
 namespace {
 // {"type": ..., "value": ...} - the JSON shape Dto::COM::Variant reads. The value has to carry the
 // JSON type its "type" field names: a "long" holding a string makes the server throw rather than

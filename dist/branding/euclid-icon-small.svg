@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24"
+     role="img" aria-label="Euclid">
+  <title>Euclid</title>
+
+  <!--
+    Small variant, for 16-24px: favicon, browser tab, tree node, menu row.
+
+    Redrawn rather than scaled. Below about 32px the construction arcs fall under a
+    pixel wide and fuse with the triangle's edges, so they stop reading as arcs and
+    only thicken the silhouette - this drops them and keeps the element the large mark
+    already draws boldest.
+
+    Bowing the sides outward to keep the large mark's silhouette was the other option
+    and was tried; at 16px it reads as an arch rather than a triangle.
+  -->
+
+  <path d="M 2.5 20.2 L 21.5 20.2 L 12 3.75 Z"
+        fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/>
+</svg>

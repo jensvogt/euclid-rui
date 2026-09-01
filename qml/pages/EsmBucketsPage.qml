@@ -56,6 +56,21 @@ Item {
         onTriggered: root.refresh()
     }
 
+    // Events are what actually changed something; the timer above stays as the fallback for an
+    // installation without the event service, and for anything that changes without an event.
+    Connections {
+        target: eventStream
+        function onEventReceived(eventType, payload) {
+            if (!root.visible || !root.loggedIn)
+                return
+            if (["esm.object.created", "esm.object.updated", "esm.object.deleted"].indexOf(eventType) >= 0) {
+                // A bucket listing shows counts and sizes, so any object event changes it -
+                // which bucket the object was in does not matter here.
+                root.refresh()
+            }
+        }
+    }
+
     Connections {
         target: esmClient
         function onBucketsLoaded(list, total) {
