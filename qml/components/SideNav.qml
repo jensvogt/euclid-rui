@@ -21,18 +21,15 @@ Rectangle {
             anchors.leftMargin: 20
             spacing: 10
 
-            Rectangle {
+            Image {
+                source: "qrc:/EuclidRui/dist/branding/euclid-icon.svg"
                 width: 30
                 height: 30
-                radius: 8
-                color: "#4f8cff"
-                Text {
-                    anchors.centerIn: parent
-                    text: "E"
-                    color: "white"
-                    font.bold: true
-                    font.pixelSize: 15
-                }
+                // An SVG is rasterised once at sourceSize and scaled after, so this is what keeps
+                // the mark crisp on a high-DPI screen rather than blurred up from 30px.
+                sourceSize.width: 60
+                sourceSize.height: 60
+                fillMode: Image.PreserveAspectFit
             }
             Text {
                 text: "Euclid"

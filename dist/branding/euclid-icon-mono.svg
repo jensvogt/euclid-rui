@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256"
+     role="img" aria-label="Euclid">
+  <title>Euclid</title>
+
+  <!--
+    Euclid, Elements, Book I, Proposition 1 - the first construction in the Elements.
+    On a segment AB, strike two arcs of radius AB from A and from B; where they meet
+    is C, and ABC is equilateral.
+
+    The two arcs are the construction and are drawn light; the triangle is the result
+    and is drawn solid. That weight difference is the whole design: the triangle reads
+    first, the arcs stay texture, and shrinking the mark degrades it gracefully.
+
+    Only the arc each circle actually contributes is drawn, not the full circles - the
+    unused three-quarters of each circle adds a large empty lens below the triangle and
+    pushes the figure off balance.
+  -->
+
+  <g fill="none" stroke="currentColor" stroke-linejoin="round" stroke-linecap="round">
+    <!-- construction: arc B->C struck from A, arc A->C struck from B -->
+    <g opacity="0.32" stroke-width="7">
+      <path d="M 230 216 A 204 204 0 0 0 128 39.33"/>
+      <path d="M 26 216 A 204 204 0 0 1 128 39.33"/>
+    </g>
+
+    <!-- result: the equilateral triangle -->
+    <path d="M 26 216 L 230 216 L 128 39.33 Z" stroke-width="16"/>
+  </g>
+</svg>

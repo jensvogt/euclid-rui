@@ -124,7 +124,8 @@ void EuclidBaseClient::setBusy(const bool busy) {
 
 void EuclidBaseClient::post(const QString &target, const QString &action, const QJsonObject &body, bool authorized,
                              const std::function<void(const QJsonObject &)> &onSuccess,
-                             const std::function<void(const QString &)> &onError) {
+                             const std::function<void(const QString &)> &onError,
+                             const int timeoutMs) {
     QNetworkRequest request{QUrl(m_baseUrl)};
     request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
     request.setRawHeader("x-euclid-target", target.toUtf8());
@@ -138,7 +139,7 @@ void EuclidBaseClient::post(const QString &target, const QString &action, const 
     QSslConfiguration sslConfig = request.sslConfiguration();
     sslConfig.setPeerVerifyMode(QSslSocket::VerifyNone);
     request.setSslConfiguration(sslConfig);
-    request.setTransferTimeout(kTransferTimeoutMs);
+    request.setTransferTimeout(timeoutMs > 0 ? timeoutMs : kTransferTimeoutMs);
 
     QNetworkReply *reply = m_networkManager.post(request, payload);
     connect(reply, &QNetworkReply::finished, this, [reply, onSuccess, onError]() {

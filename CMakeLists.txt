@@ -36,6 +36,7 @@ find_package(Qt6 COMPONENTS
         Core
         Gui
         Network
+        Svg
         Qml
         Quick
         QuickControls2
@@ -59,6 +60,7 @@ qt_add_executable(euclid_rui main.cpp
         client/EnsClient.h client/EnsClient.cpp
         client/EkmClient.h client/EkmClient.cpp
         client/EmoClient.h client/EmoClient.cpp
+        client/EventStreamClient.h client/EventStreamClient.cpp
 )
 
 set_source_files_properties(qml/components/DateFormat.qml PROPERTIES
@@ -121,6 +123,8 @@ qt_add_qml_module(euclid_rui
         qml/components/ToggleSwitch.qml
         qml/components/SectionHeader.qml
         qml/components/ActivityRow.qml
+        RESOURCES
+        dist/branding/euclid-icon.svg
 )
 
 # Build against the Windows GUI subsystem rather than the console one. qt_add_executable() does
@@ -147,4 +151,7 @@ target_link_libraries(euclid_rui
         Qt6::Quick
         Qt6::QuickControls2
         Qt6::QuickDialogs2
+        # The branding mark is an SVG, and a static build only gets the SVG image-format plugin
+        # if the module is linked - without it every Image pointing at it renders nothing.
+        Qt6::Svg
 )

@@ -20,6 +20,9 @@ Item {
 
     signal openObject(var object)
     signal deleteObject(var object)
+    signal renameObject(var object)
+    signal copyObject(var object)
+    signal moveObject(var object)
 
     implicitHeight: rows.implicitHeight
 
@@ -220,20 +223,38 @@ Item {
                         font.pixelSize: 11
                         anchors.verticalCenter: parent.verticalCenter
                     }
-                    Text {
-                        visible: rowItem.hasObject && rowMouse.containsMouse
-                        text: "Delete"
-                        color: deleteMouse.containsMouse ? "#ff6b6b" : "#9aa1ac"
-                        font.pixelSize: 11
+                    // Same actions button every other list in the app uses (see DataTable), so a
+                    // row's actions are found in the same place here as anywhere else. Only rows
+                    // that have an object of their own get one: a folder that exists merely
+                    // because some key contains a "/" is not something the server can act on.
+                    Rectangle {
+                        visible: rowItem.hasObject
+                        width: 24
+                        height: 24
+                        radius: 12
                         anchors.verticalCenter: parent.verticalCenter
+                        color: kebabArea.containsMouse ? "#333a48" : "transparent"
+                        Behavior on color { ColorAnimation { duration: 120 } }
+
+                        Text {
+                            anchors.centerIn: parent
+                            text: "⋮"
+                            // Dimmed until the row is under the cursor, so a long listing is not a
+                            // column of icons competing with the keys themselves.
+                            color: rowMouse.containsMouse || kebabArea.containsMouse ? "#c4c9d1" : "#4a5160"
+                            font.pixelSize: 16
+                            font.bold: true
+                        }
 
                         MouseArea {
-                            id: deleteMouse
+                            id: kebabArea
                             anchors.fill: parent
-                            anchors.margins: -4
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
-                            onClicked: root.deleteObject(rowItem.modelData.object)
+                            onClicked: {
+                                rowMenu.currentObject = rowItem.modelData.object
+                                rowMenu.popup()
+                            }
                         }
                     }
                 }
@@ -245,6 +266,31 @@ Item {
                     color: "#232830"
                 }
             }
+        }
+    }
+
+    // One menu for the whole tree rather than one per row: a bucket can put hundreds of rows on
+    // screen, and only ever one of their menus is open. Same arrangement DataTable uses.
+    Menu {
+        id: rowMenu
+
+        property var currentObject: null
+
+        MenuItem {
+            text: "Rename…"
+            onTriggered: root.renameObject(rowMenu.currentObject)
+        }
+        MenuItem {
+            text: "Copy…"
+            onTriggered: root.copyObject(rowMenu.currentObject)
+        }
+        MenuItem {
+            text: "Move…"
+            onTriggered: root.moveObject(rowMenu.currentObject)
+        }
+        MenuItem {
+            text: "Delete"
+            onTriggered: root.deleteObject(rowMenu.currentObject)
         }
     }
 }

@@ -64,6 +64,19 @@ Item {
         onTriggered: root.refresh()
     }
 
+    // Events are what actually changed something; the timer above stays as the fallback for an
+    // installation without the event service, and for anything that changes without an event.
+    Connections {
+        target: eventStream
+        function onEventReceived(eventType, payload) {
+            if (!root.visible || !root.loggedIn)
+                return
+            if (["ekm.key.created"].indexOf(eventType) >= 0) {
+                root.refresh()
+            }
+        }
+    }
+
     Connections {
         target: ekmClient
         function onKeysLoaded(list, total) {

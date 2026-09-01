@@ -4,6 +4,7 @@
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QQuickStyle>
+#include <QIcon>
 #include <QQuickWindow>
 
 #include "AppSettings.h"
@@ -17,6 +18,7 @@
 #include "client/EsmClient.h"
 #include "client/EtsClient.h"
 #include "client/EuclidBaseClient.h"
+#include "client/EventStreamClient.h"
 
 int main(int argc, char *argv[]) {
 
@@ -24,6 +26,10 @@ int main(int argc, char *argv[]) {
     QGuiApplication::setOrganizationName("Euclid");
     QGuiApplication::setApplicationName("Euclid RUI");
     QGuiApplication::setApplicationVersion(QStringLiteral(APP_VERSION));
+    // Taskbar, window manager and (on Windows) the title bar. The coloured variant is the one Qt
+    // can draw: the mono and small SVGs are stroked with "currentColor", which is a CSS notion
+    // Qt's SVG renderer has no value for.
+    QGuiApplication::setWindowIcon(QIcon(QStringLiteral(":/EuclidRui/dist/branding/euclid-icon.svg")));
 
     QCommandLineParser parser;
     parser.setApplicationDescription("Euclid RUI - Qt6/QML dashboard for the euclid backend");
@@ -48,6 +54,7 @@ int main(int argc, char *argv[]) {
     EapClient eapClient(&euclidClient);
     EtsClient etsClient(&euclidClient);
     EmoClient emoClient(&euclidClient);
+    EventStreamClient eventStream(&euclidClient);
     AppSettings appSettings;
 
     // The gateway address lives in AppSettings (which persists it) and is pushed into the client,
@@ -77,6 +84,12 @@ int main(int argc, char *argv[]) {
     engine.rootContext()->setContextProperty("eapClient", &eapClient);
     engine.rootContext()->setContextProperty("etsClient", &etsClient);
     engine.rootContext()->setContextProperty("emoClient", &emoClient);
+    engine.rootContext()->setContextProperty("eventStream", &eventStream);
+
+    // Best-effort: the unsubscribe is a network call and the process may not live long enough to
+    // send it, which is why the subscription is registered as ephemeral - a gateway restart clears
+    // whatever was left behind.
+    QObject::connect(&app, &QGuiApplication::aboutToQuit, &eventStream, &EventStreamClient::stop);
     engine.rootContext()->setContextProperty("appSettings", &appSettings);
     // QML has no way to read QCoreApplication::applicationVersion() on its own, nor the Qt
     // version it is running on; the about box shows both.

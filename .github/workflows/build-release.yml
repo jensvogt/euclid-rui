@@ -45,9 +45,11 @@ env:
   # Qt submodules actually needed to satisfy euclid-rui's CMakeLists.txt find_package(Qt6
   # COMPONENTS Core Gui Network Qml Quick QuickControls2 QuickDialogs2) - qtshadertools is a
   # required build dependency of qtdeclarative, not directly used by the app.
-  QT_MODULES: "qtbase,qtdeclarative,qtshadertools"
+  # qtsvg is needed for the branding mark: it is an SVG, and without the module the image
+  # format plugin does not exist, so every Image pointing at it renders nothing.
+  QT_MODULES: "qtbase,qtdeclarative,qtshadertools,qtsvg"
   # Bump to force every static-Qt cache to rebuild from scratch (e.g. after changing QT_MODULES).
-  QT_CACHE_VERSION: "v2"
+  QT_CACHE_VERSION: "v3"
   APP_NAME: "euclid-rui"
   BIN_NAME: "euclid_rui"
   INSTALLER_ID: "de.jensvogt.euclidrui" # Qt Installer Framework package path (Windows only)

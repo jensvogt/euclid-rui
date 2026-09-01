@@ -82,18 +82,13 @@ Dialog {
 
             Row {
                 spacing: 10
-                Rectangle {
+                Image {
+                    source: "qrc:/EuclidRui/dist/branding/euclid-icon.svg"
                     width: 34
                     height: 34
-                    radius: 9
-                    color: "#4f8cff"
-                    Text {
-                        anchors.centerIn: parent
-                        text: "E"
-                        color: "white"
-                        font.bold: true
-                        font.pixelSize: 16
-                    }
+                    sourceSize.width: 68
+                    sourceSize.height: 68
+                    fillMode: Image.PreserveAspectFit
                 }
                 Text {
                     text: "Sign in to Euclid"
