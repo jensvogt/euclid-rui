@@ -138,6 +138,22 @@ void EapClient::deleteApplication(const QString &applicationId) {
          });
 }
 
+void EapClient::redeployApplication(const QString &applicationId, const QString &artifact, const QString &version) {
+    QJsonObject body;
+    body["applicationId"] = applicationId;
+    body["artifact"] = artifact;
+    body["version"] = version;
+
+    m_base->post("eap", "redeploy-application", body, true,
+         [this, applicationId, artifact, version](const QJsonObject &response) {
+             emit applicationRedeployed(applicationId, artifact, version);
+             emit applicationsReload();
+         },
+         [this](const QString &message) {
+             emit applicationRedeployFailed(message);
+         });
+}
+
 void EapClient::startApplication(const QString &applicationId) {
     QJsonObject body;
     body["applicationId"] = applicationId;

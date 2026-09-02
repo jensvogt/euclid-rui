@@ -50,6 +50,18 @@ public:
 
     Q_INVOKABLE void deleteApplication(const QString &applicationId);
 
+    // Deploys a build that is already in the application's bucket: it repoints the definition at
+    // `artifact` and stamps it with `version`, and that stamp is the deployment - the manager reads
+    // the changed definition as a new revision and restarts the running instances onto it within a
+    // few seconds. Upload the artifact first (EsmClient::uploadObject), since EAP refuses a build
+    // it cannot find.
+    //
+    // Refused server-side unless this is genuinely a new build: the version has to differ from the
+    // deployed one, and so do the artifact's bytes. A version bump shipping identical bytes, or new
+    // bytes under the version already running, are both deployments nobody could account for
+    // afterwards. Deploying either on purpose is what updateApplication() is for.
+    Q_INVOKABLE void redeployApplication(const QString &applicationId, const QString &artifact, const QString &version);
+
     // Both only write desiredState; the reconciler is what acts on it.
     Q_INVOKABLE void startApplication(const QString &applicationId);
     Q_INVOKABLE void stopApplication(const QString &applicationId);
@@ -67,6 +79,10 @@ signals:
     // details page can show the intent without waiting for the next list.
     void applicationStateChanged(const QString &applicationId, const QString &desiredState);
     void applicationStateFailed(const QString &message);
+    // The definition now names this artifact and this version, and the manager has been given a new
+    // revision to restart onto.
+    void applicationRedeployed(const QString &applicationId, const QString &artifact, const QString &version);
+    void applicationRedeployFailed(const QString &message);
 
 private:
     EuclidBaseClient *m_base;
