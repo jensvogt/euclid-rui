@@ -122,8 +122,19 @@ Item {
             border.width: 1
         }
 
+        // Empty unless a dead letter queue was asked for; then it is the name to create it under,
+        // which is the field's own text where there is one and "<queue>-dlq" otherwise.
+        readonly property string dlqName: {
+            if (!dlqCheck.checked) return ""
+            const typed = dlqNameField.text.trim()
+            return typed.length > 0 ? typed : createQueueDialog.defaultDlqName
+        }
+        readonly property string defaultDlqName: nameField.text.trim().length > 0 ? nameField.text.trim() + "-dlq" : ""
+
         onOpened: {
             nameField.text = ""
+            dlqCheck.checked = false
+            dlqNameField.text = ""
             createQueueDialog.errorText = ""
             createQueueDialog.creating = false
             nameField.forceActiveFocus()
@@ -158,14 +169,54 @@ Item {
                     selectByMouse: true
                     Keys.onReturnPressed: if (createButton.enabled) createButton.clicked()
                 }
-                Text {
-                    text: createQueueDialog.errorText
-                    color: "#ff6b6b"
-                    font.pixelSize: 12
-                    wrapMode: Text.WordWrap
-                    width: parent.width
-                    visible: text.length > 0
+            }
+
+            // Creating the queue is the one moment EQS attaches a dead letter queue: naming one
+            // here creates it and points the new queue at it in the same call. A queue created
+            // without one cannot be given one afterwards - there is no action for it - so this is
+            // the decision, not a default that can be revisited.
+            Column {
+                width: parent.width
+                spacing: 6
+
+                CheckBox {
+                    id: dlqCheck
+                    text: "Create a dead letter queue"
+                    Material.theme: Material.Dark
+                    Material.accent: "#4f8cff"
                 }
+
+                TextField {
+                    id: dlqNameField
+                    width: parent.width
+                    visible: dlqCheck.checked
+                    placeholderText: createQueueDialog.defaultDlqName.length > 0
+                                     ? createQueueDialog.defaultDlqName : "e.g. orders-in-dlq"
+                    Material.accent: "#4f8cff"
+                    selectByMouse: true
+                    Keys.onReturnPressed: if (createButton.enabled) createButton.clicked()
+                }
+
+                Text {
+                    width: parent.width
+                    wrapMode: Text.WordWrap
+                    color: "#6b7280"
+                    font.pixelSize: 11
+                    text: dlqCheck.checked
+                          ? "Messages received more than the retry limit are moved into it. It is created with the same "
+                            + "settings as this queue. Attach it now or not at all: EQS cannot give an existing queue one."
+                          : "Without one, a message that is never processed stays in the queue. It can only be attached "
+                            + "while the queue is being created."
+                }
+            }
+
+            Text {
+                text: createQueueDialog.errorText
+                color: "#ff6b6b"
+                font.pixelSize: 12
+                wrapMode: Text.WordWrap
+                width: parent.width
+                visible: text.length > 0
             }
 
             Item {
@@ -199,11 +250,14 @@ Item {
                     anchors.verticalCenter: parent.verticalCenter
                     Material.theme: Material.Dark
                     Material.accent: "#4f8cff"
+                    // A dead letter queue by the same name as the queue itself is refused here
+                    // rather than by the server: it would be one queue redriving into itself.
                     enabled: !createQueueDialog.creating && nameField.text.trim().length > 0
+                             && createQueueDialog.dlqName !== nameField.text.trim()
                     onClicked: {
                         createQueueDialog.errorText = ""
                         createQueueDialog.creating = true
-                        eqsClient.createQueue(nameField.text.trim())
+                        eqsClient.createQueue(nameField.text.trim(), createQueueDialog.dlqName)
                     }
                 }
             }

@@ -21,6 +21,7 @@ void EkmClient::fetchKeys(const QString &prefix, const int pageIndex, const int 
                  entry["ern"] = key.value("ern").toString();
                  entry["algorithm"] = key.value("algorithm").toString();
                  entry["length"] = key.value("length").toInt();
+                 entry["description"] = key.value("description").toString();
                  entry["tags"] = key.value("tags").toObject().toVariantMap();
                  entry["status"] = key.value("status").toString();
                  entry["created"] = key.value("created").toString();
@@ -74,6 +75,23 @@ void EkmClient::deleteKey(const QString &keyId, const int pendingWindowInDays) {
          },
          [this](const QString &message) {
              emit keyCreateFailed(message);
+         });
+}
+
+void EkmClient::setKeyDescription(const QString &keyErn, const QString &description) {
+    QJsonObject body;
+    body["ern"] = keyErn;
+    body["description"] = description;
+
+    m_base->post("ekm", "set-key-description", body, true,
+         [this, keyErn](const QJsonObject &response) {
+             // Reported as the server stored it rather than as it was sent, so a view shows what
+             // the key actually reads.
+             emit keyDescriptionChanged(keyErn, response.value("description").toString());
+             emit keysReload();
+         },
+         [this](const QString &message) {
+             emit keyDescriptionFailed(message);
          });
 }
 

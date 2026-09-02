@@ -60,11 +60,34 @@ Item {
             if (queueErn !== root.queueErn) return
             root.removeTagLocally(key)
         }
+        // "create-queue" is the queues page's signal as much as this dialog's, so only a save
+        // started here is acted on.
+        function onQueueCreated(name) {
+            if (!dlqDialog.saving) return
+            dlqDialog.saving = false
+            dlqDialog.close()
+            root.dlqNote = "Created queue \"" + name + "\". It is not yet the dead letter queue of "
+                    + root.queueName + " - EQS attaches one only when a queue is created."
+        }
+        function onQueueCreateFailed(message) {
+            if (!dlqDialog.saving) return
+            dlqDialog.saving = false
+            dlqDialog.errorText = message
+        }
     }
 
     readonly property int available: Number(detail("available", 0))
     readonly property int delayed: Number(detail("delayed", 0))
     readonly property int invisible: Number(detail("invisible", 0))
+
+    // The queue this one redrives into once a message has been received more than maxReceiveCount
+    // times. EQS only ever sets this when a queue is created, so it is read-only here.
+    readonly property string deadLetterQueue: detail("deadLetterQueueArn", "")
+    // What the last "+ Dead Letter Queue" did, kept on screen because the created queue is not
+    // linked to this one and that is the part worth not forgetting.
+    property string dlqNote: ""
+
+    onQueueErnChanged: root.dlqNote = ""
 
     ScrollView {
         anchors.fill: parent
@@ -178,7 +201,25 @@ Item {
                     anchors.margins: 20
                     spacing: 14
 
-                    Text { text: "Configuration"; color: "white"; font.pixelSize: 15; font.bold: true }
+                    Item {
+                        width: parent.width
+                        height: configHeaderRow.implicitHeight
+
+                        Row {
+                            id: configHeaderRow
+                            Text { text: "Configuration"; color: "white"; font.pixelSize: 15; font.bold: true }
+                        }
+
+                        Button {
+                            text: "+ Dead Letter Queue"
+                            highlighted: true
+                            anchors.right: parent.right
+                            anchors.verticalCenter: configHeaderRow.verticalCenter
+                            Material.theme: Material.Dark
+                            Material.accent: "#4f8cff"
+                            onClicked: dlqDialog.open()
+                        }
+                    }
 
                     Grid {
                         width: parent.width
@@ -193,8 +234,17 @@ Item {
                         DetailField {
                             width: (configCol.width * 2 / 3)
                             label: "Dead Letter Queue"
-                            value: root.detail("deadLetterQueueArn", "").length > 0 ? root.detail("deadLetterQueueArn", "") : "None"
+                            value: root.deadLetterQueue.length > 0 ? root.deadLetterQueue : "None"
                         }
+                    }
+
+                    Text {
+                        width: parent.width
+                        wrapMode: Text.WordWrap
+                        color: "#e0a458"
+                        font.pixelSize: 12
+                        visible: root.dlqNote.length > 0
+                        text: root.dlqNote
                     }
                 }
             }
@@ -286,6 +336,199 @@ Item {
                                 }
                             }
                         }
+                    }
+                }
+            }
+        }
+    }
+
+    Dialog {
+        id: dlqDialog
+        modal: true
+        anchors.centerIn: parent
+        width: 440
+        padding: 28
+        topPadding: 24
+        bottomPadding: 24
+        standardButtons: Dialog.NoButton
+
+        property bool saving: false
+        property string errorText: ""
+
+        // A dead letter queue is an ordinary queue, so it is created with this queue's settings
+        // unless they are changed here - the messages it will hold are this queue's messages.
+        readonly property int parentVisibility: Number(root.detail("visibility", 30))
+        readonly property int parentMaxReceiveCount: Number(root.detail("maxReceiveCount", 3))
+        readonly property int parentMaxMessageLength: Number(root.detail("maxMessageLength", 1048576))
+
+        function number(field, fallback) {
+            const value = parseInt(field.text.trim(), 10)
+            return isNaN(value) || value < 0 ? fallback : value
+        }
+
+        background: Rectangle {
+            radius: 16
+            color: "#1b1e25"
+            border.color: "#2c313c"
+            border.width: 1
+        }
+
+        onOpened: {
+            dlqDialog.errorText = ""
+            dlqDialog.saving = false
+            dlqNameField.text = root.queueName + "-dlq"
+            dlqVisibilityField.text = String(dlqDialog.parentVisibility)
+            dlqMaxReceiveField.text = String(dlqDialog.parentMaxReceiveCount)
+            dlqMaxLengthField.text = String(dlqDialog.parentMaxMessageLength)
+            dlqNameField.forceActiveFocus()
+            dlqNameField.selectAll()
+        }
+
+        contentItem: Column {
+            width: dlqDialog.availableWidth
+            spacing: 18
+
+            Column {
+                width: parent.width
+                spacing: 4
+                Text { text: "Create Dead Letter Queue"; color: "white"; font.pixelSize: 18; font.bold: true }
+                Text {
+                    text: "for " + root.queueName
+                    color: "#9aa1ac"
+                    font.pixelSize: 12
+                    elide: Text.ElideRight
+                    width: parent.width
+                }
+            }
+
+            // Said before the queue is created rather than after: EQS takes a dead letter queue
+            // only in "create-queue", where naming one creates it and points the new queue at it in
+            // the same call. There is no action that attaches one to a queue that already exists, so
+            // this creates the queue and nothing more.
+            Text {
+                width: parent.width
+                wrapMode: Text.WordWrap
+                color: "#e0a458"
+                font.pixelSize: 12
+                text: "⚠  This creates the queue only. " + root.queueName + " will not redrive into it: EQS attaches a "
+                      + "dead letter queue when a queue is created, and has no action to attach one afterwards."
+            }
+
+            Text {
+                width: parent.width
+                wrapMode: Text.WordWrap
+                color: "#9aa1ac"
+                font.pixelSize: 12
+                visible: root.deadLetterQueue.length > 0
+                text: "This queue already redrives into " + root.deadLetterQueue + "."
+            }
+
+            Column {
+                width: parent.width
+                spacing: 6
+                Text { text: "Queue name"; color: "#9aa1ac"; font.pixelSize: 12 }
+                TextField {
+                    id: dlqNameField
+                    width: parent.width
+                    placeholderText: "e.g. orders-dlq"
+                    Material.accent: "#4f8cff"
+                    selectByMouse: true
+                    Keys.onReturnPressed: if (createDlqButton.enabled) createDlqButton.clicked()
+                }
+            }
+
+            Grid {
+                width: parent.width
+                columns: 3
+                columnSpacing: 12
+                rowSpacing: 6
+
+                Text { text: "Visibility (s)"; color: "#9aa1ac"; font.pixelSize: 12; width: (dlqDialog.availableWidth - 24) / 3 }
+                Text { text: "Max receive count"; color: "#9aa1ac"; font.pixelSize: 12; width: (dlqDialog.availableWidth - 24) / 3 }
+                Text { text: "Max length (bytes)"; color: "#9aa1ac"; font.pixelSize: 12; width: (dlqDialog.availableWidth - 24) / 3 }
+
+                TextField {
+                    id: dlqVisibilityField
+                    width: (dlqDialog.availableWidth - 24) / 3
+                    Material.accent: "#4f8cff"
+                    selectByMouse: true
+                    validator: IntValidator { bottom: 0 }
+                }
+                TextField {
+                    id: dlqMaxReceiveField
+                    width: (dlqDialog.availableWidth - 24) / 3
+                    Material.accent: "#4f8cff"
+                    selectByMouse: true
+                    validator: IntValidator { bottom: 0 }
+                }
+                TextField {
+                    id: dlqMaxLengthField
+                    width: (dlqDialog.availableWidth - 24) / 3
+                    Material.accent: "#4f8cff"
+                    selectByMouse: true
+                    validator: IntValidator { bottom: 0 }
+                }
+            }
+
+            Text {
+                width: parent.width
+                wrapMode: Text.WordWrap
+                color: "#6b7280"
+                font.pixelSize: 11
+                text: "Taken from " + root.queueName + ", since a dead letter queue holds that queue's messages."
+            }
+
+            Text {
+                text: dlqDialog.errorText
+                color: "#ff6b6b"
+                font.pixelSize: 12
+                wrapMode: Text.WordWrap
+                width: parent.width
+                visible: text.length > 0
+            }
+
+            Item {
+                width: parent.width
+                height: 40
+
+                Button {
+                    text: "Cancel"
+                    flat: true
+                    anchors.left: parent.left
+                    anchors.verticalCenter: parent.verticalCenter
+                    Material.theme: Material.Dark
+                    onClicked: dlqDialog.close()
+                }
+
+                BusyIndicator {
+                    running: dlqDialog.saving
+                    visible: dlqDialog.saving
+                    width: 22
+                    height: 22
+                    anchors.right: createDlqButton.left
+                    anchors.rightMargin: 12
+                    anchors.verticalCenter: parent.verticalCenter
+                }
+
+                Button {
+                    id: createDlqButton
+                    text: "Create"
+                    highlighted: true
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    Material.theme: Material.Dark
+                    Material.accent: "#4f8cff"
+                    enabled: !dlqDialog.saving && dlqNameField.text.trim().length > 0
+                             && dlqNameField.text.trim() !== root.queueName
+                    onClicked: {
+                        dlqDialog.errorText = ""
+                        dlqDialog.saving = true
+                        // No dlqName of its own: this queue is being created *as* a dead letter
+                        // queue, not with one.
+                        eqsClient.createQueue(dlqNameField.text.trim(), "",
+                                              dlqDialog.number(dlqVisibilityField, dlqDialog.parentVisibility),
+                                              dlqDialog.number(dlqMaxReceiveField, dlqDialog.parentMaxReceiveCount),
+                                              dlqDialog.number(dlqMaxLengthField, dlqDialog.parentMaxMessageLength))
                     }
                 }
             }

@@ -44,14 +44,15 @@ void EqsClient::fetchQueues(const QString &prefix, const int pageIndex, const in
          });
 }
 
-void EqsClient::createQueue(const QString &name) {
+void EqsClient::createQueue(const QString &name, const QString &dlqName, const int visibility,
+                            const int maxRetries, const int maxMessageLength, const int delay) {
     QJsonObject body;
     body["name"] = name;
-    body["visibility"] = 30;
-    body["maxRetries"] = 3;
-    body["maxMessageLength"] = 1048576;
-    body["dlqName"] = "";
-    body["delay"] = 0;
+    body["visibility"] = visibility;
+    body["maxRetries"] = maxRetries;
+    body["maxMessageLength"] = maxMessageLength;
+    body["dlqName"] = dlqName;
+    body["delay"] = delay;
 
     m_base->post("eqs", "create-queue", body, true,
          [this, name](const QJsonObject &response) {
