@@ -55,24 +55,40 @@ Item {
         function onBucketsLoaded(list, total) {
             root.bucketChoices = list
         }
-        // The artifact is uploaded first and the application created once it is actually in the
-        // bucket - EAP refuses an artifact it cannot find, so the order matters.
+        // The artifact is uploaded first and the application created (or redeployed) once it is
+        // actually in the bucket - EAP refuses an artifact it cannot find, so the order matters.
+        // Both dialogs upload through the same client and the same signals, so each handler routes
+        // by whichever one is waiting; only one can be open at a time.
         function onObjectUploaded(bucketErn, key) {
-            if (!createApplicationDialog.uploading) return
-            createApplicationDialog.uploading = false
-            createApplicationDialog.pendingFile = ""
-            createApplicationDialog.submit()
+            if (createApplicationDialog.uploading) {
+                createApplicationDialog.uploading = false
+                createApplicationDialog.pendingFile = ""
+                createApplicationDialog.submit()
+            } else if (redeployDialog.uploading) {
+                redeployDialog.uploading = false
+                redeployDialog.submit()
+            }
         }
         function onObjectUploadFailed(message) {
-            if (!createApplicationDialog.uploading) return
-            createApplicationDialog.uploading = false
-            createApplicationDialog.creating = false
-            createApplicationDialog.errorText = message
+            if (createApplicationDialog.uploading) {
+                createApplicationDialog.uploading = false
+                createApplicationDialog.creating = false
+                createApplicationDialog.errorText = message
+            } else if (redeployDialog.uploading) {
+                redeployDialog.uploading = false
+                redeployDialog.deploying = false
+                // Nothing was stamped, so the application is still running what it was running.
+                redeployDialog.errorText = "The build was not uploaded, so the application is unchanged: " + message
+            }
         }
         function onUploadProgress(bucketErn, key, bytesSent, bytesTotal) {
-            if (!createApplicationDialog.uploading) return
-            createApplicationDialog.bytesSent = bytesSent
-            createApplicationDialog.bytesTotal = bytesTotal
+            if (createApplicationDialog.uploading) {
+                createApplicationDialog.bytesSent = bytesSent
+                createApplicationDialog.bytesTotal = bytesTotal
+            } else if (redeployDialog.uploading) {
+                redeployDialog.bytesSent = bytesSent
+                redeployDialog.bytesTotal = bytesTotal
+            }
         }
     }
 
@@ -134,6 +150,293 @@ Item {
         }
         function onApplicationStateFailed(message) {
             root.error = message
+        }
+        function onApplicationRedeployed(applicationId, artifact, version) {
+            redeployDialog.deploying = false
+            redeployDialog.close()
+        }
+        function onApplicationRedeployFailed(message) {
+            redeployDialog.deploying = false
+            // The build is in the bucket at this point but the definition was not stamped, so say
+            // so - the application is still running the old one, and retrying is safe.
+            redeployDialog.errorText = message
+        }
+    }
+
+    FileDialog {
+        id: redeployFileDialog
+        title: "Select the new build"
+        onAccepted: redeployDialog.takeFile(selectedFile)
+    }
+
+    // "eap redeploy-application" as a dialog: upload the new build into the application's own
+    // bucket under the key it already uses, then stamp the definition with the new version - which
+    // is what the manager reads as a new revision and restarts the pool onto.
+    Dialog {
+        id: redeployDialog
+        modal: true
+        anchors.centerIn: parent
+        width: 460
+        padding: 28
+        topPadding: 24
+        bottomPadding: 24
+        standardButtons: Dialog.NoButton
+
+        // The row the menu was opened on; it already carries everything needed, so no definition
+        // has to be re-read to fill this in.
+        property var application: null
+        property url pendingFile: ""
+        property string fileName: ""
+        property bool uploading: false
+        property bool deploying: false
+        property real bytesSent: 0
+        property real bytesTotal: 0
+        property string errorText: ""
+
+        readonly property string applicationId: application ? application.applicationId : ""
+        readonly property string bucketErn: application ? application.bucketErn : ""
+        // An application defined before versions existed carries no version at all, which is a
+        // normal state and not an empty string to be printed back as "undefined".
+        readonly property string deployedVersion: application && application.version ? String(application.version) : ""
+        readonly property string deployedArtifact: application && application.artifactKey ? String(application.artifactKey) : ""
+
+        // Refused before anything is uploaded rather than after: the server rejects a redeploy that
+        // does not move the version on, and it would do so with the new build already sitting in the
+        // bucket, where the next restart would pick it up anyway. The other half of that rule - the
+        // bytes have to differ too - is left to the server, since a build with the same checksum
+        // overwrites the artifact with what it already contains.
+        readonly property string localRefusal: {
+            const version = redeployVersionField.text.trim()
+            if (version.length === 0 || redeployDialog.deployedVersion.length === 0) return ""
+            return version === redeployDialog.deployedVersion
+                   ? "Version " + version + " is already deployed - a new build needs a new version."
+                   : ""
+        }
+
+        // Same rule the server and the CLI use: the first x.y.z anywhere in the name.
+        function versionFromName(name) {
+            const match = /(\d+)\.(\d+)\.(\d+)/.exec(name)
+            return match ? match[0] : ""
+        }
+
+        function openFor(row) {
+            redeployDialog.application = row
+            redeployDialog.open()
+        }
+
+        function takeFile(fileUrl) {
+            redeployDialog.pendingFile = fileUrl
+            const path = fileUrl.toString()
+            redeployDialog.fileName = path.substring(path.lastIndexOf("/") + 1)
+            // What this build calls itself, read out of its own file name ("orders-1.4.0.jar" is
+            // 1.4.0). Left editable for a build whose name does not carry one.
+            const derived = redeployDialog.versionFromName(redeployDialog.fileName)
+            if (derived.length > 0) redeployVersionField.text = derived
+        }
+
+        // Everything after the build is in the bucket.
+        function submit() {
+            eapClient.redeployApplication(redeployDialog.applicationId,
+                                          redeployArtifactField.text.trim(),
+                                          redeployVersionField.text.trim())
+        }
+
+        background: Rectangle {
+            radius: 16
+            color: "#1b1e25"
+            border.color: "#2c313c"
+            border.width: 1
+        }
+
+        onOpened: {
+            redeployDialog.pendingFile = ""
+            redeployDialog.fileName = ""
+            redeployDialog.uploading = false
+            redeployDialog.deploying = false
+            redeployDialog.bytesSent = 0
+            redeployDialog.bytesTotal = 0
+            redeployDialog.errorText = ""
+            // The key the application already uses: a redeploy under the same name is the common
+            // case, and deploying under another one repoints the application at it.
+            redeployArtifactField.text = redeployDialog.deployedArtifact
+            redeployVersionField.text = ""
+        }
+
+        contentItem: Column {
+            width: redeployDialog.availableWidth
+            spacing: 18
+
+            Column {
+                width: parent.width
+                spacing: 4
+                Text { text: "Redeploy Application"; color: "white"; font.pixelSize: 18; font.bold: true }
+                Text {
+                    text: redeployDialog.applicationId
+                          + (redeployDialog.deployedVersion.length > 0
+                             ? "  ·  running " + redeployDialog.deployedVersion : "  ·  no version deployed yet")
+                    color: "#9aa1ac"
+                    font.pixelSize: 12
+                    elide: Text.ElideRight
+                    width: parent.width
+                }
+            }
+
+            Text {
+                width: parent.width
+                wrapMode: Text.WordWrap
+                color: "#e0a458"
+                font.pixelSize: 12
+                text: "⚠  The running instances are restarted onto this build within a few seconds - an artifact is "
+                      + "decided when a process starts. A stopped application stays stopped and comes up on the new build."
+            }
+
+            Column {
+                id: buildColumn
+                width: parent.width
+                spacing: 6
+                Text { text: "New build"; color: "#9aa1ac"; font.pixelSize: 12 }
+
+                Row {
+                    width: parent.width
+                    spacing: 8
+
+                    TextField {
+                        width: buildColumn.width - chooseBuildButton.width - 8
+                        text: redeployDialog.fileName
+                        placeholderText: "the jar, script or executable to deploy"
+                        readOnly: true
+                        Material.accent: "#4f8cff"
+                    }
+                    Button {
+                        id: chooseBuildButton
+                        text: "Choose…"
+                        flat: true
+                        Material.theme: Material.Dark
+                        Material.accent: "#4f8cff"
+                        enabled: !redeployDialog.deploying
+                        onClicked: redeployFileDialog.open()
+                    }
+                }
+            }
+
+            Column {
+                width: parent.width
+                spacing: 6
+                Text { text: "Artifact key"; color: "#9aa1ac"; font.pixelSize: 12 }
+                TextField {
+                    id: redeployArtifactField
+                    width: parent.width
+                    placeholderText: "object key within the application's bucket"
+                    Material.accent: "#4f8cff"
+                    selectByMouse: true
+                    Keys.onReturnPressed: redeployVersionField.forceActiveFocus()
+                }
+                Text {
+                    text: "Uploaded into the application's own bucket under this key. Change it to deploy under a "
+                          + "versioned name; the application is repointed at it."
+                    color: "#6b7280"
+                    font.pixelSize: 11
+                    wrapMode: Text.WordWrap
+                    width: parent.width
+                }
+            }
+
+            Column {
+                width: parent.width
+                spacing: 6
+                Text { text: "Version"; color: "#9aa1ac"; font.pixelSize: 12 }
+                TextField {
+                    id: redeployVersionField
+                    width: parent.width
+                    placeholderText: "e.g. 1.4.0"
+                    Material.accent: "#4f8cff"
+                    selectByMouse: true
+                    Keys.onReturnPressed: if (redeployButton.enabled) redeployButton.clicked()
+                }
+                Text {
+                    text: redeployDialog.localRefusal.length > 0
+                          ? redeployDialog.localRefusal
+                          : "Read out of the build's file name where it has one. It has to differ from the deployed "
+                            + "version, and so do the artifact's bytes - EAP refuses a redeploy that is not a new build."
+                    color: redeployDialog.localRefusal.length > 0 ? "#ffb545" : "#6b7280"
+                    font.pixelSize: 11
+                    wrapMode: Text.WordWrap
+                    width: parent.width
+                }
+            }
+
+            Text {
+                width: parent.width
+                wrapMode: Text.WordWrap
+                color: "#9aa1ac"
+                font.pixelSize: 12
+                visible: redeployDialog.uploading || redeployDialog.deploying
+                text: redeployDialog.uploading
+                      ? (redeployDialog.bytesTotal > 0
+                         ? "Uploading… " + SizeFormat.format(redeployDialog.bytesSent) + " of " + SizeFormat.format(redeployDialog.bytesTotal)
+                         : "Uploading…")
+                      : "Deploying…"
+            }
+
+            Text {
+                text: redeployDialog.errorText
+                color: "#ff6b6b"
+                font.pixelSize: 12
+                wrapMode: Text.WordWrap
+                width: parent.width
+                visible: text.length > 0
+            }
+
+            Item {
+                width: parent.width
+                height: 40
+
+                Button {
+                    text: "Cancel"
+                    flat: true
+                    anchors.left: parent.left
+                    anchors.verticalCenter: parent.verticalCenter
+                    Material.theme: Material.Dark
+                    onClicked: redeployDialog.close()
+                }
+
+                BusyIndicator {
+                    running: redeployDialog.deploying
+                    visible: redeployDialog.deploying
+                    width: 22
+                    height: 22
+                    anchors.right: redeployButton.left
+                    anchors.rightMargin: 12
+                    anchors.verticalCenter: parent.verticalCenter
+                }
+
+                Button {
+                    id: redeployButton
+                    text: "Redeploy"
+                    highlighted: true
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    Material.theme: Material.Dark
+                    Material.accent: "#4f8cff"
+                    enabled: !redeployDialog.deploying
+                             && redeployDialog.pendingFile.toString().length > 0
+                             && redeployArtifactField.text.trim().length > 0
+                             && redeployVersionField.text.trim().length > 0
+                             && redeployDialog.localRefusal.length === 0
+                             && redeployDialog.bucketErn.length > 0
+                    onClicked: {
+                        redeployDialog.errorText = ""
+                        redeployDialog.bytesSent = 0
+                        redeployDialog.bytesTotal = 0
+                        redeployDialog.deploying = true
+                        // The build has to be in the bucket before the definition can name it: EAP
+                        // refuses an artifact it cannot find.
+                        redeployDialog.uploading = true
+                        esmClient.uploadObject(redeployDialog.bucketErn, redeployArtifactField.text.trim(),
+                                               redeployDialog.pendingFile)
+                    }
+                }
+            }
         }
     }
 
@@ -504,6 +807,12 @@ Item {
                         },
                         action: function(row) {
                             eapClient.stopApplication(row.applicationId)
+                        }
+                    },
+                    {
+                        text: "Redeploy…",
+                        action: function(row) {
+                            redeployDialog.openFor(row)
                         }
                     },
                     {
