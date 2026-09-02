@@ -202,6 +202,42 @@ QNetworkReply *EuclidBaseClient::postRaw(const QString &target, const QString &a
     return reply;
 }
 
+QNetworkReply *EuclidBaseClient::postForBytes(const QString &target, const QString &action, const QVariantMap &extraHeaders,
+                                const std::function<void(const QByteArray &)> &onSuccess,
+                                const std::function<void(const QString &)> &onError,
+                                const int timeoutMs) {
+    QNetworkRequest request{QUrl(m_baseUrl)};
+    request.setHeader(QNetworkRequest::ContentTypeHeader, "application/octet-stream");
+    request.setRawHeader("x-euclid-target", target.toUtf8());
+    request.setRawHeader("x-euclid-action", action.toUtf8());
+    for (auto it = extraHeaders.constBegin(); it != extraHeaders.constEnd(); ++it)
+        request.setRawHeader(it.key().toUtf8(), it.value().toString().toUtf8());
+    authorize(request, {});
+
+    // The local gateway runs with a self-signed dev certificate.
+    QSslConfiguration sslConfig = request.sslConfiguration();
+    sslConfig.setPeerVerifyMode(QSslSocket::VerifyNone);
+    request.setSslConfiguration(sslConfig);
+    request.setTransferTimeout(timeoutMs > 0 ? timeoutMs : kTransferTimeoutMs);
+
+    QNetworkReply *reply = m_networkManager.post(request, QByteArray());
+    connect(reply, &QNetworkReply::finished, this, [reply, onSuccess, onError]() {
+        reply->deleteLater();
+        // Read once: the body is either the payload or the JSON explaining its absence, and a
+        // reply cannot be read twice.
+        const QByteArray body = reply->isOpen() ? reply->readAll() : QByteArray();
+
+        if (reply->error() != QNetworkReply::NoError) {
+            const QJsonObject obj = QJsonDocument::fromJson(body).object();
+            const QString reason = obj.value("message").toString(obj.value("error").toString());
+            onError(reason.isEmpty() ? reply->errorString() : reason);
+            return;
+        }
+        onSuccess(body);
+    });
+    return reply;
+}
+
 void EuclidBaseClient::login(const QString &userId, const QString &password) {
     setBusy(true);
 

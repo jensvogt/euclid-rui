@@ -85,6 +85,16 @@ public:
                            const std::function<void(const QString &)> &onError,
                            int timeoutMs = 0);
 
+    // The mirror of postRaw() for the reply rather than the request: the *response* body is handed
+    // over as bytes instead of being parsed as JSON. For actions like ESM's "get-object", which
+    // answers with the object itself ("application/octet-stream") and only uses JSON to say why it
+    // would not - so failures are still read the same way postRaw() reads them. The request carries
+    // no body; everything these actions need is in the headers.
+    QNetworkReply *postForBytes(const QString &target, const QString &action, const QVariantMap &extraHeaders,
+                                const std::function<void(const QByteArray &)> &onSuccess,
+                                const std::function<void(const QString &)> &onError,
+                                int timeoutMs = 0);
+
 signals:
     void busyChanged();
     void isAdminChanged();
