@@ -67,10 +67,27 @@ Item {
             if (keyErn !== root.keyErn) return
             root.removeTagLocally(key)
         }
+        // Writing the saved text back into the snapshot is what moves the editor's baseline, so the
+        // "unsaved" marker clears without the editor being reloaded from underneath the user.
+        function onKeyDescriptionChanged(keyErn, description) {
+            if (keyErn !== root.keyErn) return
+            root.descriptionSaving = false
+            root.descriptionError = ""
+            root.details = Object.assign({}, root.details, { description: description })
+        }
+        function onKeyDescriptionFailed(message) {
+            root.descriptionSaving = false
+            root.descriptionError = message
+        }
     }
 
     readonly property string status: detail("status", "")
     readonly property string deletionDate: detail("deletionDate", "")
+    // Free text saying what the key is for. Editable here: "set-key-description" is what changes
+    // it, and it is the only thing about a key that can be changed after it exists.
+    readonly property string description: detail("description", "")
+    property bool descriptionSaving: false
+    property string descriptionError: ""
 
     ScrollView {
         anchors.fill: parent
@@ -178,6 +195,105 @@ Item {
                     }
 
                     DetailField { width: identityCol.width; label: "Key ERN"; value: root.keyErn; copyable: true }
+                }
+            }
+
+            Rectangle {
+                width: parent.width
+                height: descriptionCol.implicitHeight + 40
+                radius: 14
+                color: "#20242e"
+                border.color: "#2c313c"
+                border.width: 1
+
+                Column {
+                    id: descriptionCol
+                    anchors.top: parent.top
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.margins: 20
+                    spacing: 14
+
+                    Item {
+                        width: parent.width
+                        height: descriptionHeaderRow.implicitHeight
+
+                        Row {
+                            id: descriptionHeaderRow
+                            spacing: 10
+                            Text { text: "Description"; color: "white"; font.pixelSize: 15; font.bold: true }
+                            Text {
+                                text: "· unsaved"
+                                color: "#e0a458"
+                                font.pixelSize: 11
+                                anchors.verticalCenter: parent.verticalCenter
+                                visible: descriptionView.modified
+                            }
+                        }
+
+                        Row {
+                            anchors.right: parent.right
+                            anchors.verticalCenter: descriptionHeaderRow.verticalCenter
+                            spacing: 8
+
+                            Button {
+                                text: "Revert"
+                                flat: true
+                                Material.theme: Material.Dark
+                                visible: descriptionView.modified
+                                enabled: !root.descriptionSaving
+                                onClicked: {
+                                    root.descriptionError = ""
+                                    descriptionView.reset()
+                                }
+                            }
+
+                            BusyIndicator {
+                                running: root.descriptionSaving
+                                visible: root.descriptionSaving
+                                width: 22
+                                height: 22
+                                anchors.verticalCenter: parent.verticalCenter
+                            }
+
+                            Button {
+                                text: "Save"
+                                highlighted: true
+                                Material.theme: Material.Dark
+                                Material.accent: "#4f8cff"
+                                enabled: descriptionView.modified && !root.descriptionSaving
+                                onClicked: {
+                                    root.descriptionError = ""
+                                    root.descriptionSaving = true
+                                    // Sent as typed, empty included: clearing the box is how a
+                                    // description is removed.
+                                    ekmClient.setKeyDescription(root.keyErn, descriptionView.text)
+                                }
+                            }
+                        }
+                    }
+
+                    EditableText {
+                        id: descriptionView
+                        width: parent.width
+                        height: 120
+                        showHeader: false
+                        // Free text, so it is wrapped rather than scrolled sideways, and there is
+                        // no format for the header to announce.
+                        contentType: "text/plain"
+                        wrapMode: TextArea.Wrap
+                        content: root.description
+                        emptyText: "What this key is for - which data it protects, who owns it, when it should be rotated."
+                    }
+
+                    Text {
+                        width: parent.width
+                        wrapMode: Text.WordWrap
+                        color: "#ff6b6b"
+                        font.pixelSize: 12
+                        visible: root.descriptionError.length > 0
+                        text: root.descriptionError
+                    }
                 }
             }
 

@@ -29,7 +29,13 @@ Item {
     // given, so a large object freezes the window rather than filling it.
     property int maxLength: 1024 * 1024
     property bool showHeader: true
+    // Shown centred when there is nothing to display, and as the editor's prompt when there is
+    // nothing yet but something can be typed.
     property string emptyText: "(empty)"
+    // Code and data are read line by line and should scroll sideways rather than be reflowed to
+    // whatever width the panel happens to have; prose is the opposite. The default suits the
+    // former, which is what a stored payload usually is.
+    property int wrapMode: TextArea.NoWrap
 
     // ── Output ───────────────────────────────────────────────────────────────
     // "json", "xml", "text", or "" when nothing here can be displayed.
@@ -204,6 +210,9 @@ Item {
     property bool loading: false
 
     function loadIntoEditor() {
+        // Assigning the same string still moves the cursor back to the start, which is what saving
+        // an edit would otherwise do: the saved text comes back as the new baseline and lands here.
+        if (editor.text === root.displayText) return
         root.loading = true
         editor.text = root.displayText
         root.loading = false
@@ -321,7 +330,10 @@ Item {
             }
 
             ScrollView {
-                visible: root.showable && root.content.length > 0
+                // Empty content is still an editor when it can be typed into - otherwise there
+                // would be no way to write the first version of something that has none yet. Only
+                // a read-only view of nothing falls back to the placeholder below.
+                visible: root.showable && (root.content.length > 0 || !root.readOnly)
                 anchors.fill: parent
                 anchors.margins: 10
                 anchors.topMargin: warningLabel.visible ? warningLabel.height + 16 : 10
@@ -331,7 +343,10 @@ Item {
                     id: editor
                     readOnly: root.readOnly
                     selectByMouse: true
-                    wrapMode: TextArea.NoWrap
+                    // Doubles as the empty-editor prompt, since the placeholder Text below is only
+                    // reached by a read-only view.
+                    placeholderText: root.readOnly ? "" : root.emptyText
+                    wrapMode: root.wrapMode
                     color: "#c4c9d1"
                     font.family: "monospace"
                     font.pixelSize: 12
@@ -343,7 +358,7 @@ Item {
             }
 
             Text {
-                visible: root.content.length === 0
+                visible: root.content.length === 0 && root.readOnly
                 anchors.centerIn: parent
                 text: root.emptyText
                 color: "#6b7280"
