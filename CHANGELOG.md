@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.0.22](https://github.com/jensvogt/euclid-rui/compare/1.0.21...v1.0.22) (2026-09-02)
+
+
+### Bug Fixes
+
+* ESM bucket encryption ([9195c09](https://github.com/jensvogt/euclid-rui/commit/9195c09f265ac76b948338a1390a844064432727))
+* ESM bucket rename ([65b2a27](https://github.com/jensvogt/euclid-rui/commit/65b2a271c4a9f614839759241f2c11c50ede4692))
+* ESM object image/test viewer ([ad6c392](https://github.com/jensvogt/euclid-rui/commit/ad6c39263dd86666ca2bd99211adce99b293405c))
+
 ## [1.0.21](https://github.com/jensvogt/euclid-rui/compare/1.0.20...v1.0.21) (2026-09-01)
 
 
