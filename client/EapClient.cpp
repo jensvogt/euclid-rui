@@ -12,6 +12,10 @@ QVariantMap applicationToMap(const QJsonObject &application) {
     entry["runtime"] = application.value("runtime").toString();
     entry["bucketErn"] = application.value("bucketErn").toString();
     entry["artifactKey"] = application.value("artifactKey").toString();
+    // What is deployed, and what it is made of: EAP refuses a redeploy unless the version moves on
+    // and the artifact's checksum with it, so the two together say exactly which build is running.
+    entry["version"] = application.value("version").toString();
+    entry["md5Sum"] = application.value("md5Sum").toString();
     entry["command"] = application.value("command").toString();
     entry["arguments"] = application.value("arguments").toArray().toVariantList();
     entry["environment"] = application.value("environment").toObject().toVariantMap();

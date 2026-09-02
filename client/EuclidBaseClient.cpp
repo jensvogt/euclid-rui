@@ -42,6 +42,10 @@ void EuclidBaseClient::setBaseUrl(const QString &baseUrl) {
     const bool hadSession = !m_token.isEmpty();
     m_token.clear();
     m_namespace.clear();
+    if (m_isAdmin) {
+        m_isAdmin = false;
+        emit isAdminChanged();
+    }
     if (!m_accountId.isEmpty()) {
         m_accountId.clear();
         emit accountIdChanged();
@@ -122,7 +126,7 @@ void EuclidBaseClient::setBusy(const bool busy) {
     emit busyChanged();
 }
 
-void EuclidBaseClient::post(const QString &target, const QString &action, const QJsonObject &body, bool authorized,
+QNetworkReply *EuclidBaseClient::post(const QString &target, const QString &action, const QJsonObject &body, bool authorized,
                              const std::function<void(const QJsonObject &)> &onSuccess,
                              const std::function<void(const QString &)> &onError,
                              const int timeoutMs) {
@@ -157,11 +161,13 @@ void EuclidBaseClient::post(const QString &target, const QString &action, const 
         }
         onSuccess(obj);
     });
+    return reply;
 }
 
-void EuclidBaseClient::postRaw(const QString &target, const QString &action, const QVariantMap &extraHeaders, const QByteArray &body,
+QNetworkReply *EuclidBaseClient::postRaw(const QString &target, const QString &action, const QVariantMap &extraHeaders, const QByteArray &body,
                                 const std::function<void(const QJsonObject &)> &onSuccess,
-                                const std::function<void(const QString &)> &onError) {
+                                const std::function<void(const QString &)> &onError,
+                                const int timeoutMs) {
     QNetworkRequest request{QUrl(m_baseUrl)};
     request.setHeader(QNetworkRequest::ContentTypeHeader, "application/octet-stream");
     request.setRawHeader("x-euclid-target", target.toUtf8());
@@ -175,7 +181,7 @@ void EuclidBaseClient::postRaw(const QString &target, const QString &action, con
     QSslConfiguration sslConfig = request.sslConfiguration();
     sslConfig.setPeerVerifyMode(QSslSocket::VerifyNone);
     request.setSslConfiguration(sslConfig);
-    request.setTransferTimeout(kTransferTimeoutMs);
+    request.setTransferTimeout(timeoutMs > 0 ? timeoutMs : kTransferTimeoutMs);
 
     QNetworkReply *reply = m_networkManager.post(request, body);
     connect(reply, &QNetworkReply::finished, this, [reply, onSuccess, onError]() {
@@ -193,6 +199,7 @@ void EuclidBaseClient::postRaw(const QString &target, const QString &action, con
         }
         onSuccess(obj);
     });
+    return reply;
 }
 
 void EuclidBaseClient::login(const QString &userId, const QString &password) {
@@ -212,7 +219,9 @@ void EuclidBaseClient::login(const QString &userId, const QString &password) {
              m_token = response.value("token").toString();
              m_accountId = metadata.value("accountId").toString();
              m_region = metadata.value("region").toString();
+             m_isAdmin = response.value("isAdmin").toBool();
 
+             emit isAdminChanged();
              emit accountIdChanged();
              emit regionChanged();
              emit loginSucceeded();

@@ -660,6 +660,7 @@ ApplicationWindow {
                 SettingsPage {
                     anchors.fill: parent
                     visible: window.currentRoute === "settings"
+                    loggedIn: window.loggedIn
                 }
 
                 // EAM

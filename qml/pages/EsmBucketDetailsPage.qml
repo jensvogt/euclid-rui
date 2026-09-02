@@ -44,8 +44,51 @@ Item {
         root.details = Object.assign({}, root.details, { tags: tags })
     }
 
+    // Same reason as the tag helpers above: nothing re-reads the bucket, so the confirmed setting
+    // is written into the local snapshot.
+    function setEncryptionLocally(keyErn) {
+        root.details = Object.assign({}, root.details, { encrypted: keyErn.length > 0, encryptionKeyErn: keyErn })
+    }
+
+    // Whether the *next* object written here is encrypted. Says nothing about what the bucket
+    // already holds, which is the whole point of the warnings below.
+    readonly property bool encrypted: !!detail("encrypted", false)
+    readonly property string encryptionKeyErn: detail("encryptionKeyErn", "")
+    // What the last enable/disable reported, kept on screen because it is the number an operator
+    // has to act on and nothing else will tell them again.
+    property string encryptionNote: ""
+
+    // One instance of this page serves every bucket, so a note about the last one must not follow
+    // the user to the next.
+    onBucketErnChanged: root.encryptionNote = ""
+
     Connections {
         target: esmClient
+        function onBucketEncryptionEnabled(bucketErn, keyErn, keyId, algorithm, keyCreated, existingObjects) {
+            if (bucketErn !== root.bucketErn) return
+            encryptionDialog.saving = false
+            encryptionDialog.close()
+            root.setEncryptionLocally(keyErn)
+            root.encryptionNote = "Encrypting under " + (keyCreated ? "new " : "") + algorithm + " key " + keyId + ". "
+                    + (existingObjects > 0
+                       ? existingObjects + " object(s) already in this bucket are still stored unencrypted - copy or re-upload them to encrypt them."
+                       : "The bucket was empty, so everything it holds from now on is encrypted.")
+        }
+        function onBucketEncryptionDisabled(bucketErn, previousKeyErn, previousKeyId, encryptedObjects) {
+            if (bucketErn !== root.bucketErn) return
+            encryptionDialog.saving = false
+            encryptionDialog.close()
+            root.setEncryptionLocally("")
+            root.encryptionNote = encryptedObjects > 0
+                    ? encryptedObjects + " object(s) are still stored encrypted and are still read back through their key"
+                      + (previousKeyId.length > 0 ? " (" + previousKeyId + ")" : "")
+                      + " - do not delete it in EKM while they exist."
+                    : "Nothing in this bucket is stored encrypted any more."
+        }
+        function onBucketEncryptionFailed(message) {
+            encryptionDialog.saving = false
+            encryptionDialog.errorText = message
+        }
         function onBucketTagAdded(bucketErn, key, value) {
             if (bucketErn !== root.bucketErn) return
             addTagDialog.saving = false
@@ -160,6 +203,67 @@ Item {
 
             Rectangle {
                 width: parent.width
+                height: encryptionCol.implicitHeight + 40
+                radius: 14
+                color: "#20242e"
+                border.color: "#2c313c"
+                border.width: 1
+
+                Column {
+                    id: encryptionCol
+                    anchors.top: parent.top
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.margins: 20
+                    spacing: 14
+
+                    Text { text: "Encryption at Rest"; color: "white"; font.pixelSize: 15; font.bold: true }
+
+                    CheckBox {
+                        id: encryptionCheck
+                        text: "Encrypt objects written to this bucket"
+                        Material.theme: Material.Dark
+                        Material.accent: "#4f8cff"
+                        checked: root.encrypted
+                        // The box never flips on its own: the click asks, the server answers, and
+                        // the binding above is what shows the bucket's actual setting meanwhile.
+                        onClicked: {
+                            checked = Qt.binding(function () { return root.encrypted })
+                            encryptionDialog.openFor(!root.encrypted)
+                        }
+                    }
+
+                    Text {
+                        width: parent.width
+                        wrapMode: Text.WordWrap
+                        color: "#9aa1ac"
+                        font.pixelSize: 12
+                        text: root.encrypted
+                              ? "Objects written from here on are encrypted with the bucket's EKM key before they reach the disk and decrypted on the way back out. Uploads and downloads are unchanged."
+                              : "Objects written from here on are stored in the clear. Objects written while encryption was on stay encrypted and keep working."
+                    }
+
+                    DetailField {
+                        width: encryptionCol.width
+                        visible: root.encryptionKeyErn.length > 0
+                        label: "Encryption key ERN"
+                        value: root.encryptionKeyErn
+                        copyable: true
+                    }
+
+                    Text {
+                        width: parent.width
+                        wrapMode: Text.WordWrap
+                        color: "#e0a458"
+                        font.pixelSize: 12
+                        visible: root.encryptionNote.length > 0
+                        text: root.encryptionNote
+                    }
+                }
+            }
+
+            Rectangle {
+                width: parent.width
                 height: tagsCol.implicitHeight + 40
                 radius: 14
                 color: "#20242e"
@@ -245,6 +349,179 @@ Item {
                                 }
                             }
                         }
+                    }
+                }
+            }
+        }
+    }
+
+    Dialog {
+        id: encryptionDialog
+        modal: true
+        anchors.centerIn: parent
+        width: 440
+        padding: 28
+        topPadding: 24
+        bottomPadding: 24
+        standardButtons: Dialog.NoButton
+
+        // Which way the checkbox was asking to go, captured when it was clicked rather than read
+        // back from the bucket, so the dialog says the same thing for as long as it is open.
+        property bool enabling: true
+        property bool saving: false
+        property string errorText: ""
+
+        function openFor(enable) {
+            encryptionDialog.enabling = enable
+            encryptionDialog.open()
+        }
+
+        background: Rectangle {
+            radius: 16
+            color: "#1b1e25"
+            border.color: "#2c313c"
+            border.width: 1
+        }
+
+        onOpened: {
+            encryptionDialog.errorText = ""
+            encryptionDialog.saving = false
+            keyIdField.text = ""
+        }
+
+        contentItem: Column {
+            width: encryptionDialog.availableWidth
+            spacing: 20
+
+            Column {
+                width: parent.width
+                spacing: 4
+                Text {
+                    text: encryptionDialog.enabling ? "Enable Encryption at Rest" : "Disable Encryption at Rest"
+                    color: "white"
+                    font.pixelSize: 18
+                    font.bold: true
+                }
+                Text {
+                    text: "Bucket " + root.bucketName
+                    color: "#9aa1ac"
+                    font.pixelSize: 12
+                    elide: Text.ElideMiddle
+                    width: parent.width
+                }
+            }
+
+            // The consequences, and they are the same in both directions: this decides what happens
+            // to the *next* object written, the ones already stored are never touched, and the key
+            // outlives the setting.
+            Column {
+                width: parent.width
+                spacing: 10
+
+                Text {
+                    width: parent.width
+                    wrapMode: Text.WordWrap
+                    color: "#e0a458"
+                    font.pixelSize: 12
+                    text: encryptionDialog.enabling
+                          ? (root.objects > 0
+                             ? "⚠  This applies to new uploads and puts only. The " + root.objects
+                               + " object(s) already in this bucket are left exactly as they were stored - still unencrypted on disk. Copy or re-upload them if they have to be encrypted too."
+                             : "⚠  This applies to new uploads and puts only. Objects already in the bucket are never re-encrypted; it holds none right now.")
+                          : "⚠  This applies to new uploads and puts only. Objects already stored encrypted are NOT decrypted and NOT rewritten - each one still names its key and is still read back through it, so downloads keep working."
+                }
+
+                Text {
+                    width: parent.width
+                    wrapMode: Text.WordWrap
+                    color: "#e0a458"
+                    font.pixelSize: 12
+                    text: encryptionDialog.enabling
+                          ? "⚠  The bucket's EKM key is what its objects depend on. Deleting that key with \"ekm delete-key\" is what makes every object encrypted under it unrecoverable - there is no other copy."
+                          : "⚠  The bucket's EKM key is left untouched: not revoked, not scheduled for deletion. Retire it only once nothing in this bucket is stored encrypted any more."
+                }
+
+                Text {
+                    width: parent.width
+                    wrapMode: Text.WordWrap
+                    color: "#9aa1ac"
+                    font.pixelSize: 12
+                    visible: encryptionDialog.enabling && root.encrypted
+                    text: "This bucket is already encrypting. Naming another key rotates it: new objects go under the new key, existing ones keep the key they name."
+                }
+            }
+
+            Column {
+                width: parent.width
+                spacing: 6
+                visible: encryptionDialog.enabling
+
+                Text { text: "EKM key (optional)"; color: "#9aa1ac"; font.pixelSize: 12 }
+                TextField {
+                    id: keyIdField
+                    width: parent.width
+                    placeholderText: "Key ID or ERN - leave empty to create a new key"
+                    Material.accent: "#4f8cff"
+                    selectByMouse: true
+                    Keys.onReturnPressed: if (confirmEncryptionButton.enabled) confirmEncryptionButton.clicked()
+                }
+                Text {
+                    text: "Without a key, a fresh AES-256 key is created for this bucket and shows up in EKM like any other."
+                    color: "#6b7280"
+                    font.pixelSize: 11
+                    wrapMode: Text.WordWrap
+                    width: parent.width
+                }
+            }
+
+            Text {
+                text: encryptionDialog.errorText
+                color: "#ff6b6b"
+                font.pixelSize: 12
+                wrapMode: Text.WordWrap
+                width: parent.width
+                visible: text.length > 0
+            }
+
+            Item {
+                width: parent.width
+                height: 40
+
+                Button {
+                    text: "Cancel"
+                    flat: true
+                    anchors.left: parent.left
+                    anchors.verticalCenter: parent.verticalCenter
+                    Material.theme: Material.Dark
+                    onClicked: encryptionDialog.close()
+                }
+
+                BusyIndicator {
+                    running: encryptionDialog.saving
+                    visible: encryptionDialog.saving
+                    width: 22
+                    height: 22
+                    anchors.right: confirmEncryptionButton.left
+                    anchors.rightMargin: 12
+                    anchors.verticalCenter: parent.verticalCenter
+                }
+
+                Button {
+                    id: confirmEncryptionButton
+                    text: encryptionDialog.enabling ? "Enable Encryption" : "Disable Encryption"
+                    highlighted: true
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    Material.theme: Material.Dark
+                    Material.accent: encryptionDialog.enabling ? "#4f8cff" : "#ff6b6b"
+                    enabled: !encryptionDialog.saving
+                    onClicked: {
+                        encryptionDialog.errorText = ""
+                        encryptionDialog.saving = true
+                        if (encryptionDialog.enabling)
+                            esmClient.enableBucketEncryption(root.bucketErn, keyIdField.text.trim())
+                        else
+                            esmClient.disableBucketEncryption(root.bucketErn)
                     }
                 }
             }

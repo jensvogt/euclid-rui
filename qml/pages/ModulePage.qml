@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Controls.Material
 import "../components"
 
 Item {
@@ -110,9 +111,35 @@ Item {
             width: parent.width
             spacing: 28
 
-            SectionHeader {
-                title: moduleName + " Module"
-                subtitle: "Status and metrics for the " + moduleName + " module."
+            Item {
+                width: parent.width
+                height: sectionHeader.implicitHeight
+
+                SectionHeader {
+                    id: sectionHeader
+                    title: moduleName + " Module"
+                    subtitle: "Status and metrics for the " + moduleName + " module."
+                }
+
+                // The same dialog the Settings page opens, scoped to this module - which is where
+                // you already are when exporting just this one is what you want. Only the modules
+                // EMM can dump have it, and only for administrators, who are the only ones it
+                // answers.
+                Button {
+                    text: "Export…"
+                    flat: true
+                    visible: euclidClient.isAdmin
+                             && emmClient.exportableModules().indexOf(root.moduleName.toLowerCase()) >= 0
+                    enabled: root.loggedIn
+                    anchors.right: parent.right
+                    anchors.verticalCenter: sectionHeader.verticalCenter
+                    Material.theme: Material.Dark
+                    Material.accent: "#4f8cff"
+                    onClicked: {
+                        moduleExportDialog.scopeModule = root.moduleName.toLowerCase()
+                        moduleExportDialog.open()
+                    }
+                }
             }
 
             Rectangle {
@@ -284,5 +311,10 @@ Item {
                 }
             }
         }
+    }
+
+    ImportExportDialog {
+        id: moduleExportDialog
+        parent: Overlay.overlay
     }
 }

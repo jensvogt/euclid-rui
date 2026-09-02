@@ -2,6 +2,7 @@
 
 #include <QJsonObject>
 #include <QNetworkAccessManager>
+#include <QNetworkReply>
 #include <QObject>
 #include <QString>
 #include <QStringList>
@@ -16,6 +17,7 @@
 class EuclidBaseClient : public QObject {
     Q_OBJECT
     Q_PROPERTY(bool busy READ busy NOTIFY busyChanged)
+    Q_PROPERTY(bool isAdmin READ isAdmin NOTIFY isAdminChanged)
     Q_PROPERTY(QString accountId READ accountId NOTIFY accountIdChanged)
     Q_PROPERTY(QString region READ region NOTIFY regionChanged)
     Q_PROPERTY(QString baseUrl READ baseUrl WRITE setBaseUrl NOTIFY baseUrlChanged)
@@ -25,6 +27,11 @@ public:
 
     [[nodiscard]]
     bool busy() const { return m_busy; }
+
+    // Whether the login said this user is an administrator. Only a hint for the UI - it decides
+    // what is worth offering, not what is allowed; the server checks every request for itself.
+    [[nodiscard]]
+    bool isAdmin() const { return m_isAdmin; }
 
     // The euclid-mgr gateway every request is posted to, e.g. "https://localhost:5566/". Owned by
     // AppSettings (which persists it and composes it from host/port/scheme) and pushed in from
@@ -63,20 +70,24 @@ public:
     // timeoutMs overrides the default transfer timeout, for the one request that is meant to sit
     // there: EES's "receive-events" waits on the server for as long as it is told to, so a client
     // that long-polls has to be willing to wait longer than a normal call ever should.
-    void post(const QString &target, const QString &action, const QJsonObject &body, bool authorized,
-              const std::function<void(const QJsonObject &)> &onSuccess,
-              const std::function<void(const QString &)> &onError,
-              int timeoutMs = 0);
+    // Returns the reply, for the caller that has to be able to abort a long one; ignoring it is
+    // the normal case - the callbacks own the outcome either way.
+    QNetworkReply *post(const QString &target, const QString &action, const QJsonObject &body, bool authorized,
+                        const std::function<void(const QJsonObject &)> &onSuccess,
+                        const std::function<void(const QString &)> &onError,
+                        int timeoutMs = 0);
 
     // Like post(), but sends a raw binary body (e.g. file contents) with extra raw headers, instead
     // of a JSON body. Always authorized - every raw-upload action needs a session. Used for actions
     // like ESM's "put-object" that read the request body as bytes rather than JSON.
-    void postRaw(const QString &target, const QString &action, const QVariantMap &extraHeaders, const QByteArray &body,
-                 const std::function<void(const QJsonObject &)> &onSuccess,
-                 const std::function<void(const QString &)> &onError);
+    QNetworkReply *postRaw(const QString &target, const QString &action, const QVariantMap &extraHeaders, const QByteArray &body,
+                           const std::function<void(const QJsonObject &)> &onSuccess,
+                           const std::function<void(const QString &)> &onError,
+                           int timeoutMs = 0);
 
 signals:
     void busyChanged();
+    void isAdminChanged();
     void accountIdChanged();
     void regionChanged();
     void baseUrlChanged();
@@ -107,4 +118,5 @@ private:
     QString m_region;
     QString m_namespace;
     bool m_busy = false;
+    bool m_isAdmin = false;
 };
