@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.24](https://github.com/jensvogt/euclid-rui/compare/1.0.23...v1.0.24) (2026-09-02)
+
+
+### Bug Fixes
+
+* EKM description ([d58f51a](https://github.com/jensvogt/euclid-rui/commit/d58f51aaf000a8d09c332a96934897b0f6d0af2d))
+
 ## [1.0.23](https://github.com/jensvogt/euclid-rui/compare/1.0.22...v1.0.23) (2026-09-02)
 
 
