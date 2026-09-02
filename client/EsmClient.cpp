@@ -36,6 +36,8 @@ void EsmClient::fetchBuckets(const QString &prefix, const int pageIndex, const i
                  entry["size"] = bucket.value("size").toInt();
                  entry["objects"] = bucket.value("objects").toInt();
                  entry["tags"] = bucket.value("tags").toObject().toVariantMap();
+                 entry["encrypted"] = bucket.value("encrypted").toBool();
+                 entry["encryptionKeyErn"] = bucket.value("encryptionKeyErn").toString();
                  entry["created"] = bucket.value("created").toString();
                  entry["modified"] = bucket.value("modified").toString();
                  buckets << entry;
@@ -73,6 +75,22 @@ void EsmClient::purgeBucket(const QString &bucketErn) {
          },
          [this](const QString &message) {
              emit bucketsFailed(message);
+         });
+}
+
+void EsmClient::renameBucket(const QString &bucketErn, const QString &newName) {
+    QJsonObject body;
+    body["ern"] = bucketErn;
+    body["newName"] = newName;
+
+    m_base->post("esm", "rename-bucket", body, true,
+         [this](const QJsonObject &response) {
+             emit bucketRenamed(response.value("name").toString(), response.value("ern").toString(),
+                                response.value("objects").toInt(), response.value("subscriptions").toInt());
+             emit bucketsReload();
+         },
+         [this](const QString &message) {
+             emit bucketRenameFailed(message);
          });
 }
 
@@ -117,6 +135,39 @@ void EsmClient::deleteBucketTag(const QString &bucketErn, const QString &key) {
          },
          [this](const QString &message) {
              emit bucketTagDeleteFailed(message);
+         });
+}
+
+void EsmClient::enableBucketEncryption(const QString &bucketErn, const QString &keyId) {
+    QJsonObject body;
+    body["bucketErn"] = bucketErn;
+    body["keyId"] = keyId;
+
+    m_base->post("esm", "enable-encryption", body, true,
+         [this, bucketErn](const QJsonObject &response) {
+             emit bucketEncryptionEnabled(bucketErn, response.value("keyErn").toString(), response.value("keyId").toString(),
+                                          response.value("algorithm").toString(), response.value("keyCreated").toBool(),
+                                          response.value("existingObjects").toInt());
+             emit bucketsReload();
+         },
+         [this](const QString &message) {
+             emit bucketEncryptionFailed(message);
+         });
+}
+
+void EsmClient::disableBucketEncryption(const QString &bucketErn) {
+    QJsonObject body;
+    body["bucketErn"] = bucketErn;
+
+    m_base->post("esm", "disable-encryption", body, true,
+         [this, bucketErn](const QJsonObject &response) {
+             emit bucketEncryptionDisabled(bucketErn, response.value("previousKeyErn").toString(),
+                                           response.value("previousKeyId").toString(),
+                                           response.value("encryptedObjects").toInt());
+             emit bucketsReload();
+         },
+         [this](const QString &message) {
+             emit bucketEncryptionFailed(message);
          });
 }
 

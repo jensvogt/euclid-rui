@@ -125,37 +125,37 @@ Rectangle {
                     height: root.modulesExpanded ? implicitHeight : 0
 
                     SubNavButton {
-                        label: "EAP"
+                        label: "EAP (Apps)"
                         selected: root.currentRoute.indexOf("modules-eap") === 0
                         onClicked: root.navigate("modules-eap")
                     }
                     SubNavButton {
-                        label: "EAM"
+                        label: "EAM (Access)"
                         selected: root.currentRoute.indexOf("modules-eam") === 0
                         onClicked: root.navigate("modules-eam")
                     }
                     SubNavButton {
-                        label: "EKM"
+                        label: "EKM (Keys)"
                         selected: root.currentRoute.indexOf("modules-ekm") === 0
                         onClicked: root.navigate("modules-ekm")
                     }
                     SubNavButton {
-                        label: "ENS"
+                        label: "ENS (Topics)"
                         selected: root.currentRoute.indexOf("modules-ens") === 0
                         onClicked: root.navigate("modules-ens")
                     }
                     SubNavButton {
-                        label: "EQS"
+                        label: "EQS (Queues)"
                         selected: root.currentRoute.indexOf("modules-eqs") === 0
                         onClicked: root.navigate("modules-eqs")
                     }
                     SubNavButton {
-                        label: "ESM"
+                        label: "ESM (Storage)"
                         selected: root.currentRoute === "modules-esm"
                         onClicked: root.navigate("modules-esm")
                     }
                     SubNavButton {
-                        label: "ETS"
+                        label: "ETS (Transfer)"
                         selected: root.currentRoute.indexOf("modules-ets") === 0
                         onClicked: root.navigate("modules-ets")
                     }

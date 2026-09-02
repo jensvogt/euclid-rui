@@ -155,7 +155,16 @@ Item {
                     accent: root.statusColor(root.status)
                 }
                 StatCard { title: "Size"; value: SizeFormat.format(root.detail("size", 0)); trend: "on disk"; trendUp: true; accent: "#c56bff" }
-                StatCard { title: "Content Type"; value: root.detail("contentType", "—"); trend: "format"; trendUp: true; accent: "#4f8cff" }
+                // Twice the standard card width: a content type is a full MIME type, sometimes with
+                // parameters, and does not fit what a count or a size needs.
+                StatCard {
+                    title: "Content Type"
+                    value: root.detail("contentType", "—")
+                    trend: "format"
+                    trendUp: true
+                    accent: "#4f8cff"
+                    width: implicitWidth * 2
+                }
             }
 
             Rectangle {
@@ -189,6 +198,12 @@ Item {
                         DetailField { width: (identityCol.width - 48) / 3; label: "Created"; value: DateFormat.format(root.detail("created", "")) }
                         DetailField { width: (identityCol.width - 48) / 3; label: "Modified"; value: DateFormat.format(root.detail("modified", "")) }
                     }
+
+                    // Both on their own row and copyable: a key is a path and an ERN contains one,
+                    // so either is long enough to elide in a third of the tile, and both are what
+                    // the CLI and every other client want pasted in.
+                    DetailField { width: identityCol.width; label: "Key"; value: root.objectKey; copyable: true }
+                    DetailField { width: identityCol.width; label: "Object ERN"; value: root.objectErn; copyable: true }
                 }
             }
 

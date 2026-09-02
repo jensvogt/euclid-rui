@@ -19,12 +19,28 @@ public:
                                   const QString &sortDirection = QStringLiteral("asc"));
     Q_INVOKABLE void createBucket(const QString &name);
     Q_INVOKABLE void purgeBucket(const QString &bucketErn);
+    // A bucket's name is part of its ERN and of every object ERN inside it, so a rename rewrites
+    // all of them server-side and repoints subscriptions; the counts come back in bucketRenamed().
+    // Refused (409) while a transfer server still serves the bucket, since its clients are
+    // mid-session against the old ERN.
+    Q_INVOKABLE void renameBucket(const QString &bucketErn, const QString &newName);
     Q_INVOKABLE void deleteBucket(const QString &bucketErn);
     // Upserts the tag unconditionally (unlike set-bucket-tag, this doesn't require the key to
     // already exist), matching an "Add" button's semantics.
     Q_INVOKABLE void addBucketTag(const QString &bucketErn, const QString &key, const QString &value);
     // No-ops server-side if the bucket doesn't have this tag key.
     Q_INVOKABLE void deleteBucketTag(const QString &bucketErn, const QString &key);
+
+    // Encryption at rest. Both calls are settings about the *next* object written to the bucket and
+    // nothing else: neither rewrites what the bucket already holds, and neither touches an EKM key
+    // beyond pointing the bucket at one. Every object records the key it was written under, so a
+    // bucket can serve encrypted and plaintext objects side by side without a client noticing.
+    //
+    // `keyId` is an EKM key's ERN or its key ID; left empty, the server creates an AES-256 key for
+    // the bucket. Enabling on an already-encrypted bucket rotates: new objects go under the new
+    // key, existing ones keep naming the old one.
+    Q_INVOKABLE void enableBucketEncryption(const QString &bucketErn, const QString &keyId = QString());
+    Q_INVOKABLE void disableBucketEncryption(const QString &bucketErn);
 
     // Objects
     // A bucket is flat: a directory exists only as a zero-byte object whose key ends in "/" (the
@@ -76,10 +92,24 @@ signals:
     void bucketsReload();
     void bucketCreated(const QString &name);
     void bucketCreateFailed(const QString &message);
+    // `objects` and `subscriptions` are how many of each the server rewrote to the new ERN.
+    void bucketRenamed(const QString &name, const QString &ern, int objects, int subscriptions);
+    void bucketRenameFailed(const QString &message);
     void bucketTagAdded(const QString &bucketErn, const QString &key, const QString &value);
     void bucketTagAddFailed(const QString &message);
     void bucketTagDeleted(const QString &bucketErn, const QString &key);
     void bucketTagDeleteFailed(const QString &message);
+    // `existingObjects` is how many objects the bucket already held: they are left exactly as they
+    // were stored, so this is the number still in the clear after encryption was switched on.
+    // `keyCreated` says the server minted the key for this bucket rather than being handed one.
+    void bucketEncryptionEnabled(const QString &bucketErn, const QString &keyErn, const QString &keyId,
+                                 const QString &algorithm, bool keyCreated, int existingObjects);
+    // `encryptedObjects` is how many objects are still stored encrypted - nothing is decrypted by
+    // switching encryption off, and while this is above zero the keys those objects name must stay
+    // in EKM. `previousKeyErn` is empty when the bucket was not encrypting to begin with.
+    void bucketEncryptionDisabled(const QString &bucketErn, const QString &previousKeyErn,
+                                  const QString &previousKeyId, int encryptedObjects);
+    void bucketEncryptionFailed(const QString &message);
 
     // Objects
     void objectsLoaded(const QString &bucketErn, const QVariantList &objects, int total);

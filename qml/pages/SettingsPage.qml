@@ -181,41 +181,8 @@ Item {
                         }
                     }
 
-                    Row {
-                        spacing: 12
-                        Button {
-                            text: "Save changes"
-                            highlighted: true
-                            Material.theme: Material.Dark
-                            Material.accent: "#4f8cff"
-                        }
-                        Button {
-                            text: "Reset"
-                            flat: true
-                            Material.theme: Material.Dark
-                        }
-                    }
-                }
-            }
-
-            Rectangle {
-                width: parent.width
-                radius: 14
-                color: "#20242e"
-                border.color: "#2c313c"
-                border.width: 1
-                height: content3.implicitHeight + 40
-
-                Column {
-                    id: content3
-                    anchors.fill: parent
-                    anchors.margins: 20
-                    spacing: 18
-
-                    Text { text: "Display"; color: "white"; font.pixelSize: 15; font.bold: true }
-
                     Column {
-                        width: content3.width
+                        width: content2.width
                         spacing: 6
 
                         Text { text: "Date & time format"; color: "#9aa1ac"; font.pixelSize: 12 }
@@ -238,27 +205,9 @@ Item {
                             font.pixelSize: 11
                         }
                     }
-                }
-            }
-
-            Rectangle {
-                width: parent.width
-                radius: 14
-                color: "#20242e"
-                border.color: "#2c313c"
-                border.width: 1
-                height: content4.implicitHeight + 40
-
-                Column {
-                    id: content4
-                    anchors.fill: parent
-                    anchors.margins: 20
-                    spacing: 18
-
-                    Text { text: "Data Refresh"; color: "white"; font.pixelSize: 15; font.bold: true }
 
                     Column {
-                        width: content4.width
+                        width: content2.width
                         spacing: 6
 
                         Text { text: "Auto-refresh interval (seconds)"; color: "#9aa1ac"; font.pixelSize: 12 }
@@ -283,13 +232,44 @@ Item {
                         }
                     }
 
+                    Row {
+                        spacing: 12
+                        Button {
+                            text: "Save changes"
+                            highlighted: true
+                            Material.theme: Material.Dark
+                            Material.accent: "#4f8cff"
+                        }
+                        Button {
+                            text: "Reset"
+                            flat: true
+                            Material.theme: Material.Dark
+                        }
+                    }
+                }
+            }
+
+            Rectangle {
+                width: parent.width
+                radius: 14
+                color: "#20242e"
+                border.color: "#2c313c"
+                border.width: 1
+                height: content4.implicitHeight + 40
+
+                Column {
+                    id: content4
+                    anchors.fill: parent
+                    anchors.margins: 20
+                    spacing: 18
+
                     // How requests authenticate. The gateway accepts all three; the two signature
                     // modes replace the login token with an EAM access key on every request.
+                    Text { text: "Request Authentication"; color: "white"; font.pixelSize: 15; font.bold: true }
+
                     Column {
                         width: content4.width
                         spacing: 6
-
-                        Text { text: "Request authentication"; color: "#9aa1ac"; font.pixelSize: 12 }
 
                         ComboBox {
                             id: authModeCombo
@@ -569,6 +549,55 @@ Item {
                     }
                 }
             }
+
+            // Only for administrators: EMM refuses "export" and "import" to anyone else, so
+            // offering it to a user who cannot use it would only produce a 403 they can do
+            // nothing about. The server checks for itself regardless - this is about what is
+            // worth showing, not about what is allowed.
+            Rectangle {
+                visible: euclidClient.isAdmin
+                width: parent.width
+                radius: 14
+                color: "#20242e"
+                border.color: "#2c313c"
+                border.width: 1
+                height: backupContent.implicitHeight + 40
+
+                Column {
+                    id: backupContent
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.top: parent.top
+                    anchors.margins: 20
+                    spacing: 12
+
+                    Text { text: "Backup & Restore"; color: "white"; font.pixelSize: 15; font.bold: true }
+
+                    Text {
+                        width: parent.width
+                        text: "Exports the modules' database collections as JSON - every module except EMO, "
+                              + "with the messages and objects inside them optional - and imports such a file back. "
+                              + "Monitoring data is not part of it."
+                        color: "#9aa1ac"
+                        font.pixelSize: 12
+                        wrapMode: Text.WordWrap
+                    }
+
+                    Button {
+                        text: "Export or import data…"
+                        highlighted: true
+                        enabled: root.loggedIn
+                        Material.theme: Material.Dark
+                        Material.accent: "#4f8cff"
+                        onClicked: importExportDialog.open()
+                    }
+                }
+            }
         }
+    }
+
+    ImportExportDialog {
+        id: importExportDialog
+        parent: Overlay.overlay
     }
 }

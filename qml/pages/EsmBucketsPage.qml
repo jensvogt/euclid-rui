@@ -25,6 +25,17 @@ Item {
             { title: "Name", key: "name", fill: true },
             { title: "Objects", key: "objects" },
             { title: "Size", key: "size", formatter: function (v) { return SizeFormat.format(v) } },
+            // Says what happens to the next object written, not that everything in the bucket is
+            // encrypted - a bucket holds objects written under whatever setting was in force at the
+            // time. Not sortable: the server derives "encrypted" from the bucket's key ERN, so
+            // there is no stored field behind it to sort on.
+            {
+                title: "Encrypted",
+                key: "encrypted",
+                sortable: false,
+                formatter: function (v) { return v ? "Yes" : "No" },
+                colorFor: function (v) { return v ? "#4cd97b" : "#6b7280" }
+            },
             { title: "Created", key: "created", formatter: function (v) { return DateFormat.format(v) } },
             { title: "Modified", key: "modified", formatter: function (v) { return DateFormat.format(v) } },
             { title: "Ern", key: "ern", hidden: true }
@@ -67,6 +78,10 @@ Item {
                 // A bucket listing shows counts and sizes, so any object event changes it -
                 // which bucket the object was in does not matter here.
                 root.refresh()
+            } else if (["esm.bucket.modified", "esm.bucket.deleted"].indexOf(eventType) >= 0) {
+                // The bucket itself changed: created, renamed away from the name on screen, or
+                // deleted - including by another window, which is the case a timer handles worst.
+                root.refresh()
             }
         }
     }
@@ -96,6 +111,162 @@ Item {
         function onBucketCreateFailed(message) {
             createBucketDialog.creating = false
             createBucketDialog.errorText = message
+        }
+        function onBucketRenamed(name, ern, objects, subscriptions) {
+            renameBucketDialog.renaming = false
+            renameBucketDialog.close()
+        }
+        function onBucketRenameFailed(message) {
+            renameBucketDialog.renaming = false
+            renameBucketDialog.errorText = message
+        }
+    }
+
+    Dialog {
+        id: renameBucketDialog
+        modal: true
+        anchors.centerIn: parent
+        width: 400
+        padding: 28
+        topPadding: 24
+        bottomPadding: 24
+        standardButtons: Dialog.NoButton
+
+        property var bucket: null
+        property bool renaming: false
+        property string errorText: ""
+
+        readonly property string currentName: bucket ? bucket.name : ""
+        readonly property int objectCount: bucket ? Number(bucket.objects) : 0
+
+        function openFor(bucket) {
+            renameBucketDialog.bucket = bucket
+            renameBucketDialog.open()
+        }
+
+        background: Rectangle {
+            radius: 16
+            color: "#1b1e25"
+            border.color: "#2c313c"
+            border.width: 1
+        }
+
+        onOpened: {
+            errorText = ""
+            renaming = false
+            newBucketNameField.text = renameBucketDialog.currentName
+            newBucketNameField.selectAll()
+            newBucketNameField.forceActiveFocus()
+        }
+
+        contentItem: Column {
+            width: renameBucketDialog.availableWidth
+            spacing: 20
+
+            Column {
+                width: parent.width
+                spacing: 4
+                Text { text: "Rename Bucket"; color: "white"; font.pixelSize: 18; font.bold: true }
+                Text {
+                    // Not a cosmetic change: the name is part of the bucket's ERN and of every
+                    // object ERN under it, so everything holding one has to be rewritten.
+                    text: renameBucketDialog.objectCount > 0
+                          ? "The bucket's ERN changes, and so does the ERN of each of its "
+                            + renameBucketDialog.objectCount + " object(s). Subscriptions follow automatically."
+                          : "The bucket's ERN changes with its name. Subscriptions follow automatically."
+                    color: "#9aa1ac"
+                    font.pixelSize: 12
+                    wrapMode: Text.WordWrap
+                    width: parent.width
+                }
+            }
+
+            Column {
+                width: parent.width
+                spacing: 1
+                Text { text: "Current name"; color: "#6b7280"; font.pixelSize: 10 }
+                Text {
+                    text: renameBucketDialog.currentName
+                    color: "#c4c9d1"
+                    font.pixelSize: 12
+                    elide: Text.ElideMiddle
+                    width: parent.width
+                }
+            }
+
+            Column {
+                width: parent.width
+                spacing: 6
+                Text { text: "New name"; color: "#9aa1ac"; font.pixelSize: 12 }
+                TextField {
+                    id: newBucketNameField
+                    width: parent.width
+                    placeholderText: "e.g. reports-2026"
+                    Material.accent: "#4f8cff"
+                    selectByMouse: true
+                    Keys.onReturnPressed: if (renameBucketButton.enabled) renameBucketButton.clicked()
+                }
+                Text {
+                    // Worth saying before the round trip: this is the one refusal an operator can
+                    // do nothing about from here.
+                    text: "A bucket served by a transfer server cannot be renamed while that server runs."
+                    color: "#6b7280"
+                    font.pixelSize: 11
+                    wrapMode: Text.WordWrap
+                    width: parent.width
+                }
+                Text {
+                    text: renameBucketDialog.errorText
+                    color: "#ff6b6b"
+                    font.pixelSize: 12
+                    wrapMode: Text.WordWrap
+                    width: parent.width
+                    visible: text.length > 0
+                }
+            }
+
+            Item {
+                width: parent.width
+                height: 40
+
+                Button {
+                    text: "Cancel"
+                    flat: true
+                    anchors.left: parent.left
+                    anchors.verticalCenter: parent.verticalCenter
+                    Material.theme: Material.Dark
+                    onClicked: renameBucketDialog.close()
+                }
+
+                BusyIndicator {
+                    running: renameBucketDialog.renaming
+                    visible: renameBucketDialog.renaming
+                    width: 22
+                    height: 22
+                    anchors.right: renameBucketButton.left
+                    anchors.rightMargin: 12
+                    anchors.verticalCenter: parent.verticalCenter
+                }
+
+                Button {
+                    id: renameBucketButton
+                    text: "Rename"
+                    highlighted: true
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    Material.theme: Material.Dark
+                    Material.accent: "#4f8cff"
+                    // The server refuses the current name outright, so it is caught here.
+                    enabled: !renameBucketDialog.renaming
+                             && newBucketNameField.text.trim().length > 0
+                             && newBucketNameField.text.trim() !== renameBucketDialog.currentName
+                    onClicked: {
+                        renameBucketDialog.errorText = ""
+                        renameBucketDialog.renaming = true
+                        esmClient.renameBucket(renameBucketDialog.bucket.ern, newBucketNameField.text.trim())
+                    }
+                }
+            }
         }
     }
 
@@ -283,6 +454,12 @@ Item {
                         text: "Details",
                         action: function(row) {
                             root.openBucketDetails(row.ern, row.name, row)
+                        }
+                    },
+                    {
+                        text: "Rename…",
+                        action: function(row) {
+                            renameBucketDialog.openFor(row)
                         }
                     },
                     {

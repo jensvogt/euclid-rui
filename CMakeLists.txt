@@ -119,6 +119,7 @@ qt_add_qml_module(euclid_rui
         qml/components/AboutDialog.qml
         qml/components/ObjectTree.qml
         qml/components/FoldableTile.qml
+        qml/components/ImportExportDialog.qml
         qml/components/ServiceModuleTile.qml
         qml/components/ToggleSwitch.qml
         qml/components/SectionHeader.qml

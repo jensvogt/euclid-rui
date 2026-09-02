@@ -16,6 +16,11 @@ namespace {
             QStringLiteral("esm.object.created"),
             QStringLiteral("esm.object.updated"),
             QStringLiteral("esm.object.deleted"),
+            // Buckets change without any object changing - created, renamed, deleted - and a
+            // window showing a bucket that another window just renamed is exactly what a listing
+            // on a timer looks like.
+            QStringLiteral("esm.bucket.modified"),
+            QStringLiteral("esm.bucket.deleted"),
             QStringLiteral("eqs.message.sent"),
             QStringLiteral("ekm.key.created"),
     };

@@ -15,6 +15,7 @@ Item {
 
     property string error: ""
     property bool deleting: false
+    property bool savingEnvironment: false
 
     signal back()
 
@@ -38,6 +39,26 @@ Item {
         if (value === "RUNNING") return "#4cd97b"
         if (value === "STOPPED") return "#ffb545"
         return "#9aa1ac"
+    }
+
+    // "update-application" replaces each field it is given, so adding or removing one variable
+    // means sending the resulting map - EAP has no per-variable call.
+    function setEnvironment(environment) {
+        root.error = ""
+        root.savingEnvironment = true
+        eapClient.updateApplication(root.applicationId, { environment: environment })
+    }
+
+    function addEnvironmentVariable(name, value) {
+        const environment = Object.assign({}, root.detail("environment", ({})))
+        environment[name] = value
+        root.setEnvironment(environment)
+    }
+
+    function removeEnvironmentVariable(name) {
+        const environment = Object.assign({}, root.detail("environment", ({})))
+        delete environment[name]
+        root.setEnvironment(environment)
     }
 
     function environmentNames() {
@@ -87,7 +108,16 @@ Item {
         }
         function onApplicationStateFailed(message) {
             root.deleting = false
-            root.error = message
+            root.savingEnvironment = false
+            if (environmentDialog.opened) environmentDialog.errorText = message
+            else root.error = message
+        }
+        function onApplicationStateChanged(applicationId, desiredState) {
+            if (applicationId !== root.applicationId) return
+            root.savingEnvironment = false
+            environmentDialog.close()
+            // Stored already; re-reading is what puts the new map on screen.
+            root.refresh()
         }
     }
 
@@ -231,6 +261,16 @@ Item {
                         DetailField { width: (identityCol.width - 48) / 3; label: "Application ID"; value: root.applicationId }
                         DetailField { width: (identityCol.width - 48) / 3; label: "Runtime"; value: root.detail("runtime", "—") }
                         DetailField { width: (identityCol.width - 48) / 3; label: "Artifact"; value: root.detail("artifactKey", "—") }
+                        DetailField { width: (identityCol.width - 48) / 3; label: "Version"; value: root.detail("version", "—") }
+                        DetailField {
+                            width: (identityCol.width - 48) / 3
+                            label: "MD5 sum"
+                            // EAP records the checksum of the artifact it deployed. Copyable
+                            // because the thing you do with it is compare it against the build you
+                            // have in your hand - md5sum on the jar you think is running.
+                            value: root.detail("md5Sum", "—")
+                            copyable: root.detail("md5Sum", "").length > 0
+                        }
                         DetailField { width: (identityCol.width - 48) / 3; label: "Account ID"; value: root.detail("accountId", "—") }
                         DetailField { width: (identityCol.width - 48) / 3; label: "Region"; value: root.detail("region", "—") }
                         DetailField { width: (identityCol.width - 48) / 3; label: "Requested state"; value: root.desiredState.length > 0 ? root.desiredState : "—" }
@@ -271,12 +311,40 @@ Item {
                     anchors.margins: 20
                     spacing: 14
 
-                    Text { text: "Environment"; color: "white"; font.pixelSize: 15; font.bold: true }
+                    Item {
+                        width: parent.width
+                        height: environmentHeaderRow.implicitHeight
+
+                        Row {
+                            id: environmentHeaderRow
+                            spacing: 10
+                            Text { text: "Environment"; color: "white"; font.pixelSize: 15; font.bold: true }
+                            BusyIndicator {
+                                running: root.savingEnvironment
+                                visible: root.savingEnvironment
+                                width: 18
+                                height: 18
+                                anchors.verticalCenter: parent.verticalCenter
+                            }
+                        }
+
+                        Button {
+                            text: "+ Add variable"
+                            highlighted: true
+                            anchors.right: parent.right
+                            anchors.verticalCenter: environmentHeaderRow.verticalCenter
+                            Material.theme: Material.Dark
+                            Material.accent: "#4f8cff"
+                            enabled: !root.savingEnvironment
+                            onClicked: environmentDialog.open()
+                        }
+                    }
 
                     Text {
                         width: parent.width
                         text: "Passed to the process on start, on top of the socket path and credentials euclid-mgr "
-                              + "supplies itself. Edited through the EAP API; this page shows the current definition."
+                              + "supplies itself. A running application keeps its current environment until the "
+                              + "reconciler next restarts it."
                         color: "#6b7280"
                         font.pixelSize: 11
                         wrapMode: Text.WordWrap
@@ -312,8 +380,24 @@ Item {
                                 color: "#c4c9d1"
                                 font.pixelSize: 12
                                 elide: Text.ElideRight
-                                width: environmentRow.width - Math.min(260, environmentRow.width * 0.35) - 12
+                                width: environmentRow.width - Math.min(260, environmentRow.width * 0.35) - 90
                                 anchors.verticalCenter: parent.verticalCenter
+                            }
+                            Text {
+                                text: "Remove"
+                                color: removeVariableArea.containsMouse ? "#ff6b6b" : "#9aa1ac"
+                                font.pixelSize: 11
+                                anchors.verticalCenter: parent.verticalCenter
+
+                                MouseArea {
+                                    id: removeVariableArea
+                                    anchors.fill: parent
+                                    anchors.margins: -4
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    enabled: !root.savingEnvironment
+                                    onClicked: root.removeEnvironmentVariable(environmentRow.modelData)
+                                }
                             }
                         }
                     }
@@ -379,6 +463,138 @@ Item {
                                 }
                             }
                         }
+                    }
+                }
+            }
+        }
+    }
+
+    Dialog {
+        id: environmentDialog
+        modal: true
+        anchors.centerIn: parent
+        width: 380
+        padding: 28
+        topPadding: 24
+        bottomPadding: 24
+        standardButtons: Dialog.NoButton
+
+        property string errorText: ""
+
+        background: Rectangle {
+            radius: 16
+            color: "#1b1e25"
+            border.color: "#2c313c"
+            border.width: 1
+        }
+
+        onOpened: {
+            variableNameField.text = ""
+            variableValueField.text = ""
+            environmentDialog.errorText = ""
+            variableNameField.forceActiveFocus()
+        }
+
+        contentItem: Column {
+            width: environmentDialog.availableWidth
+            spacing: 16
+
+            Column {
+                width: parent.width
+                spacing: 4
+                Text { text: "Add Environment Variable"; color: "white"; font.pixelSize: 18; font.bold: true }
+                Text {
+                    text: "Handed to the process on start. Names beginning with EUCLID_ are set by euclid-mgr "
+                          + "itself, so one set here under the same name is the one that loses."
+                    color: "#9aa1ac"
+                    font.pixelSize: 12
+                    wrapMode: Text.WordWrap
+                    width: parent.width
+                }
+            }
+
+            Column {
+                width: parent.width
+                spacing: 6
+                Text { text: "Name"; color: "#9aa1ac"; font.pixelSize: 12 }
+                TextField {
+                    id: variableNameField
+                    width: parent.width
+                    placeholderText: "e.g. LOG_LEVEL"
+                    Material.accent: "#4f8cff"
+                    selectByMouse: true
+                    Keys.onReturnPressed: variableValueField.forceActiveFocus()
+                }
+            }
+
+            Column {
+                width: parent.width
+                spacing: 6
+                Text { text: "Value"; color: "#9aa1ac"; font.pixelSize: 12 }
+                TextField {
+                    id: variableValueField
+                    width: parent.width
+                    placeholderText: "e.g. debug"
+                    Material.accent: "#4f8cff"
+                    selectByMouse: true
+                    Keys.onReturnPressed: if (addVariableButton.enabled) addVariableButton.clicked()
+                }
+                Text {
+                    // The map is replaced wholesale, so re-using a name overwrites rather than
+                    // duplicating - worth saying, since that is not obvious from a form called "add".
+                    visible: variableNameField.text.trim().length > 0
+                             && root.environmentNames().indexOf(variableNameField.text.trim()) >= 0
+                    text: "\"" + variableNameField.text.trim() + "\" is already set; this replaces its value."
+                    color: "#ffb545"
+                    font.pixelSize: 11
+                    wrapMode: Text.WordWrap
+                    width: parent.width
+                }
+                Text {
+                    text: environmentDialog.errorText
+                    color: "#ff6b6b"
+                    font.pixelSize: 12
+                    wrapMode: Text.WordWrap
+                    width: parent.width
+                    visible: text.length > 0
+                }
+            }
+
+            Item {
+                width: parent.width
+                height: 40
+
+                Button {
+                    text: "Cancel"
+                    flat: true
+                    anchors.left: parent.left
+                    anchors.verticalCenter: parent.verticalCenter
+                    Material.theme: Material.Dark
+                    onClicked: environmentDialog.close()
+                }
+
+                BusyIndicator {
+                    running: root.savingEnvironment
+                    visible: root.savingEnvironment
+                    width: 22
+                    height: 22
+                    anchors.right: addVariableButton.left
+                    anchors.rightMargin: 12
+                    anchors.verticalCenter: parent.verticalCenter
+                }
+
+                Button {
+                    id: addVariableButton
+                    text: "Add"
+                    highlighted: true
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    Material.theme: Material.Dark
+                    Material.accent: "#4f8cff"
+                    enabled: !root.savingEnvironment && variableNameField.text.trim().length > 0
+                    onClicked: {
+                        environmentDialog.errorText = ""
+                        root.addEnvironmentVariable(variableNameField.text.trim(), variableValueField.text)
                     }
                 }
             }
