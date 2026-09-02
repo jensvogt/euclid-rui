@@ -19,8 +19,19 @@ Dialog {
     property string autoNamespace: ""
     property bool autoLoginActive: false
     property bool suppressOpenReset: false
+    // Whether there is a session behind this dialog; see onRejected.
+    property bool signedIn: false
 
     signal loggedIn(string username, string namespaceName)
+
+    // Escape arrives here as reject(): closePolicy sends it through Popup's closeOrReject(), which
+    // rejects a Dialog rather than merely closing it, and every successful path below closes with
+    // close(). So a rejection is always a dismissal, never a sign-in.
+    //
+    // Dismissing the way in is a decision to leave, and on startup there is nothing behind this
+    // dialog to go back to - so the application goes with it. Reopened from the avatar to switch
+    // user there *is* a live session behind it, and Escape there means "never mind", not "quit".
+    onRejected: if (!root.signedIn) Qt.quit()
 
     // Applies whatever gateway the connection fields currently show. Persisted by AppSettings and
     // pushed into euclidClient from main.cpp, so it takes effect from the very next request - the

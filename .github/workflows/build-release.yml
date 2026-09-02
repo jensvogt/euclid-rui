@@ -304,14 +304,15 @@ jobs:
         run: |
           PACKAGE_DIR=package
           echo "PACKAGE_DIR=$PACKAGE_DIR" >> $GITHUB_ENV
-          mkdir -p $PACKAGE_DIR/usr/bin
-          # Statically linked - the single binary is the whole package, no Qt runtime to bundle.
-          cp $BUILD_DIR/$BIN_NAME $PACKAGE_DIR/usr/bin/$APP_NAME
+          # Statically linked - the single binary is the whole program, no Qt runtime to bundle -
+          # but the desktop entry and its icons go in beside it, or the application has no name and
+          # no icon in the launcher. Shared with the RPM job so both packages hold the same tree.
+          dist/linux/package-tree.sh "$BUILD_DIR/$BIN_NAME" "$PACKAGE_DIR" "$APP_NAME"
 
       - name: Build DEB with fpm
         run: |
           fpm -s dir -t deb --name "${APP_NAME}" --version "${SEMVER}" --architecture amd64 \
-            --package "${APP_NAME}-${SEMVER}-amd64.deb" -C "$PACKAGE_DIR" usr/bin
+            --package "${APP_NAME}-${SEMVER}-amd64.deb" -C "$PACKAGE_DIR" usr/bin usr/share
 
       - name: Upload .deb
         uses: actions/upload-artifact@v4
@@ -357,13 +358,13 @@ jobs:
         run: |
           PACKAGE_DIR=package
           echo "PACKAGE_DIR=$PACKAGE_DIR" >> $GITHUB_ENV
-          mkdir -p $PACKAGE_DIR/usr/bin
-          cp $BUILD_DIR/$BIN_NAME $PACKAGE_DIR/usr/bin/$APP_NAME
+          # Same tree as the DEB: binary, desktop entry, themed icons.
+          dist/linux/package-tree.sh "$BUILD_DIR/$BIN_NAME" "$PACKAGE_DIR" "$APP_NAME"
 
       - name: Build RPM with fpm
         run: |
           fpm -s dir -t rpm --name "${APP_NAME}" --version "${SEMVER}" --architecture amd64 \
-            --package "${APP_NAME}-${SEMVER}-amd64.rpm" -C "$PACKAGE_DIR" usr/bin
+            --package "${APP_NAME}-${SEMVER}-amd64.rpm" -C "$PACKAGE_DIR" usr/bin usr/share
 
       - name: Upload RPM
         uses: actions/upload-artifact@v4

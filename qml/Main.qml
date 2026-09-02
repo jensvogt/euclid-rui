@@ -324,6 +324,7 @@ ApplicationWindow {
 
     LoginDialog {
         id: loginDialog
+        signedIn: window.loggedIn
         onLoggedIn: (username, namespaceName) => {
             window.loggedIn = true
             window.currentUser = username

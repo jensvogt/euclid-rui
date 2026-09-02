@@ -12,21 +12,75 @@ Item {
     property real cpuPercent: -1
     property real memoryPercent: -1
 
-    function refreshLoad() {
+    // "gateway-service-count" is recorded once per request in the gateway's router, labelled by
+    // HTTP method - the closest thing emo exposes to overall traffic across every module. The
+    // aggregated fetch folds those labels into one point per bucket (a RATE sums over its labels),
+    // which is the total request count this chart wants.
+    //
+    // DAY resolution, because the bars are days. One bucket costs one row per label, so the cap is
+    // buckets * labels: far more than the seven days drawn, since the oldest bucket of a response
+    // that hit the cap is dropped server-side as incomplete.
+    readonly property string trafficMetric: "gateway-service-count"
+    readonly property int trafficRowLimit: 96
+    property var trafficPoints: []
+    property string trafficError: ""
+
+    // The last seven days as bars, oldest first. Built from calendar days rather than from whatever
+    // buckets came back: a day with no traffic has no bucket at all, and without the day slots its
+    // neighbours would slide over to fill the gap and be labelled as days they are not.
+    readonly property var weekBars: {
+        const names = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+        // emo's DAY buckets are UTC-aligned, so days are keyed and labelled in UTC - keying in
+        // local time would file a bucket under the neighbouring bar for anyone not on UTC.
+        const byDay = ({})
+        for (const point of root.trafficPoints) {
+            const stamp = new Date(point.timestamp)
+            if (isNaN(stamp.getTime())) continue
+            const key = stamp.toISOString().substring(0, 10)
+            byDay[key] = (byDay[key] || 0) + Number(point.value)
+        }
+
+        const bars = []
+        const now = new Date()
+        for (let back = 6; back >= 0; --back) {
+            const day = new Date(now.getTime() - back * 86400000)
+            bars.push({
+                label: names[day.getUTCDay()],
+                value: byDay[day.toISOString().substring(0, 10)] || 0,
+                today: back === 0
+            })
+        }
+        return bars
+    }
+
+    // Bars are drawn as a fraction of the busiest day, so a quiet week still fills the chart.
+    readonly property real trafficMax: {
+        let max = 0
+        for (const bar of root.weekBars) max = Math.max(max, bar.value)
+        return max
+    }
+    readonly property real trafficTotal: {
+        let total = 0
+        for (const bar of root.weekBars) total += bar.value
+        return total
+    }
+
+    function refresh() {
         if (!root.loggedIn)
             return
         emoClient.fetchAverage("euclid-cpu-usage")
         emoClient.fetchAverage("euclid-memory-usage-percent")
+        emoClient.fetchAggregatedSeries(root.trafficMetric, root.trafficRowLimit, "DAY")
     }
 
-    onVisibleChanged: if (visible) refreshLoad()
-    onLoggedInChanged: if (loggedIn && visible) refreshLoad()
+    onVisibleChanged: if (visible) refresh()
+    onLoggedInChanged: if (loggedIn && visible) refresh()
 
     Timer {
         interval: appSettings.autoRefreshSeconds * 1000
         running: appSettings.autoRefreshSeconds > 0 && root.visible && root.loggedIn
         repeat: true
-        onTriggered: root.refreshLoad()
+        onTriggered: root.refresh()
     }
 
     Connections {
@@ -38,6 +92,18 @@ Item {
         function onAverageFailed(name, message) {
             if (name === "euclid-cpu-usage") root.cpuPercent = -1
             else if (name === "euclid-memory-usage-percent") root.memoryPercent = -1
+        }
+        // The analytics page asks for this metric too, but per method - an aggregated response is
+        // the one with no label, which is what this page asked for and what it draws.
+        function onSeriesLoaded(name, labelValue, points) {
+            if (name !== root.trafficMetric || labelValue.length > 0) return
+            root.trafficPoints = points
+            root.trafficError = ""
+        }
+        function onSeriesFailed(name, labelValue, message) {
+            if (name !== root.trafficMetric || labelValue.length > 0) return
+            root.trafficPoints = []
+            root.trafficError = message
         }
     }
 
@@ -145,46 +211,70 @@ Item {
                         anchors.margins: 20
                         spacing: 14
 
-                        Text {
-                            text: "Weekly Traffic"
-                            color: "white"
-                            font.pixelSize: 15
-                            font.bold: true
+                        Column {
+                            width: parent.width
+                            spacing: 2
+
+                            Text {
+                                text: "Weekly Traffic"
+                                color: "white"
+                                font.pixelSize: 15
+                                font.bold: true
+                            }
+                            Text {
+                                text: root.trafficError.length > 0
+                                      ? root.trafficError
+                                      : (root.trafficTotal > 0
+                                         ? Math.round(root.trafficTotal) + " gateway requests · last 7 days"
+                                         : "No gateway requests recorded in the last 7 days.")
+                                color: root.trafficError.length > 0 ? "#ff6b6b" : "#6b7280"
+                                font.pixelSize: 11
+                                elide: Text.ElideRight
+                                width: parent.width
+                            }
                         }
 
                         Row {
                             id: barRow
                             width: parent.width
-                            height: 180
+                            height: 170
                             spacing: 18
 
-                            property var values: [0.4, 0.65, 0.5, 0.8, 0.7, 0.95, 0.6]
-                            property var labels: ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"]
+                            readonly property int barHeight: 140
 
                             Repeater {
-                                model: barRow.values.length
+                                model: root.weekBars
                                 delegate: Column {
+                                    id: barColumn
+                                    required property var modelData
+
                                     spacing: 8
                                     width: (barRow.width - barRow.spacing * 6) / 7
 
                                     Item {
                                         width: parent.width
-                                        height: 140
+                                        height: barRow.barHeight
 
                                         Rectangle {
                                             anchors.bottom: parent.bottom
                                             width: parent.width
                                             radius: 6
-                                            color: index === 5 ? "#4f8cff" : "#2c3648"
-                                            height: 0
+                                            // Today is the bar being filled in as the day goes on,
+                                            // so it is the one worth picking out.
+                                            color: barColumn.modelData.today ? "#4f8cff" : "#2c3648"
+                                            // A binding rather than a one-shot assignment: the
+                                            // chart is refetched on a timer, and a day with no
+                                            // traffic still needs a visible foot to sit on.
+                                            height: root.trafficMax > 0
+                                                    ? Math.max(2, barRow.barHeight * barColumn.modelData.value / root.trafficMax)
+                                                    : 2
                                             Behavior on height { NumberAnimation { duration: 600; easing.type: Easing.OutCubic } }
-                                            Component.onCompleted: height = 140 * barRow.values[index]
                                         }
                                     }
                                     Text {
                                         anchors.horizontalCenter: parent.horizontalCenter
-                                        text: barRow.labels[index]
-                                        color: "#9aa1ac"
+                                        text: barColumn.modelData.label
+                                        color: barColumn.modelData.today ? "#c4c9d1" : "#9aa1ac"
                                         font.pixelSize: 11
                                     }
                                 }

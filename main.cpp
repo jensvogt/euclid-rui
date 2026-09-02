@@ -30,6 +30,12 @@ int main(int argc, char *argv[]) {
     // can draw: the mono and small SVGs are stroked with "currentColor", which is a CSS notion
     // Qt's SVG renderer has no value for.
     QGuiApplication::setWindowIcon(QIcon(QStringLiteral(":/EuclidRui/dist/branding/euclid-icon.svg")));
+    // Ties a running window to dist/linux/euclid-rui.desktop, which is what a Linux desktop reads
+    // the launcher icon and name from - the window icon above is only what Qt draws itself. Without
+    // it the match is left to guesswork: on X11 Qt would fall back to the executable's name, and on
+    // Wayland, where there is no WM_CLASS to guess from, the window would go unmatched entirely and
+    // show the fallback icon. Ignored on Windows and macOS, which have their own mechanisms.
+    QGuiApplication::setDesktopFileName(QStringLiteral("euclid-rui"));
 
     QCommandLineParser parser;
     parser.setApplicationDescription("Euclid RUI - Qt6/QML dashboard for the euclid backend");
