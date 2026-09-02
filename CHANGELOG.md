@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.25](https://github.com/jensvogt/euclid-rui/compare/1.0.24...v1.0.25) (2026-09-02)
+
+
+### Bug Fixes
+
+* desktop icon for linux. ([efb7779](https://github.com/jensvogt/euclid-rui/commit/efb7779063f49fdfa79703796c56da294294a132))
+
 ## [1.0.24](https://github.com/jensvogt/euclid-rui/compare/1.0.23...v1.0.24) (2026-09-02)
 
 
