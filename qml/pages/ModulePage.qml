@@ -32,6 +32,11 @@ Item {
         return minutes + "m"
     }
 
+    // What F5 calls (see Main.qml's refreshCurrentPage()).
+    function refresh() {
+        root.refreshStatus()
+    }
+
     function refreshStatus() {
         if (!root.loggedIn) {
             statusError = "Sign in to view live status."

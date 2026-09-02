@@ -352,6 +352,30 @@ ApplicationWindow {
         }
     }
 
+    // F5 re-reads whatever is on screen, the way it does in a browser. Dispatched centrally rather
+    // than by a shortcut on each page: two enabled shortcuts sharing a sequence are ambiguous to
+    // Qt, and only this owns which page is current.
+    //
+    // A page that has anything to re-fetch exposes refresh(); the ones that only display what the
+    // list they were opened from already handed them have nothing to ask for, and F5 leaves them
+    // alone rather than pretending otherwise.
+    function refreshCurrentPage() {
+        for (let i = 0; i < pageLoader.children.length; ++i) {
+            const page = pageLoader.children[i]
+            if (page.visible && typeof page.refresh === "function") {
+                page.refresh()
+                return
+            }
+        }
+    }
+
+    Shortcut {
+        // Not a literal "F5": StandardKey.Refresh is F5 everywhere and additionally Ctrl+R where
+        // the desktop expects it.
+        sequences: [StandardKey.Refresh]
+        onActivated: window.refreshCurrentPage()
+    }
+
     Component.onCompleted: {
         x = Screen.width / 2 - width / 2
         y = Screen.height / 2 - height / 2
@@ -643,6 +667,8 @@ ApplicationWindow {
                 }
             }
 
+            // Every page is instantiated here and shown by route, so the one on screen is the one
+            // visible child - which is what F5 refreshes (see refreshCurrentPage()).
             Item {
                 id: pageLoader
                 width: parent.width

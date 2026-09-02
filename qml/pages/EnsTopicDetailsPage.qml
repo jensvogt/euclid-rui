@@ -50,6 +50,11 @@ Item {
     property bool subscriptionsLoading: false
     property string subscriptionsError: ""
 
+    // What F5 calls (see Main.qml's refreshCurrentPage()).
+    function refresh() {
+        root.refreshSubscriptions()
+    }
+
     function refreshSubscriptions() {
         if (!root.loggedIn || root.topicErn.length === 0)
             return

@@ -12,6 +12,21 @@ Item {
     property real cpuPercent: -1
     property real memoryPercent: -1
 
+    // The module registry: what euclid-mgr is meant to be running, and what actually is.
+    property var modules: []
+    property string modulesError: ""
+    // Distinguishes "not asked yet" from "asked, and the registry is empty" - the second is a
+    // real answer and should not read as though it were still loading.
+    property bool modulesFetched: false
+
+    // "Active" here means enabled in the registry - a module switched off is not something anyone
+    // is waiting for, so it counts towards neither figure.
+    readonly property int enabledModules: root.modules.filter(m => m.active).length
+    // Enabled and with at least one instance up. The two numbers disagree exactly when something
+    // euclid-mgr should be running is not running, which is the whole point of showing them.
+    readonly property int runningModules: root.modules.filter(m => m.active && m.runningInstances > 0).length
+    readonly property bool modulesKnown: root.modulesFetched && root.modulesError.length === 0
+
     // "gateway-service-count" is recorded once per request in the gateway's router, labelled by
     // HTTP method - the closest thing emo exposes to overall traffic across every module. The
     // aggregated fetch folds those labels into one point per bucket (a RATE sums over its labels),
@@ -71,6 +86,7 @@ Item {
         emoClient.fetchAverage("euclid-cpu-usage")
         emoClient.fetchAverage("euclid-memory-usage-percent")
         emoClient.fetchAggregatedSeries(root.trafficMetric, root.trafficRowLimit, "DAY")
+        emmClient.fetchModules()
     }
 
     onVisibleChanged: if (visible) refresh()
@@ -83,11 +99,22 @@ Item {
         onTriggered: root.refresh()
     }
 
+    // When something last arrived, which is not the same as when it was last asked for: a refresh
+    // whose every request failed leaves this showing the older time it is still displaying data
+    // from, which is the useful thing to know.
+    property string lastUpdatedText: "—"
+
+    function markUpdated() {
+        root.lastUpdatedText = Qt.formatDateTime(new Date(), "hh:mm:ss")
+    }
+
     Connections {
         target: emoClient
         function onAverageLoaded(name, value) {
             if (name === "euclid-cpu-usage") root.cpuPercent = value
             else if (name === "euclid-memory-usage-percent") root.memoryPercent = value
+            else return
+            root.markUpdated()
         }
         function onAverageFailed(name, message) {
             if (name === "euclid-cpu-usage") root.cpuPercent = -1
@@ -99,6 +126,7 @@ Item {
             if (name !== root.trafficMetric || labelValue.length > 0) return
             root.trafficPoints = points
             root.trafficError = ""
+            root.markUpdated()
         }
         function onSeriesFailed(name, labelValue, message) {
             if (name !== root.trafficMetric || labelValue.length > 0) return
@@ -107,10 +135,31 @@ Item {
         }
     }
 
+    Connections {
+        target: emmClient
+        function onModulesLoaded(list, total) {
+            root.modules = list
+            root.modulesError = ""
+            root.modulesFetched = true
+            root.markUpdated()
+        }
+        function onModulesFailed(message) {
+            root.modules = []
+            root.modulesError = message
+            root.modulesFetched = true
+        }
+    }
+
     ScrollView {
         id: scrollView
-        anchors.fill: parent
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: parent.top
+        // Stops above the stamp rather than filling the page: an overlay in the corner would sit on
+        // top of whatever the content ends with once it is scrolled to the bottom.
+        anchors.bottom: lastUpdatedLabel.top
         anchors.margins: 28
+        anchors.bottomMargin: 8
         contentWidth: availableWidth
         clip: true
 
@@ -128,10 +177,18 @@ Item {
                 spacing: 18
 
                 StatCard {
-                    title: "Active Users"
-                    value: "12,483"
-                    trend: "+4.3% this week"
-                    trendUp: true
+                    title: "Active Modules"
+                    value: root.modulesKnown ? String(root.runningModules) : "—"
+                    // The denominator is what makes the number mean anything: 6 is good news out
+                    // of 6 and bad news out of 9.
+                    trend: !root.modulesKnown
+                           ? (root.modulesError.length > 0 ? "unavailable" : "loading…")
+                           : (root.enabledModules === 0
+                              ? "no modules enabled"
+                              : (root.runningModules === root.enabledModules
+                                 ? "all " + root.enabledModules + " running"
+                                 : (root.enabledModules - root.runningModules) + " of " + root.enabledModules + " not running"))
+                    trendUp: root.modulesKnown && root.runningModules === root.enabledModules
                     accent: "#4f8cff"
                 }
                 StatCard {
@@ -344,5 +401,18 @@ Item {
                 }
             }
         }
+    }
+
+    // Fixed in the corner rather than at the end of the content: it says how current the page is,
+    // which is worth reading without scrolling to the bottom to find it.
+    Text {
+        id: lastUpdatedLabel
+        anchors.left: parent.left
+        anchors.bottom: parent.bottom
+        anchors.leftMargin: 28
+        anchors.bottomMargin: 12
+        text: "Last update " + root.lastUpdatedText
+        color: "#6b7280"
+        font.pixelSize: 11
     }
 }

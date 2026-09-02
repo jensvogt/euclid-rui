@@ -85,6 +85,40 @@ void EmmClient::fetchModuleStatus(const QString &moduleName) {
          });
 }
 
+void EmmClient::fetchModules() {
+    m_base->post("emm", "list-modules", QJsonObject{}, true,
+         [this](const QJsonObject &response) {
+             QVariantList modules;
+             for (const QJsonArray array = response.value("modules").toArray(); const auto &value : array) {
+                 const QJsonObject module = value.toObject();
+
+                 // The instance array itself is left out: what a caller wants from a list of
+                 // modules is how many of each are up, and fetchModuleStatus() is there for the
+                 // one module whose instances actually matter.
+                 int runningInstances = 0;
+                 for (const QJsonArray instances = module.value("instances").toArray(); const auto &instanceValue : instances) {
+                     if (instanceValue.toObject().value("state").toString() == QLatin1String("RUNNING"))
+                         ++runningInstances;
+                 }
+
+                 QVariantMap entry;
+                 entry["name"] = module.value("name").toString();
+                 entry["active"] = module.value("active").toBool();
+                 entry["autoRestart"] = module.value("autoRestart").toBool();
+                 entry["minInstances"] = module.value("minInstances").toInt();
+                 entry["maxInstances"] = module.value("maxInstances").toInt(1);
+                 entry["runningInstances"] = runningInstances;
+                 entry["created"] = module.value("created").toString();
+                 entry["modified"] = module.value("modified").toString();
+                 modules << entry;
+             }
+             emit modulesLoaded(modules, static_cast<int>(modules.size()));
+         },
+         [this](const QString &message) {
+             emit modulesFailed(message);
+         });
+}
+
 void EmmClient::exportModules(const QStringList &modules, const bool includeObjects, const QUrl &destination,
                               const QString &passphrase) {
     if (m_export) {

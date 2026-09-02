@@ -137,6 +137,13 @@ Item {
         Qt.callLater(root.refreshContent)
     }
 
+    // What F5 calls (see Main.qml's refreshCurrentPage()): both halves of this page that are read
+    // from the server.
+    function refresh() {
+        root.refreshAttributes()
+        root.refreshContent()
+    }
+
     function refreshAttributes() {
         if (!root.loggedIn || root.objectErn.length === 0)
             return
