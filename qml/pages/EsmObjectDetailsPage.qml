@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Controls.Material
+import QtQuick.Dialogs
 import "../components"
 
 Item {
@@ -32,6 +33,86 @@ Item {
     }
 
     readonly property string status: detail("status", "")
+    readonly property string contentType: detail("contentType", "")
+    readonly property string bucketErn: detail("bucketErn", "")
+    readonly property int objectSize: Number(detail("size", 0))
+
+    // The object's bytes, for the ones worth showing. Nothing is fetched until the content type
+    // says it can be displayed and the object is small enough - a preview that downloads a 2 GB
+    // archive to then refuse to render it is worse than no preview.
+    //
+    // An image is fetched base64 encoded and a text object as text, because those are the forms the
+    // two viewers read; only one of them is ever filled.
+    property string objectContent: ""
+    property string objectImageData: ""
+    property string contentError: ""
+    property bool contentLoading: false
+    // Also handed to the server as the cutoff it enforces, so an object at or above this never
+    // arrives at all rather than arriving and being rejected here. Images get more room than text:
+    // a photograph is routinely larger than any document worth reading in a details page, and
+    // showing one costs a decode rather than laying out a million lines.
+    readonly property int maxPreviewBytes: 512 * 1024
+    readonly property int maxImageBytes: 8 * 1024 * 1024
+
+    // Which of the two viewers, if either, can show this object. Both verdicts come from the
+    // viewers themselves (declared in the content card below; ids are visible file-wide) rather
+    // than a third list here that could disagree with them. The image viewer is asked first: an
+    // SVG is XML as well, and an image is what someone looking at one wants to see.
+    readonly property bool previewIsImage: imageView.format.length > 0
+    readonly property bool previewIsText: !root.previewIsImage && contentView.format.length > 0
+    readonly property int previewLimit: root.previewIsImage ? root.maxImageBytes : root.maxPreviewBytes
+
+    // Why there is no preview, empty when there is one (or when it is still loading).
+    readonly property string previewSkipReason: {
+        if (!root.previewIsImage && !root.previewIsText) {
+            // An image format this build has no decoder for is worth saying so about, rather than
+            // reporting it as "an image" that simply will not appear.
+            const description = contentView.normalizedType(root.contentType).startsWith("image/")
+                              ? imageView.typeDescription(root.contentType)
+                              : contentView.typeDescription(root.contentType)
+            return "Cannot preview " + description + "."
+        }
+        if (root.objectSize >= root.previewLimit)
+            return "This object is " + SizeFormat.format(root.objectSize) + ", past the "
+                   + SizeFormat.format(root.previewLimit) + " this view will render. Download it instead."
+        if (root.status !== "COMPLETED")
+            return "The object is " + (root.status.length > 0 ? root.status.toLowerCase() : "not stored yet")
+                   + ", so its content cannot be read."
+        return ""
+    }
+
+    property bool downloading: false
+    property string downloadStatus: ""
+    property string downloadError: ""
+
+    // A key is a path within the bucket, so the last segment is the file name the user expects the
+    // save dialog to offer.
+    function suggestedFileName() {
+        const index = root.objectKey.lastIndexOf("/")
+        return index >= 0 ? root.objectKey.substring(index + 1) : root.objectKey
+    }
+
+    function refreshContent() {
+        root.objectContent = ""
+        root.objectImageData = ""
+        root.contentError = ""
+        root.contentLoading = false
+        // Also runs on every navigation, so a message about the previous object's download does
+        // not stay on screen for the next one. A download already in flight keeps running; its
+        // reply is dropped by the bucket/key check in the handlers above.
+        root.downloading = false
+        root.downloadStatus = ""
+        root.downloadError = ""
+        if (!root.loggedIn || root.objectKey.length === 0 || root.bucketErn.length === 0)
+            return
+        if (root.previewSkipReason.length > 0)
+            return
+        root.contentLoading = true
+        if (root.previewIsImage)
+            esmClient.fetchObjectContentBase64(root.bucketErn, root.objectKey, root.previewLimit)
+        else
+            esmClient.fetchObjectContent(root.bucketErn, root.objectKey, root.previewLimit)
+    }
 
     // The object's user-defined attributes, {name: {type, value}}. Seeded from the listing that
     // opened this page so the card is populated immediately, then re-read from
@@ -40,9 +121,21 @@ Item {
     property var attributes: ({})
     property string attributesError: ""
 
-    onDetailsChanged: root.attributes = root.detail("attributes", ({}))
-    onObjectErnChanged: root.refreshAttributes()
-    onVisibleChanged: if (visible) root.refreshAttributes()
+    onDetailsChanged: {
+        root.attributes = root.detail("attributes", ({}))
+        // Deferred, and through callLater so several of these collapse into one: the page's ern,
+        // key and details are assigned one after another, and a fetch started on the first of them
+        // would be reading the previous object's content type and size.
+        Qt.callLater(root.refreshContent)
+    }
+    onObjectErnChanged: {
+        root.refreshAttributes()
+        Qt.callLater(root.refreshContent)
+    }
+    onVisibleChanged: if (visible) {
+        root.refreshAttributes()
+        Qt.callLater(root.refreshContent)
+    }
 
     function refreshAttributes() {
         if (!root.loggedIn || root.objectErn.length === 0)
@@ -100,6 +193,51 @@ Item {
             attributeDialog.saving = false
             if (attributeDialog.opened) attributeDialog.errorText = message
             else root.attributesError = message
+        }
+        function onObjectContentLoaded(bucketErn, key, content) {
+            if (key !== root.objectKey || bucketErn !== root.bucketErn) return
+            root.contentLoading = false
+            root.contentError = ""
+            root.objectContent = content
+        }
+        function onObjectContentBase64Loaded(bucketErn, key, base64) {
+            if (key !== root.objectKey || bucketErn !== root.bucketErn) return
+            root.contentLoading = false
+            root.contentError = ""
+            root.objectImageData = base64
+        }
+        function onObjectContentFailed(bucketErn, key, message) {
+            if (key !== root.objectKey || bucketErn !== root.bucketErn) return
+            root.contentLoading = false
+            root.contentError = message
+        }
+        function onDownloadProgress(bucketErn, key, bytesReceived, bytesTotal) {
+            if (key !== root.objectKey || bucketErn !== root.bucketErn) return
+            root.downloadStatus = "Downloading… " + SizeFormat.format(bytesReceived) + " of " + SizeFormat.format(bytesTotal)
+        }
+        function onObjectDownloaded(bucketErn, key, path) {
+            if (key !== root.objectKey || bucketErn !== root.bucketErn) return
+            root.downloading = false
+            root.downloadStatus = "Saved to " + path
+        }
+        // No bucket/key to match on: a failure can happen before the download has one (a path that
+        // cannot be written), and only one download runs from this page at a time.
+        function onObjectDownloadFailed(message) {
+            root.downloading = false
+            root.downloadStatus = ""
+            root.downloadError = message
+        }
+    }
+
+    FileDialog {
+        id: saveFileDialog
+        title: "Save object as"
+        fileMode: FileDialog.SaveFile
+        onAccepted: {
+            root.downloadError = ""
+            root.downloadStatus = "Starting…"
+            root.downloading = true
+            esmClient.downloadObject(root.bucketErn, root.objectKey, selectedFile)
         }
     }
 
@@ -234,6 +372,106 @@ Item {
                         DetailField { width: (techCol.width - 24) / 2; label: "MD5 Sum"; value: root.detail("md5Sum", "—"); copyable: true }
                     }
                 }
+            }
+
+            FoldableTile {
+                id: contentTile
+                width: parent.width
+                title: "Content"
+                expanded: true
+
+                headerContent: [
+                    BusyIndicator {
+                        running: root.contentLoading || root.downloading
+                        visible: running
+                        implicitWidth: 20
+                        implicitHeight: 20
+                    },
+                    Button {
+                        text: "Reload"
+                        flat: true
+                        Material.theme: Material.Dark
+                        Material.accent: "#4f8cff"
+                        // Nothing to reload when there is nothing this view will show.
+                        visible: root.previewSkipReason.length === 0
+                        enabled: !root.contentLoading
+                        onClicked: root.refreshContent()
+                    },
+                    Button {
+                        // The way out for everything the viewer refuses - an archive, an image, or
+                        // simply an object past the preview limit - and it works for the rest too.
+                        text: "Download…"
+                        flat: true
+                        Material.theme: Material.Dark
+                        Material.accent: "#4f8cff"
+                        enabled: !root.downloading && root.objectKey.length > 0 && root.bucketErn.length > 0
+                        onClicked: {
+                            saveFileDialog.currentFile = root.suggestedFileName()
+                            saveFileDialog.open()
+                        }
+                    }
+                ]
+
+                contentData: [
+                    Column {
+                        width: contentTile.width - 32
+                        spacing: 12
+
+                        // Both viewers are declared, and each decides for itself whether the content
+                        // type is one it can show - which is what previewIsImage/previewIsText read
+                        // above. Only one of them is ever handed any bytes.
+                        //
+                        // Read-only: this shows what is stored. Writing an edit back would be a
+                        // put-object that replaces the object, which is not what a details page does.
+                        EditableText {
+                            id: contentView
+                            width: parent.width
+                            height: 360
+                            visible: root.previewIsText && root.objectContent.length > 0
+                            contentType: root.contentType
+                            content: root.objectContent
+                            maxLength: root.maxPreviewBytes
+                            readOnly: true
+                        }
+
+                        ImageViewer {
+                            id: imageView
+                            width: parent.width
+                            height: 360
+                            visible: root.previewIsImage && root.objectImageData.length > 0
+                            contentType: root.contentType
+                            base64Data: root.objectImageData
+                            maxBytes: root.maxImageBytes
+                        }
+
+                        Text {
+                            width: parent.width
+                            wrapMode: Text.WordWrap
+                            color: "#6b7280"
+                            font.pixelSize: 12
+                            visible: root.previewSkipReason.length > 0
+                            text: root.previewSkipReason
+                        }
+
+                        Text {
+                            width: parent.width
+                            wrapMode: Text.WordWrap
+                            color: "#ff6b6b"
+                            font.pixelSize: 12
+                            visible: root.contentError.length > 0
+                            text: root.contentError
+                        }
+
+                        Text {
+                            width: parent.width
+                            wrapMode: Text.WordWrap
+                            color: root.downloadError.length > 0 ? "#ff6b6b" : "#4cd97b"
+                            font.pixelSize: 12
+                            visible: text.length > 0
+                            text: root.downloadError.length > 0 ? root.downloadError : root.downloadStatus
+                        }
+                    }
+                ]
             }
 
             Rectangle {

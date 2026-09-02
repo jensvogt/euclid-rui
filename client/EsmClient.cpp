@@ -225,6 +225,127 @@ void EsmClient::deleteObject(const QString &bucketErn, const QString &objectErn)
          });
 }
 
+void EsmClient::requestObject(const QString &bucketErn, const QString &key, const int maxBytes,
+                              const std::function<void(const QByteArray &)> &onBytes) {
+    QVariantMap headers;
+    headers["x-euclid-bucket-ern"] = bucketErn;
+    headers["x-euclid-key"] = key;
+    // The server compares the object's size against this and refuses anything at or above it, so
+    // the cutoff belongs to whoever is going to render the answer.
+    headers["x-euclid-part-size"] = QString::number(maxBytes);
+
+    m_base->postForBytes("esm", "get-object", headers, onBytes,
+         [this, bucketErn, key](const QString &message) {
+             emit objectContentFailed(bucketErn, key, message);
+         });
+}
+
+void EsmClient::fetchObjectContent(const QString &bucketErn, const QString &key, const int maxBytes) {
+    requestObject(bucketErn, key, maxBytes,
+         [this, bucketErn, key](const QByteArray &data) {
+             emit objectContentLoaded(bucketErn, key, QString::fromUtf8(data));
+         });
+}
+
+void EsmClient::fetchObjectContentBase64(const QString &bucketErn, const QString &key, const int maxBytes) {
+    requestObject(bucketErn, key, maxBytes,
+         [this, bucketErn, key](const QByteArray &data) {
+             // Latin-1 because base64 is ASCII by construction: this only widens each character,
+             // it does not interpret anything.
+             emit objectContentBase64Loaded(bucketErn, key, QString::fromLatin1(data.toBase64()));
+         });
+}
+
+void EsmClient::downloadObject(const QString &bucketErn, const QString &key, const QUrl &fileUrl) {
+    const QString path = fileUrl.isLocalFile() ? fileUrl.toLocalFile() : fileUrl.toString();
+
+    // Created and truncated before anything is asked of the server: the parts are appended as they
+    // arrive, so whatever the file held before must be gone first - and a path that cannot be
+    // written is worth finding out about now rather than one round trip into the download.
+    QFile file(path);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        emit objectDownloadFailed(QStringLiteral("Could not open %1 for writing: %2").arg(path, file.errorString()));
+        return;
+    }
+    file.close();
+
+    QJsonObject body;
+    body["bucketErn"] = bucketErn;
+    body["key"] = key;
+
+    m_base->post("esm", "create-download", body, true,
+         [this, bucketErn, key, path](const QJsonObject &response) {
+             const QString downloadId = response.value("downloadId").toString();
+             // Through double: an object's size is a JSON number that outgrows an int long before
+             // it outgrows what this can download.
+             const auto fileSize = static_cast<qint64>(response.value("size").toDouble());
+             // An empty object has no parts to ask for - the empty file just created is already
+             // all of it - but the download session still has to be closed.
+             if (fileSize <= 0) {
+                 completeDownload(bucketErn, key, path, downloadId);
+                 return;
+             }
+             downloadNextPart(bucketErn, key, path, downloadId, fileSize, 1, 0);
+         },
+         [this](const QString &message) {
+             emit objectDownloadFailed(message);
+         });
+}
+
+void EsmClient::downloadNextPart(const QString &bucketErn, const QString &key, const QString &path,
+                                 const QString &downloadId, const qint64 fileSize, const long partNumber, const qint64 bytesReceived) {
+    QVariantMap headers;
+    headers["x-euclid-download-id"] = downloadId;
+    headers["x-euclid-part-number"] = QString::number(partNumber);
+    headers["x-euclid-part-size"] = QString::number(kMultipartThreshold);
+
+    m_base->postForBytes("esm", "download-part", headers,
+         [this, bucketErn, key, path, downloadId, fileSize, partNumber, bytesReceived](const QByteArray &data) {
+             // Nothing else would end the recursion if the server kept answering with nothing, and
+             // an object that never finishes arriving is a failure however politely it is reported.
+             if (data.isEmpty()) {
+                 emit objectDownloadFailed(QStringLiteral("Download stopped: part %1 came back empty").arg(partNumber));
+                 return;
+             }
+
+             QFile file(path);
+             if (!file.open(QIODevice::WriteOnly | QIODevice::Append)) {
+                 emit objectDownloadFailed(QStringLiteral("Could not write to %1: %2").arg(path, file.errorString()));
+                 return;
+             }
+             file.write(data);
+             file.close();
+
+             const qint64 received = bytesReceived + data.size();
+             emit downloadProgress(bucketErn, key, received, fileSize);
+
+             if (received >= fileSize) {
+                 completeDownload(bucketErn, key, path, downloadId);
+                 return;
+             }
+             downloadNextPart(bucketErn, key, path, downloadId, fileSize, partNumber + 1, received);
+         },
+         [this](const QString &message) {
+             emit objectDownloadFailed(message);
+         });
+}
+
+void EsmClient::completeDownload(const QString &bucketErn, const QString &key, const QString &path, const QString &downloadId) {
+    QJsonObject body;
+    body["downloadId"] = downloadId;
+
+    // complete-download only drops the server's scratch directory for the session. The object is
+    // already on disk by now, so failing to close the session is not a failed download - reporting
+    // it as one would send the user looking for a file that is sitting right where they asked.
+    m_base->post("esm", "complete-download", body, true,
+         [this, bucketErn, key, path](const QJsonObject &response) {
+             emit objectDownloaded(bucketErn, key, path);
+         },
+         [this, bucketErn, key, path](const QString &message) {
+             emit objectDownloaded(bucketErn, key, path);
+         });
+}
+
 void EsmClient::renameObject(const QString &bucketErn, const QString &key, const QString &newKey) {
     QJsonObject body;
     body["bucketErn"] = bucketErn;

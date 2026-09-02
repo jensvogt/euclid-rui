@@ -4,6 +4,7 @@
 #include <QString>
 #include <QUrl>
 #include <QVariantList>
+#include <functional>
 
 class EuclidBaseClient;
 
@@ -52,6 +53,30 @@ public:
                                   const QString &sortDirection = QStringLiteral("asc"),
                                   bool includeDirectories = false);
     Q_INVOKABLE void deleteObject(const QString &bucketErn, const QString &objectErn);
+
+    // Reads a whole object back in one request, for showing it rather than saving it to disk -
+    // "get-object" is the same call the CLI's download-file tries before falling back to the
+    // multipart flow. `maxBytes` is the cutoff the server enforces: an object that size or larger
+    // is refused with 413 rather than streamed, so a viewer can name what it is willing to render
+    // and be sure the answer never exceeds it.
+    //
+    // The bytes come back as UTF-8 text, since that is the only thing worth showing. Anything that
+    // is not valid UTF-8 decodes to replacement characters, which is what tells a viewer it was
+    // handed something binary.
+    Q_INVOKABLE void fetchObjectContent(const QString &bucketErn, const QString &key, int maxBytes);
+    // The same call for content that is not text: the bytes come back base64 encoded, since that is
+    // the only way they survive being carried as a string - decoding them as UTF-8 would replace
+    // everything that is not valid UTF-8, which for an image is most of it.
+    Q_INVOKABLE void fetchObjectContentBase64(const QString &bucketErn, const QString &key, int maxBytes);
+
+    // Saves an object to a local file, whatever its size - the answer for everything the viewer
+    // above refuses. Always takes the multipart route (create-download, then one download-part per
+    // kMultipartThreshold bytes, then complete-download): a small object costs two extra round
+    // trips that way, and nothing has to guess a size before asking for it.
+    //
+    // Parts are fetched one after another and appended in order, unlike the CLI's parallel
+    // download - a GUI has one event loop and no reason to saturate the link.
+    Q_INVOKABLE void downloadObject(const QString &bucketErn, const QString &key, const QUrl &fileUrl);
 
     // Renaming and copying are key operations, not data ones: an object's bytes live in a file
     // named after an internal ID and only its row says which key that file answers to, so a rename
@@ -117,6 +142,19 @@ signals:
     void objectsReload(const QString &bucketErn);
     void objectUploaded(const QString &bucketErn, const QString &key);
     void objectUploadFailed(const QString &message);
+    // The object's bytes as UTF-8 text. Carries the bucket and key it was asked for, since a view
+    // can have moved on to another object by the time this arrives.
+    void objectContentLoaded(const QString &bucketErn, const QString &key, const QString &content);
+    // The same bytes base64 encoded, for whatever is going to decode them itself.
+    void objectContentBase64Loaded(const QString &bucketErn, const QString &key, const QString &base64);
+    // Shared by both: they are the same request and fail for the same reasons.
+    void objectContentFailed(const QString &bucketErn, const QString &key, const QString &message);
+    // Carries the local path the object was written to, which is the only thing worth reporting
+    // once it is on disk.
+    void objectDownloaded(const QString &bucketErn, const QString &key, const QString &path);
+    void objectDownloadFailed(const QString &message);
+    // Emitted after each part lands; bytesTotal is the object's whole size.
+    void downloadProgress(const QString &bucketErn, const QString &key, qint64 bytesReceived, qint64 bytesTotal);
     // Carries the key it ended up under, so a view can say what happened rather than only that
     // something did.
     void objectRenamed(const QString &bucketErn, const QString &key);
@@ -138,6 +176,15 @@ signals:
     void objectAttributesFailed(const QString &message);
 
 private:
+    // The one "get-object" both fetchObjectContent() and fetchObjectContentBase64() issue; they
+    // differ only in what they do with the bytes, and share the failure signal.
+    void requestObject(const QString &bucketErn, const QString &key, int maxBytes,
+                       const std::function<void(const QByteArray &)> &onBytes);
+
+    void downloadNextPart(const QString &bucketErn, const QString &key, const QString &path,
+                          const QString &downloadId, qint64 fileSize, long partNumber, qint64 bytesReceived);
+    void completeDownload(const QString &bucketErn, const QString &key, const QString &path, const QString &downloadId);
+
     void uploadSinglePart(const QString &bucketErn, const QString &key, const QByteArray &data);
     void beginMultipartUpload(const QString &bucketErn, const QString &key, const QString &path, qint64 fileSize);
     void uploadNextPart(const QString &bucketErn, const QString &key, const QString &path, qint64 fileSize,

@@ -111,6 +111,8 @@ qt_add_qml_module(euclid_rui
         qml/components/SubNavButton.qml
         qml/components/StatCard.qml
         qml/components/DetailField.qml
+        qml/components/EditableText.qml
+        qml/components/ImageViewer.qml
         qml/components/DataTable.qml
         qml/components/DateFormat.qml
         qml/components/SizeFormat.qml
