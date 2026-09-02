@@ -189,6 +189,11 @@ Item {
         emoClient.fetchAggregatedSeries(tileId + "-service-time", range.limit * root.maxServiceActions, range.resolution)
     }
 
+    // What F5 calls (see Main.qml's refreshCurrentPage()): for this page, every tile at once.
+    function refresh() {
+        root.refreshMetrics()
+    }
+
     function refreshMetrics() {
         root.refreshTile("gateway")
         for (const m of root.serviceModules)

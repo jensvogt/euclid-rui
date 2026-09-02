@@ -24,6 +24,12 @@ Item {
     onLoggedInChanged: if (loggedIn && visible) root.refreshAccessKeys()
     Component.onCompleted: root.refreshAccessKeys()
 
+    // What F5 calls (see Main.qml's refreshCurrentPage()). The settings themselves are local and
+    // always current; the access keys are the one thing here that is read from the server.
+    function refresh() {
+        root.refreshAccessKeys()
+    }
+
     function refreshAccessKeys() {
         // Bearer mode has no key to show, and an unauthenticated list call would only produce an
         // error message on a page the user has not asked anything of yet.

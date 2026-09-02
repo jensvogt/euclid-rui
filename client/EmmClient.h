@@ -26,6 +26,11 @@ public:
 
     Q_INVOKABLE void fetchModuleStatus(const QString &moduleName);
 
+    // The whole module registry as euclid-mgr keeps it - the same "list-modules" call
+    // fetchModuleStatus() makes, without narrowing it to one module. For a caller that wants the
+    // shape of the installation rather than the detail of one module.
+    Q_INVOKABLE void fetchModules();
+
     // The modules whose data can be exported and imported, in the order the UI should offer them.
     // Every module EMM has an export spec for except EMO, which is deliberately absent: it holds
     // nothing but monitoring samples, the one thing nobody wants restored on top of the live ones -
@@ -69,6 +74,12 @@ public:
 signals:
     void moduleStatusLoaded(const QString &moduleName, qint64 uptimeSeconds, int runningInstances, int maxInstances);
     void moduleStatusFailed(const QString &moduleName, const QString &message);
+    // Each entry: {name, active, autoRestart, minInstances, maxInstances, runningInstances,
+    // created, modified}. "active" is whether the module is enabled in the registry - whether
+    // euclid-mgr should be running it at all - which is a different question from whether any
+    // instance of it currently is. `total` is just the number of entries.
+    void modulesLoaded(const QVariantList &modules, int total);
+    void modulesFailed(const QString &message);
 
     // Emitted as each module's data is written, so a five-module export has five steps.
     void exportProgress(const QString &moduleName, int completed, int total);

@@ -1,0 +1,22 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Euclid RUI
+GenericName=Euclid Dashboard
+Comment=Qt6/QML dashboard for the euclid backend
+# No path: the package installs the binary as /usr/bin/euclid-rui, which is on every PATH.
+Exec=euclid-rui
+# An icon *name*, not a path: the themed icons installed alongside this file let the dock, the app
+# grid and the window switcher each pick the size they want instead of scaling one bitmap.
+Icon=euclid-rui
+Terminal=false
+# One main category on purpose: adding System as well (which Monitor suggests) would list the
+# application twice in menus that group by main category.
+Categories=Development;Monitor;
+Keywords=euclid;dashboard;monitoring;queue;storage;
+StartupNotify=true
+# How a running window is tied back to this file, and so to the icon above. Qt sets the X11
+# WM_CLASS instance from the executable's name, which the package installs as "euclid-rui". On
+# Wayland there is no WM_CLASS at all and the compositor matches this file's own name against the
+# surface's app_id - which is why main.cpp calls setDesktopFileName("euclid-rui").
+StartupWMClass=euclid-rui
