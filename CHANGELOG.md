@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.23](https://github.com/jensvogt/euclid-rui/compare/1.0.22...v1.0.23) (2026-09-02)
+
+
+### Bug Fixes
+
+* EAP redeploy ([3e69e83](https://github.com/jensvogt/euclid-rui/commit/3e69e8322e1a07a056577261d5024bb368b90719))
+
 ## [1.0.22](https://github.com/jensvogt/euclid-rui/compare/1.0.21...v1.0.22) (2026-09-02)
 
 
