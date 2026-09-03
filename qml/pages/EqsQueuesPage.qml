@@ -23,7 +23,9 @@ Item {
     readonly property var columns: {
         let cols = [
             { title: "Name", key: "name", fill: true },
-            { title: "Available", key: "available" },
+            // Approximate: counted periodically rather than maintained per message. Marked once
+            // on the first column rather than on all three, which would only add noise.
+            { title: "Available (approx.)", key: "available" },
             { title: "Delayed", key: "delayed" },
             { title: "Invisible", key: "invisible" },
             { title: "Size", key: "size", formatter: function (v) { return SizeFormat.format(v) } },
@@ -54,7 +56,10 @@ Item {
 
     Timer {
         interval: appSettings.autoRefreshSeconds * 1000
-        running: appSettings.autoRefreshSeconds > 0 && root.visible && root.loggedIn
+        // Live updates are off by default: a table that reloads while it is being read
+        // moves rows out from under the pointer. See AppSettings::liveListUpdates().
+        running: appSettings.liveListUpdates && appSettings.autoRefreshSeconds > 0
+                 && root.visible && root.loggedIn
         repeat: true
         onTriggered: root.refresh()
     }
@@ -64,14 +69,27 @@ Item {
     Connections {
         target: eventStream
         function onEventReceived(eventType, payload) {
+            // The event that says something changed is exactly what makes a busy system
+            // unreadable: it arrives as often as the system is busy, and each one reorders
+            // the table. Off unless asked for - see AppSettings::liveListUpdates().
+            if (!appSettings.liveListUpdates)
+                return
             if (!root.visible || !root.loggedIn)
                 return
             if (["eqs.message.sent"].indexOf(eventType) >= 0) {
                 // The listing shows message counts, so a message sent to any queue in view
                 // changes it.
-                root.refresh()
+                refreshThrottle.request()
             }
         }
+    }
+
+    // Events arrive as fast as the system produces them; this is what keeps the table from
+    // reloading faster than the configured interval allows. See RefreshThrottle.
+    RefreshThrottle {
+        id: refreshThrottle
+        minimumIntervalMs: Math.max(2000, appSettings.autoRefreshSeconds * 1000)
+        onFired: root.refresh()
     }
 
     Connections {

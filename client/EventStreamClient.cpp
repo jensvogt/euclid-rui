@@ -57,6 +57,13 @@ EventStreamClient::EventStreamClient(EuclidBaseClient *baseClient, QObject *pare
       m_subscriber(QStringLiteral("rui-") + QUuid::createUuid().toString(QUuid::WithoutBraces)) {}
 
 void EventStreamClient::start() {
+    m_wanted = true;
+    if (!m_enabled) {
+        // Nothing is listening for these while liveListUpdates is off - every page discards them
+        // on the first line of its handler. Not subscribing is what stops the server storing them
+        // in the meantime.
+        return;
+    }
     if (m_listening || m_waiting) {
         return;
     }
@@ -64,7 +71,33 @@ void EventStreamClient::start() {
     subscribe();
 }
 
+void EventStreamClient::setEnabled(const bool enabled) {
+    if (m_enabled == enabled) {
+        return;
+    }
+    m_enabled = enabled;
+
+    // Only acts inside a session: switched on before signing in there is nothing to subscribe
+    // with, and start() picks it up when the sign-in happens.
+    if (!m_wanted) {
+        return;
+    }
+    if (m_enabled) {
+        if (!m_listening && !m_waiting) {
+            m_stopping = false;
+            subscribe();
+        }
+        return;
+    }
+    stopListening();
+}
+
 void EventStreamClient::stop() {
+    m_wanted = false;
+    stopListening();
+}
+
+void EventStreamClient::stopListening() {
     if (!m_listening && !m_waiting) {
         return;
     }

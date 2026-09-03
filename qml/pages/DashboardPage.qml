@@ -19,12 +19,16 @@ Item {
     // real answer and should not read as though it were still loading.
     property bool modulesFetched: false
 
+    // Modules, not everything euclid-mgr runs: transfer servers and application pools live in the
+    // same registry but are ETS's and EAP's own, and counting them here would make this figure
+    // grow with how much is deployed rather than with how the installation is put together.
+    readonly property var coreModules: root.modules.filter(m => m.core)
     // "Active" here means enabled in the registry - a module switched off is not something anyone
     // is waiting for, so it counts towards neither figure.
-    readonly property int enabledModules: root.modules.filter(m => m.active).length
+    readonly property int enabledModules: root.coreModules.filter(m => m.active).length
     // Enabled and with at least one instance up. The two numbers disagree exactly when something
     // euclid-mgr should be running is not running, which is the whole point of showing them.
-    readonly property int runningModules: root.modules.filter(m => m.active && m.runningInstances > 0).length
+    readonly property int runningModules: root.coreModules.filter(m => m.active && m.runningInstances > 0).length
     readonly property bool modulesKnown: root.modulesFetched && root.modulesError.length === 0
 
     // "gateway-service-count" is recorded once per request in the gateway's router, labelled by

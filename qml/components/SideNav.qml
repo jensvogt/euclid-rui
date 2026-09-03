@@ -159,6 +159,14 @@ Rectangle {
                         selected: root.currentRoute.indexOf("modules-ets") === 0
                         onClicked: root.navigate("modules-ets")
                     }
+                    SubNavButton {
+                        // The registry the other entries above are rows of. Administrators only -
+                        // how the installation is put together is an operator's business.
+                        label: "EMM (Modules)"
+                        visible: euclidClient.isAdmin
+                        selected: root.currentRoute.indexOf("modules-emm") === 0
+                        onClicked: root.navigate("modules-emm")
+                    }
                 }
             }
 

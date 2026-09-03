@@ -104,9 +104,20 @@ void EmmClient::fetchModules() {
                  QVariantMap entry;
                  entry["name"] = module.value("name").toString();
                  entry["active"] = module.value("active").toBool();
+                 // What the control actions accept for this module. Defaulted for a server that
+                 // predates them: a module is assumed controllable and running rather than having
+                 // its menu greyed out on a field that was never sent.
+                 entry["core"] = module.value("core").toBool(true);
+                 entry["desiredStopped"] = module.value("desiredStopped").toBool(false);
                  entry["autoRestart"] = module.value("autoRestart").toBool();
                  entry["minInstances"] = module.value("minInstances").toInt();
                  entry["maxInstances"] = module.value("maxInstances").toInt(1);
+                 // The limits asked for but not yet reconciled, -1 when there is nothing pending.
+                 // A caller adjusting a bound twice in a row has to count from these, or the second
+                 // change starts from a number the first one already replaced.
+                 entry["desiredMinInstances"] = module.value("desiredMinInstances").toInt(-1);
+                 entry["desiredMaxInstances"] = module.value("desiredMaxInstances").toInt(-1);
+                 entry["desiredThreads"] = module.value("desiredThreads").toInt(-1);
                  entry["runningInstances"] = runningInstances;
                  entry["created"] = module.value("created").toString();
                  entry["modified"] = module.value("modified").toString();
@@ -117,6 +128,49 @@ void EmmClient::fetchModules() {
          [this](const QString &message) {
              emit modulesFailed(message);
          });
+}
+
+void EmmClient::postModuleAction(const QString &action, const QString &name, const QJsonObject &body) {
+    m_base->post("emm", action, body, true,
+         [this, name, action](const QJsonObject &response) {
+             emit moduleActionDone(name, action);
+         },
+         [this, name, action](const QString &message) {
+             emit moduleActionFailed(name, action, message);
+         });
+}
+
+void EmmClient::startModule(const QString &name) {
+    postModuleAction(QStringLiteral("start-module"), name, QJsonObject{{"name", name}});
+}
+
+void EmmClient::stopModule(const QString &name) {
+    postModuleAction(QStringLiteral("stop-module"), name, QJsonObject{{"name", name}});
+}
+
+void EmmClient::restartModule(const QString &name) {
+    postModuleAction(QStringLiteral("restart-module"), name, QJsonObject{{"name", name}});
+}
+
+void EmmClient::setModuleInstances(const QString &name, const int minInstances, const int maxInstances) {
+    QJsonObject body;
+    body["name"] = name;
+    // Omitted rather than sent as -1: absent is what tells the server to leave that bound alone,
+    // and a negative one is an error.
+    if (minInstances >= 0)
+        body["minInstances"] = minInstances;
+    if (maxInstances >= 0)
+        body["maxInstances"] = maxInstances;
+
+    postModuleAction(QStringLiteral("set-instances"), name, body);
+}
+
+void EmmClient::setModuleThreads(const QString &name, const int threads) {
+    QJsonObject body;
+    body["name"] = name;
+    body["threads"] = threads;
+
+    postModuleAction(QStringLiteral("set-threads"), name, body);
 }
 
 void EmmClient::exportModules(const QStringList &modules, const bool includeObjects, const QUrl &destination,

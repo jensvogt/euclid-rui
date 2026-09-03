@@ -31,6 +31,28 @@ public:
     // shape of the installation rather than the detail of one module.
     Q_INVOKABLE void fetchModules();
 
+    // Module control. None of these act directly: each records what the module should look like,
+    // and euclid-mgr's reconciler is what makes it so on its next pass - so the answer is always
+    // "asked for", never "done".
+    //
+    // start/stop are refused for anything that is not a core euclid module: an application's or a
+    // transfer server's desired state belongs to EAP and ETS, and anything recorded here would be
+    // undone within seconds. EMM also refuses to stop itself, since nothing would be left to start
+    // it again. restart is allowed for all of them, because it changes no desired state - but not
+    // for a module that is stopped, which has nothing to restart.
+    Q_INVOKABLE void startModule(const QString &name);
+    Q_INVOKABLE void stopModule(const QString &name);
+    Q_INVOKABLE void restartModule(const QString &name);
+
+    // The bounds the autoscaler keeps the pool within. Pass -1 for either to leave it as it is;
+    // the server needs at least one of them, refuses a floor above the ceiling, and treats a floor
+    // of zero as meaningful - a module that may scale away entirely when idle.
+    Q_INVOKABLE void setModuleInstances(const QString &name, int minInstances, int maxInstances);
+
+    // Worker threads per instance, 1..256. A thread count is fixed when a process starts, so this
+    // takes effect as the manager cycles the instances through it rather than immediately.
+    Q_INVOKABLE void setModuleThreads(const QString &name, int threads);
+
     // The modules whose data can be exported and imported, in the order the UI should offer them.
     // Every module EMM has an export spec for except EMO, which is deliberately absent: it holds
     // nothing but monitoring samples, the one thing nobody wants restored on top of the live ones -
@@ -80,6 +102,11 @@ signals:
     // instance of it currently is. `total` is just the number of entries.
     void modulesLoaded(const QVariantList &modules, int total);
     void modulesFailed(const QString &message);
+    // `action` is the euclid action that was accepted ("start-module", "set-instances", ...), so
+    // one handler can report on all of them. Accepted, not carried out: the manager acts on its
+    // next reconcile.
+    void moduleActionDone(const QString &name, const QString &action);
+    void moduleActionFailed(const QString &name, const QString &action, const QString &message);
 
     // Emitted as each module's data is written, so a five-module export has five steps.
     void exportProgress(const QString &moduleName, int completed, int total);
@@ -93,6 +120,10 @@ signals:
     void importFailed(const QString &message);
 
 private:
+    // The one shape every control action above has: a JSON body naming the module, and an answer
+    // that only matters for whether it was accepted.
+    void postModuleAction(const QString &action, const QString &name, const QJsonObject &body);
+
     // One export at a time, carried between the per-module replies.
     struct ExportJob {
         QStringList pending;

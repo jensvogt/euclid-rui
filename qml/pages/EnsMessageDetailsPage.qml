@@ -54,6 +54,20 @@ Item {
     readonly property bool bodyTruncated: fullBody.length > bodyPreviewLimit
     readonly property string bodyPreview: bodyTruncated ? fullBody.substring(0, bodyPreviewLimit) : fullBody
 
+    // An ENS message carries no content type, so the one handed to the viewer is read off the body
+    // itself. It can only ever choose among text formats - the body arrived here as text - and all
+    // it decides is whether the viewer offers to indent it.
+    //
+    // Never claimed for a truncated body: half a document does not parse, and the viewer would say
+    // so in a way that reads like the message is malformed rather than merely cut short.
+    readonly property string bodyContentType: {
+        if (root.bodyTruncated) return "text/plain"
+        const start = root.bodyPreview.trim().charAt(0)
+        if (start === "{" || start === "[") return "application/json"
+        if (start === "<") return "application/xml"
+        return "text/plain"
+    }
+
     ScrollView {
         anchors.fill: parent
         anchors.margins: 28
@@ -203,29 +217,21 @@ Item {
                         }
                     }
 
-                    Rectangle {
+                    // Read-only: a published message is what it is, and ENS has no action that
+                    // would write a changed body back.
+                    EditableText {
+                        id: bodyView
                         width: parent.width
-                        height: Math.min(300, bodyText.implicitHeight + 24)
-                        radius: 8
-                        color: "#14161b"
-                        border.color: "#2c313c"
-                        border.width: 1
-
-                        ScrollView {
-                            anchors.fill: parent
-                            anchors.margins: 12
-                            clip: true
-
-                            Text {
-                                id: bodyText
-                                width: parent.width
-                                text: root.bodyPreview.length > 0 ? root.bodyPreview : "(empty body)"
-                                color: "#c4c9d1"
-                                font.family: "monospace"
-                                font.pixelSize: 12
-                                wrapMode: Text.Wrap
-                            }
-                        }
+                        // Grows with the body up to the same cap the plain text view had, so a
+                        // two-line message does not sit in a panel sized for a hundred.
+                        height: Math.max(120, Math.min(300, bodyView.implicitContentHeight))
+                        readOnly: true
+                        contentType: root.bodyContentType
+                        content: root.bodyPreview
+                        // A message body is as often one long line as it is code, so it is wrapped
+                        // rather than scrolled sideways - which is what the plain view did too.
+                        wrapMode: TextArea.Wrap
+                        emptyText: "(empty body)"
                     }
                 }
             }

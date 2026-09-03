@@ -232,9 +232,44 @@ Item {
                         Text {
                             text: autoRefreshSpinBox.value === 0
                                 ? "Auto-refresh is off — pages only update on manual refresh or navigation."
-                                : "Dashboards, queues, buckets and objects refresh themselves every " + autoRefreshSpinBox.value + " seconds."
+                                : "Dashboards and detail pages refresh themselves every " + autoRefreshSpinBox.value
+                                  + " seconds. Pages that show a table follow the switch below."
                             color: "#6b7280"
                             font.pixelSize: 11
+                        }
+                    }
+
+                    Column {
+                        width: content2.width
+                        spacing: 6
+
+                        Row {
+                            spacing: 12
+                            Text {
+                                text: "Live updates on list pages"
+                                color: "#9aa1ac"
+                                font.pixelSize: 12
+                                anchors.verticalCenter: parent.verticalCenter
+                            }
+                            ToggleSwitch {
+                                anchors.verticalCenter: parent.verticalCenter
+                                checked: appSettings.liveListUpdates
+                                onToggled: (checked) => appSettings.liveListUpdates = checked
+                            }
+                        }
+                        Text {
+                            // The reason it is off by default, said where the switch is: under load
+                            // the counts move and the sort order with them, so rows change place
+                            // between reading one and clicking it.
+                            text: appSettings.liveListUpdates
+                                ? "Tables re-read themselves on the interval above and whenever an event says something changed. "
+                                  + "On a busy system they will reorder while you read them."
+                                : "Tables hold still until you refresh them (F5, the table's refresh button) or navigate to them. "
+                                  + "Anything you change yourself still updates them immediately."
+                            color: "#6b7280"
+                            font.pixelSize: 11
+                            wrapMode: Text.WordWrap
+                            width: content2.width
                         }
                     }
 

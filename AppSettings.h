@@ -15,6 +15,7 @@
 class AppSettings : public QObject {
     Q_OBJECT
     Q_PROPERTY(int autoRefreshSeconds READ autoRefreshSeconds WRITE setAutoRefreshSeconds NOTIFY autoRefreshSecondsChanged)
+    Q_PROPERTY(bool liveListUpdates READ liveListUpdates WRITE setLiveListUpdates NOTIFY liveListUpdatesChanged)
     Q_PROPERTY(QString host READ host WRITE setHost NOTIFY baseUrlChanged)
     Q_PROPERTY(int port READ port WRITE setPort NOTIFY baseUrlChanged)
     Q_PROPERTY(bool useTls READ useTls WRITE setUseTls NOTIFY baseUrlChanged)
@@ -31,6 +32,21 @@ public:
     [[nodiscard]]
     int autoRefreshSeconds() const { return m_autoRefreshSeconds; }
     Q_INVOKABLE void setAutoRefreshSeconds(int seconds);
+
+    // Whether the pages that show a table re-read it on their own - both on the timer above and
+    // when an event says something changed. Off by default, and deliberately so: a table that
+    // reloads under the reader is unusable exactly when it matters most. Under any real load the
+    // counts move and the sort order with them, so rows change place between looking and clicking,
+    // and an event-driven reload arrives as often as the system is busy.
+    //
+    // Off does not mean stale: the table's own refresh button, F5 and navigating to the page all
+    // still re-read it, and so does anything the user did that changed the data.
+    //
+    // Scoped to those pages on purpose. A dashboard gauge that updates itself is the point of a
+    // dashboard, and nothing about it moves under the pointer.
+    [[nodiscard]]
+    bool liveListUpdates() const { return m_liveListUpdates; }
+    Q_INVOKABLE void setLiveListUpdates(bool enabled);
 
     // Host and port of the euclid-mgr gateway - "localhost:5566" for a local backend, anything
     // reachable for a remote one. Empty hosts and out-of-range ports are ignored rather than
@@ -80,6 +96,7 @@ public:
 
 signals:
     void autoRefreshSecondsChanged();
+    void liveListUpdatesChanged();
     // One signal for host/port/useTls: they only matter as the URL they compose into, and every
     // consumer cares about that rather than the individual parts.
     void baseUrlChanged();
@@ -95,6 +112,7 @@ private:
     void save() const;
 
     int m_autoRefreshSeconds;
+    bool m_liveListUpdates;
     QString m_host;
     int m_port;
     bool m_useTls;
