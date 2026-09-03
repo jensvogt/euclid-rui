@@ -262,8 +262,8 @@ Item {
                             // the counts move and the sort order with them, so rows change place
                             // between reading one and clicking it.
                             text: appSettings.liveListUpdates
-                                ? "Tables re-read themselves on the interval above and whenever an event says something changed. "
-                                  + "On a busy system they will reorder while you read them."
+                                ? "Tables re-read themselves on the interval above. On a busy system they will reorder "
+                                  + "while you read them."
                                 : "Tables hold still until you refresh them (F5, the table's refresh button) or navigate to them. "
                                   + "Anything you change yourself still updates them immediately."
                             color: "#6b7280"

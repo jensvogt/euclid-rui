@@ -67,32 +67,6 @@ Item {
         onTriggered: root.refresh()
     }
 
-    // Events are what actually changed something; the timer above stays as the fallback for an
-    // installation without the event service, and for anything that changes without an event.
-    Connections {
-        target: eventStream
-        function onEventReceived(eventType, payload) {
-            // The event that says something changed is exactly what makes a busy system
-            // unreadable: it arrives as often as the system is busy, and each one reorders
-            // the table. Off unless asked for - see AppSettings::liveListUpdates().
-            if (!appSettings.liveListUpdates)
-                return
-            if (!root.visible || !root.loggedIn)
-                return
-            if (["ekm.key.created"].indexOf(eventType) >= 0) {
-                refreshThrottle.request()
-            }
-        }
-    }
-
-    // Events arrive as fast as the system produces them; this is what keeps the table from
-    // reloading faster than the configured interval allows. See RefreshThrottle.
-    RefreshThrottle {
-        id: refreshThrottle
-        minimumIntervalMs: Math.max(2000, appSettings.autoRefreshSeconds * 1000)
-        onFired: root.refresh()
-    }
-
     Connections {
         target: ekmClient
         function onKeysLoaded(list, total) {

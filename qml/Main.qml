@@ -333,10 +333,6 @@ ApplicationWindow {
             window.currentUser = username
             window.currentNamespace = namespaceName
             euclidClient.setNamespace(namespaceName)
-            // Started here rather than at construction: it subscribes on the server, which needs
-            // a session. Pages that listen refresh as things happen; the ones that do not, and
-            // this application when the event service is unavailable, keep their timers.
-            eventStream.start()
         }
     }
 
@@ -349,9 +345,6 @@ ApplicationWindow {
             window.loggedIn = false
             window.currentUser = ""
             window.currentNamespace = ""
-            // The subscription belongs to the session that created it, and the events it holds
-            // are of no use to whoever signs in next.
-            eventStream.stop()
         }
     }
 

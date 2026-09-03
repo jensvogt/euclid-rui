@@ -18,7 +18,6 @@
 #include "client/EsmClient.h"
 #include "client/EtsClient.h"
 #include "client/EuclidBaseClient.h"
-#include "client/EventStreamClient.h"
 
 int main(int argc, char *argv[]) {
 
@@ -60,7 +59,6 @@ int main(int argc, char *argv[]) {
     EapClient eapClient(&euclidClient);
     EtsClient etsClient(&euclidClient);
     EmoClient emoClient(&euclidClient);
-    EventStreamClient eventStream(&euclidClient);
     AppSettings appSettings;
 
     // The gateway address lives in AppSettings (which persists it) and is pushed into the client,
@@ -79,15 +77,6 @@ int main(int argc, char *argv[]) {
     applyCredentials();
     QObject::connect(&appSettings, &AppSettings::credentialsChanged, &euclidClient, applyCredentials);
 
-    // The same arrangement once more, for the live event stream: the setting is the source of
-    // truth for whether these events are wanted, and the client subscribes only while they are.
-    // Without it the client subscribed on every sign-in regardless, and the server stored every
-    // matching event for a window whose pages discard them unless the setting is on - which it is
-    // not, by default.
-    eventStream.setEnabled(appSettings.liveListUpdates());
-    QObject::connect(&appSettings, &AppSettings::liveListUpdatesChanged, &eventStream,
-                     [&appSettings, &eventStream] { eventStream.setEnabled(appSettings.liveListUpdates()); });
-
     QQmlApplicationEngine engine;
     engine.rootContext()->setContextProperty("euclidClient", &euclidClient);
     engine.rootContext()->setContextProperty("eamClient", &eamClient);
@@ -99,12 +88,7 @@ int main(int argc, char *argv[]) {
     engine.rootContext()->setContextProperty("eapClient", &eapClient);
     engine.rootContext()->setContextProperty("etsClient", &etsClient);
     engine.rootContext()->setContextProperty("emoClient", &emoClient);
-    engine.rootContext()->setContextProperty("eventStream", &eventStream);
 
-    // Best-effort: the unsubscribe is a network call and the process may not live long enough to
-    // send it, which is why the subscription is registered as ephemeral - a gateway restart clears
-    // whatever was left behind.
-    QObject::connect(&app, &QGuiApplication::aboutToQuit, &eventStream, &EventStreamClient::stop);
     engine.rootContext()->setContextProperty("appSettings", &appSettings);
     // QML has no way to read QCoreApplication::applicationVersion() on its own, nor the Qt
     // version it is running on; the about box shows both.
