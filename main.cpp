@@ -79,6 +79,15 @@ int main(int argc, char *argv[]) {
     applyCredentials();
     QObject::connect(&appSettings, &AppSettings::credentialsChanged, &euclidClient, applyCredentials);
 
+    // The same arrangement once more, for the live event stream: the setting is the source of
+    // truth for whether these events are wanted, and the client subscribes only while they are.
+    // Without it the client subscribed on every sign-in regardless, and the server stored every
+    // matching event for a window whose pages discard them unless the setting is on - which it is
+    // not, by default.
+    eventStream.setEnabled(appSettings.liveListUpdates());
+    QObject::connect(&appSettings, &AppSettings::liveListUpdatesChanged, &eventStream,
+                     [&appSettings, &eventStream] { eventStream.setEnabled(appSettings.liveListUpdates()); });
+
     QQmlApplicationEngine engine;
     engine.rootContext()->setContextProperty("euclidClient", &euclidClient);
     engine.rootContext()->setContextProperty("eamClient", &eamClient);

@@ -11,12 +11,16 @@
 
 namespace {
 constexpr int kDefaultAutoRefreshSeconds = 10;
+// Off: a table that reloads under the reader is worse than one that is a few seconds old. See
+// AppSettings::liveListUpdates().
+constexpr bool kDefaultLiveListUpdates = false;
 constexpr auto kDefaultHost = "localhost";
 constexpr int kDefaultPort = 5566;
 constexpr bool kDefaultUseTls = true;
 
 // JSON keys. The gateway settings are nested because they are only meaningful together.
 constexpr auto kAutoRefreshSecondsKey = "autoRefreshSeconds";
+constexpr auto kLiveListUpdatesKey = "liveListUpdates";
 constexpr auto kGatewayKey = "gateway";
 constexpr auto kHostKey = "host";
 constexpr auto kPortKey = "port";
@@ -44,6 +48,7 @@ AppSettings::AppSettings(QObject *parent)
       // for the starting values migrates an install from back when this class was QSettings-based
       // - once rui.json exists it wins, and the old INI/registry entry is simply left behind.
       m_autoRefreshSeconds(QSettings().value(kAutoRefreshSecondsKey, kDefaultAutoRefreshSeconds).toInt()),
+      m_liveListUpdates(kDefaultLiveListUpdates),
       m_host(kDefaultHost),
       m_port(kDefaultPort),
       m_useTls(kDefaultUseTls),
@@ -92,6 +97,8 @@ void AppSettings::load() {
     const QJsonObject root = document.object();
     if (const QJsonValue value = root.value(kAutoRefreshSecondsKey); value.isDouble())
         m_autoRefreshSeconds = value.toInt();
+    if (const QJsonValue value = root.value(kLiveListUpdatesKey); value.isBool())
+        m_liveListUpdates = value.toBool();
 
     if (const QJsonValue value = root.value(kAuthModeKey); value.isString())
         m_authMode = value.toString();
@@ -124,6 +131,7 @@ void AppSettings::save() const {
 
     QJsonObject root;
     root[kAutoRefreshSecondsKey] = m_autoRefreshSeconds;
+    root[kLiveListUpdatesKey] = m_liveListUpdates;
     root[kAuthModeKey] = m_authMode;
     root[kAccessKeyIdKey] = m_accessKeyId;
     root[kSecretAccessKeyKey] = m_secretAccessKey;
@@ -176,6 +184,14 @@ void AppSettings::setAutoRefreshSeconds(const int seconds) {
     m_autoRefreshSeconds = clamped;
     save();
     emit autoRefreshSecondsChanged();
+}
+
+void AppSettings::setLiveListUpdates(const bool enabled) {
+    if (m_liveListUpdates == enabled)
+        return;
+    m_liveListUpdates = enabled;
+    save();
+    emit liveListUpdatesChanged();
 }
 
 void AppSettings::setHost(const QString &host) {

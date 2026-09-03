@@ -106,7 +106,10 @@ Item {
 
     Timer {
         interval: appSettings.autoRefreshSeconds * 1000
-        running: appSettings.autoRefreshSeconds > 0 && root.visible && root.loggedIn
+        // Live updates are off by default: a table that reloads while it is being read
+        // moves rows out from under the pointer. See AppSettings::liveListUpdates().
+        running: appSettings.liveListUpdates && appSettings.autoRefreshSeconds > 0
+                 && root.visible && root.loggedIn
         repeat: true
         onTriggered: root.refresh()
     }

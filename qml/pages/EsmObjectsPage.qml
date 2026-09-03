@@ -66,7 +66,10 @@ Item {
 
     Timer {
         interval: appSettings.autoRefreshSeconds * 1000
-        running: appSettings.autoRefreshSeconds > 0 && root.visible && root.loggedIn
+        // Live updates are off by default: a table that reloads while it is being read
+        // moves rows out from under the pointer. See AppSettings::liveListUpdates().
+        running: appSettings.liveListUpdates && appSettings.autoRefreshSeconds > 0
+                 && root.visible && root.loggedIn
         repeat: true
         onTriggered: root.refresh()
     }
@@ -76,6 +79,11 @@ Item {
     Connections {
         target: eventStream
         function onEventReceived(eventType, payload) {
+            // The event that says something changed is exactly what makes a busy system
+            // unreadable: it arrives as often as the system is busy, and each one reorders
+            // the table. Off unless asked for - see AppSettings::liveListUpdates().
+            if (!appSettings.liveListUpdates)
+                return
             if (!root.visible || !root.loggedIn)
                 return
             if (eventType !== "esm.object.created" && eventType !== "esm.object.updated"
@@ -85,8 +93,16 @@ Item {
             // object event elsewhere is not worth a re-fetch of what is on screen.
             if (root.bucketErn.length > 0 && payload.bucketErn !== root.bucketErn)
                 return
-            root.refresh()
+            refreshThrottle.request()
         }
+    }
+
+    // Events arrive as fast as the system produces them; this is what keeps the table from
+    // reloading faster than the configured interval allows. See RefreshThrottle.
+    RefreshThrottle {
+        id: refreshThrottle
+        minimumIntervalMs: Math.max(2000, appSettings.autoRefreshSeconds * 1000)
+        onFired: root.refresh()
     }
 
     Connections {

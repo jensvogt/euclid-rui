@@ -301,53 +301,17 @@ Item {
             font.pixelSize: 13
         }
 
-        Row {
-            spacing: 12
-            visible: root.totalCount > root.pageSize
-
-            Button {
-                text: "« First"
-                flat: true
-                enabled: root.pageIndex > 0
-                Material.theme: Material.Dark
-                onClicked: root.pageChanged(0)
-            }
-            Button {
-                text: "‹ Prev"
-                flat: true
-                enabled: root.pageIndex > 0
-                Material.theme: Material.Dark
-                onClicked: root.pageChanged(root.pageIndex - 1)
-            }
-            Text {
-                text: "Page " + (root.pageIndex + 1) + " of " + root.pageCount
-                color: "#9aa1ac"
-                font.pixelSize: 12
-                anchors.verticalCenter: parent.verticalCenter
-            }
-            Button {
-                text: "Next ›"
-                flat: true
-                enabled: root.pageIndex < root.pageCount - 1
-                Material.theme: Material.Dark
-                onClicked: root.pageChanged(root.pageIndex + 1)
-            }
-            Button {
-                text: "Last »"
-                flat: true
-                enabled: root.pageIndex < root.pageCount - 1
-                Material.theme: Material.Dark
-                onClicked: root.pageChanged(root.pageCount - 1)
-            }
-        }
-
+        // One footer row: what the table is showing on the left, how to move through it on the
+        // right. Its height follows the buttons when they are there and the status line when they
+        // are not, so a single-page table keeps a footer the size of its own contents.
         Item {
             width: parent.width
-            height: statusRow.implicitHeight
+            height: Math.max(statusRow.implicitHeight, pagingRow.visible ? pagingRow.implicitHeight : 0)
 
             Row {
                 id: statusRow
-                anchors.right: parent.right
+                anchors.left: parent.left
+                anchors.verticalCenter: parent.verticalCenter
                 spacing: 10
                 BusyIndicator { running: root.loading; visible: root.loading; width: 16; height: 16 }
                 Text {
@@ -355,6 +319,49 @@ Item {
                     color: root.error.length > 0 ? "#ff6b6b" : "#6b7280"
                     font.pixelSize: 11
                     anchors.verticalCenter: parent.verticalCenter
+                }
+            }
+
+            Row {
+                id: pagingRow
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: 12
+                visible: root.totalCount > root.pageSize
+
+                Button {
+                    text: "« First"
+                    flat: true
+                    enabled: root.pageIndex > 0
+                    Material.theme: Material.Dark
+                    onClicked: root.pageChanged(0)
+                }
+                Button {
+                    text: "‹ Prev"
+                    flat: true
+                    enabled: root.pageIndex > 0
+                    Material.theme: Material.Dark
+                    onClicked: root.pageChanged(root.pageIndex - 1)
+                }
+                Text {
+                    text: "Page " + (root.pageIndex + 1) + " of " + root.pageCount
+                    color: "#9aa1ac"
+                    font.pixelSize: 12
+                    anchors.verticalCenter: parent.verticalCenter
+                }
+                Button {
+                    text: "Next ›"
+                    flat: true
+                    enabled: root.pageIndex < root.pageCount - 1
+                    Material.theme: Material.Dark
+                    onClicked: root.pageChanged(root.pageIndex + 1)
+                }
+                Button {
+                    text: "Last »"
+                    flat: true
+                    enabled: root.pageIndex < root.pageCount - 1
+                    Material.theme: Material.Dark
+                    onClicked: root.pageChanged(root.pageCount - 1)
                 }
             }
         }

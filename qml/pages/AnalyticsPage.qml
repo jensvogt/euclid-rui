@@ -38,6 +38,28 @@ Item {
     property var moduleCountPoints: ({})
     property var moduleTimePoints: ({})
 
+    // One layer below the actions: what EQS's repository actually does against MongoDB, per
+    // operation. Fetched as one series per operation rather than aggregated, because "which
+    // operation dominates" is exactly the question the aggregate answers away.
+    //
+    // The receive path is broken into its parts on purpose. A long poll is mostly sleeping, and
+    // its cost is not one query but several per 100ms attempt: priorityCount runs once per
+    // priority per attempt whether or not a message is there to take.
+    readonly property var repositoryOperations: [
+        { name: "receiveMessages.priorityCount", color: "#ff6b6b" },
+        { name: "receiveMessages.claim", color: "#4f8cff" },
+        { name: "receiveMessages.queueLookup", color: "#c56bff" },
+        { name: "receiveMessages.counters", color: "#4cd97b" },
+        { name: "receiveMessages.redrive", color: "#ffb545" },
+        { name: "sendMessage", color: "#2dd4bf" },
+        { name: "deleteMessage", color: "#f472b6" },
+        { name: "listMessages", color: "#a3a3a3" },
+        { name: "countMessagesForQueue", color: "#eab308" },
+        { name: "resetExpiredMessages", color: "#60a5fa" }
+    ]
+    property var repositoryCountByOperation: ({})
+    property var repositoryTimeByOperation: ({})
+
     // {tileId: "hh:mm:ss"}. Per tile rather than one page-wide stamp: each tile now refreshes on
     // its own period, so they no longer come back together.
     property var updatedByTile: ({})
@@ -79,6 +101,17 @@ Item {
         return root.historyRanges[root.rangeIndexFor(tileId)]
     }
 
+    // Every tile on the page, set at once. Assigned rather than bound: a tile's own header click
+    // writes `expanded` directly, and a binding would be broken by the first one of those anyway.
+    function setAllExpanded(expanded) {
+        gatewayTile.expanded = expanded
+        repositoryTile.expanded = expanded
+        for (let i = 0; i < moduleTiles.count; ++i) {
+            const tile = moduleTiles.itemAt(i)
+            if (tile) tile.expanded = expanded
+        }
+    }
+
     function chartVisible(tileId, which) {
         const charts = root.chartsByTile[tileId]
         return !charts || charts[which] !== false
@@ -108,6 +141,11 @@ Item {
             root.requestTimeByMethod = ({})
             return
         }
+        if (tileId === "eqs-repository") {
+            root.repositoryCountByOperation = ({})
+            root.repositoryTimeByOperation = ({})
+            return
+        }
         const counts = Object.assign({}, root.moduleCountPoints)
         const times = Object.assign({}, root.moduleTimePoints)
         delete counts[tileId]
@@ -121,6 +159,8 @@ Item {
     function tileForMetric(name) {
         if (name === "gateway-service-count" || name === "gateway-service-time")
             return "gateway"
+        if (name === "eqs-repository-count" || name === "eqs-repository-time")
+            return "eqs-repository"
         for (const m of root.serviceModules) {
             if (name === m.id + "-service-count" || name === m.id + "-service-time")
                 return m.id
@@ -173,6 +213,15 @@ Item {
         return result
     }
 
+    // The repository chart's series, in the fixed order above so a colour always means the same
+    // operation whichever of them have reported yet.
+    function repositorySeriesFor(byOperation) {
+        const result = []
+        for (const op of root.repositoryOperations)
+            result.push({ name: op.name, color: op.color, points: byOperation[op.name] || [] })
+        return result
+    }
+
     // One tile's worth of requests, at that tile's own period.
     function refreshTile(tileId) {
         if (!root.loggedIn)
@@ -182,6 +231,13 @@ Item {
             for (const m of root.httpMethods) {
                 emoClient.fetchSeries("gateway-service-count", "method", m.name, range.limit, range.resolution)
                 emoClient.fetchSeries("gateway-service-time", "method", m.name, range.limit, range.resolution)
+            }
+            return
+        }
+        if (tileId === "eqs-repository") {
+            for (const op of root.repositoryOperations) {
+                emoClient.fetchSeries("eqs-repository-count", "operation", op.name, range.limit, range.resolution)
+                emoClient.fetchSeries("eqs-repository-time", "operation", op.name, range.limit, range.resolution)
             }
             return
         }
@@ -196,6 +252,7 @@ Item {
 
     function refreshMetrics() {
         root.refreshTile("gateway")
+        root.refreshTile("eqs-repository")
         for (const m of root.serviceModules)
             root.refreshTile(m.id)
     }
@@ -241,6 +298,14 @@ Item {
                 const byMethod = Object.assign({}, root.requestTimeByMethod)
                 byMethod[labelValue] = inRange
                 root.requestTimeByMethod = byMethod
+            } else if (name === "eqs-repository-count") {
+                const byOperation = Object.assign({}, root.repositoryCountByOperation)
+                byOperation[labelValue] = inRange
+                root.repositoryCountByOperation = byOperation
+            } else if (name === "eqs-repository-time") {
+                const byOperation = Object.assign({}, root.repositoryTimeByOperation)
+                byOperation[labelValue] = inRange
+                root.repositoryTimeByOperation = byOperation
             } else {
                 root.setModulePoints(name, inRange)
             }
@@ -257,6 +322,12 @@ Item {
                 const byMethod = Object.assign({}, root.requestTimeByMethod)
                 byMethod[labelValue] = []
                 root.requestTimeByMethod = byMethod
+            } else if (name === "eqs-repository-count" || name === "eqs-repository-time") {
+                const byOperation = Object.assign({}, name === "eqs-repository-count"
+                                                     ? root.repositoryCountByOperation : root.repositoryTimeByOperation)
+                byOperation[labelValue] = []
+                if (name === "eqs-repository-count") root.repositoryCountByOperation = byOperation
+                else root.repositoryTimeByOperation = byOperation
             } else {
                 root.setModulePoints(name, [])
             }
@@ -274,9 +345,36 @@ Item {
             width: parent.width
             spacing: 28
 
-            SectionHeader {
-                title: "Analytics"
-                subtitle: "Traffic sources and conversion breakdown."
+            Item {
+                width: parent.width
+                height: analyticsHeader.implicitHeight
+
+                SectionHeader {
+                    id: analyticsHeader
+                    title: "Analytics"
+                    subtitle: "Traffic sources and conversion breakdown."
+                }
+
+                Row {
+                    anchors.right: parent.right
+                    anchors.verticalCenter: analyticsHeader.verticalCenter
+                    spacing: 8
+
+                    Button {
+                        text: "Expand all"
+                        flat: true
+                        Material.theme: Material.Dark
+                        Material.accent: "#4f8cff"
+                        onClicked: root.setAllExpanded(true)
+                    }
+                    Button {
+                        text: "Collapse all"
+                        flat: true
+                        Material.theme: Material.Dark
+                        Material.accent: "#4f8cff"
+                        onClicked: root.setAllExpanded(false)
+                    }
+                }
             }
 
             FoldableTile {
@@ -349,10 +447,93 @@ Item {
                 ]
             }
 
+            // One line per repository operation rather than one per module: this tile exists to
+            // answer which database operation the load is, and an aggregate would hide that.
+            FoldableTile {
+                id: repositoryTile
+                width: parent.width
+                title: "EQS Database Operations"
+                expanded: true
+
+                headerContent: [
+                    Button {
+                        text: "⚙"
+                        font.pixelSize: 16
+                        flat: true
+                        implicitWidth: 32
+                        implicitHeight: 32
+                        Material.theme: Material.Dark
+                        onClicked: chartSettingsDialog.openFor("eqs-repository", "EQS Database Operations")
+                    },
+                    Button {
+                        text: "⟳"
+                        font.pixelSize: 16
+                        flat: true
+                        implicitWidth: 32
+                        implicitHeight: 32
+                        Material.theme: Material.Dark
+                        onClicked: root.refreshTile("eqs-repository")
+                    }
+                ]
+
+                contentData: [
+                    Column {
+                        width: repositoryTile.width - 32
+                        spacing: 20
+
+                        Text {
+                            width: parent.width
+                            wrapMode: Text.WordWrap
+                            text: "What EQS asks of MongoDB, counted per operation. The receive path is split into its "
+                                  + "parts: a long poll runs priorityCount once per priority every 100ms of waiting, "
+                                  + "whether or not there is a message to take, while claim only runs when there is one."
+                            color: "#6b7280"
+                            font.pixelSize: 11
+                        }
+
+                        Column {
+                            width: parent.width
+                            spacing: 8
+                            visible: root.chartVisible("eqs-repository", "count")
+                            Text { text: "Operations"; color: "#c4c9d1"; font.pixelSize: 12; font.bold: true }
+                            LineChart {
+                                width: parent.width
+                                height: 160
+                                timeFormat: root.rangeFor("eqs-repository").timeFormat
+                                series: root.repositorySeriesFor(root.repositoryCountByOperation)
+                            }
+                        }
+
+                        Column {
+                            width: parent.width
+                            spacing: 8
+                            visible: root.chartVisible("eqs-repository", "time")
+                            Text { text: "Time per operation"; color: "#c4c9d1"; font.pixelSize: 12; font.bold: true }
+                            LineChart {
+                                width: parent.width
+                                height: 160
+                                valueSuffix: " ms"
+                                decimals: 2
+                                timeFormat: root.rangeFor("eqs-repository").timeFormat
+                                series: root.repositorySeriesFor(root.repositoryTimeByOperation)
+                            }
+                        }
+
+                        Text {
+                            text: root.rangeFor("eqs-repository").label + " · updated "
+                                  + (root.updatedByTile["eqs-repository"] || "—")
+                            color: "#6b7280"
+                            font.pixelSize: 11
+                        }
+                    }
+                ]
+            }
+
             // One tile per instrumented module, each with its own gear: period, and which of its
             // two charts to draw, are per tile - comparing a module's month against the gateway's
             // today is a normal thing to want.
             Repeater {
+                id: moduleTiles
                 model: root.serviceModules
                 delegate: ServiceModuleTile {
                     required property var modelData

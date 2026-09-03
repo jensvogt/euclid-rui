@@ -150,7 +150,10 @@ ApplicationWindow {
 
     readonly property var moduleRoutes: ({
         "eam": "modules-eam", "eqs": "modules-eqs", "esm": "modules-esm",
-        "ekm": "modules-ekm", "ens": "modules-ens", "ets": "modules-ets", "eap": "modules-eap"
+        "ekm": "modules-ekm", "ens": "modules-ens", "ets": "modules-ets", "eap": "modules-eap",
+        // Listed like the rest: the page tells a non-administrator who reaches it this way that it
+        // is not for them, rather than the search box pretending the module does not exist.
+        "emm": "modules-emm"
     })
 
     function moduleRouteFor(query) {
@@ -1022,6 +1025,17 @@ ApplicationWindow {
                     serverId: window.selectedTransferServerId
                     details: window.selectedTransferServerDetails
                     onBack: window.currentRoute = "modules-ets-servers"
+                }
+
+                // The module registry itself. Reached from the sidebar entry that only
+                // administrators see; the page repeats the check, since a route can also be typed
+                // into the search box.
+                EmmModulesPage {
+                    anchors.fill: parent
+                    visible: window.currentRoute === "modules-emm"
+                    loggedIn: window.loggedIn
+                    namespaceName: window.currentNamespace
+                    onBack: window.currentRoute = "dashboard"
                 }
 
                 ModulePage {

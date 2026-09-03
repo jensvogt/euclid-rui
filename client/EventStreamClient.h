@@ -40,6 +40,19 @@ public:
     // for a UI that is not running.
     Q_INVOKABLE void stop();
 
+    // Whether these events are wanted at all, from AppSettings::liveListUpdates().
+    //
+    // Every page that listens discards what arrives unless that setting is on, and it is off by
+    // default - so subscribing regardless meant the server stored, and this claimed and
+    // acknowledged, a stream of events thrown away at the first line of every handler. On one
+    // installation that came to half a million stored events for a single window: an expensive way
+    // to deliver nothing.
+    //
+    // Kept separate from start()/stop(), which say whether there is a session. The subscription
+    // exists only while both are true, so it follows the setting being toggled mid-session as well
+    // as signing in and out.
+    void setEnabled(bool enabled);
+
 signals:
     void listeningChanged();
 
@@ -49,6 +62,10 @@ signals:
     void eventReceived(const QString &eventType, const QVariantMap &payload);
 
 private:
+    // Drops the subscription and stops waiting, without saying why - shared by stop() (the session
+    // ended) and setEnabled(false) (the events are no longer wanted).
+    void stopListening();
+
     void subscribe();
     void waitForEvents();
     void acknowledge(const QStringList &eventIds);
@@ -62,6 +79,12 @@ private:
     QString m_subscriber;
     bool m_listening{false};
     bool m_stopping{false};
+    // Whether a signed-in session wants events - start() sets it, stop() clears it. Held apart
+    // from m_enabled so that turning the setting off and on again during one session resubscribes
+    // rather than waiting for the next sign-in.
+    bool m_wanted{false};
+    // AppSettings::liveListUpdates(), which defaults to off.
+    bool m_enabled{false};
     // Set while a receive is in flight, so start() and the retry timer cannot stack up waiters.
     bool m_waiting{false};
     // Consecutive waits that came back with nothing. The subscription is renewed after enough of

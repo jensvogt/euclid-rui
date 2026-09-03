@@ -143,10 +143,13 @@ Item {
                 width: parent.width
                 spacing: 18
 
-                StatCard { title: "Available"; value: String(root.available); trend: "messages"; trendUp: true; accent: "#4cd97b" }
-                StatCard { title: "Delayed"; value: String(root.delayed); trend: "messages"; trendUp: root.delayed === 0; accent: "#ffb545" }
-                StatCard { title: "Invisible"; value: String(root.invisible); trend: "messages"; trendUp: root.invisible === 0; accent: "#4f8cff" }
-                StatCard { title: "Size"; value: SizeFormat.format(root.detail("size", 0)); trend: "on disk"; trendUp: true; accent: "#c56bff" }
+                // Counted periodically rather than tracked per message, so these are approximate
+                // in the sense SQS uses the word - right as of the last count, and self-correcting
+                // on the next one.
+                StatCard { title: "Available"; value: String(root.available); trend: "messages (approx.)"; trendUp: true; accent: "#4cd97b" }
+                StatCard { title: "Delayed"; value: String(root.delayed); trend: "messages (approx.)"; trendUp: root.delayed === 0; accent: "#ffb545" }
+                StatCard { title: "Invisible"; value: String(root.invisible); trend: "messages (approx.)"; trendUp: root.invisible === 0; accent: "#4f8cff" }
+                StatCard { title: "Size"; value: SizeFormat.format(root.detail("size", 0)); trend: "on disk (approx.)"; trendUp: true; accent: "#c56bff" }
             }
 
             Rectangle {

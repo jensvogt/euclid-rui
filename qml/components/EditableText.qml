@@ -75,6 +75,12 @@ Item {
                : "Shown as stored: this XML was not reformatted - it is either not well-formed, or holds CDATA that must not be rewritten."
     }
     readonly property bool prettyPrinted: root.showable && root.displayText !== root.content
+    // What this would need to show everything without scrolling, for a caller that sizes the
+    // component to its content instead of giving it a fixed height. Safe to bind height to: the
+    // editor's implicit height follows from its width and its text, never from the height it is
+    // given.
+    readonly property real implicitContentHeight:
+        editor.implicitHeight + 20 + (root.showHeader ? headerRow.implicitHeight + 8 : 0)
     // What is in the editor right now, which is what a caller should save.
     readonly property string text: editor.text
     readonly property bool modified: root.showable && editor.text !== root.displayText

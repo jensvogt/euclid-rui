@@ -105,6 +105,7 @@ qt_add_qml_module(euclid_rui
         qml/pages/EnsMessagesPage.qml
         qml/pages/EnsMessageDetailsPage.qml
         qml/pages/EkmKeysPage.qml
+        qml/pages/EmmModulesPage.qml
         qml/pages/EkmKeyDetailsPage.qml
         qml/components/SideNav.qml
         qml/components/NavButton.qml
@@ -124,6 +125,7 @@ qt_add_qml_module(euclid_rui
         qml/components/ImportExportDialog.qml
         qml/components/ServiceModuleTile.qml
         qml/components/ToggleSwitch.qml
+        qml/components/RefreshThrottle.qml
         qml/components/SectionHeader.qml
         qml/components/ActivityRow.qml
         RESOURCES
