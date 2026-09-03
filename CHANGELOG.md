@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.27](https://github.com/jensvogt/euclid-rui/compare/1.0.26...v1.0.27) (2026-09-03)
+
+
+### Bug Fixes
+
+* EMM module ([ab48aee](https://github.com/jensvogt/euclid-rui/commit/ab48aee3fe84f1e6fec537ce98e989e9be045c4e))
+
 ## [1.0.26](https://github.com/jensvogt/euclid-rui/compare/v1.0.25...v1.0.26) (2026-09-02)
 
 
