@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.28](https://github.com/jensvogt/euclid-rui/compare/1.0.27...v1.0.28) (2026-09-03)
+
+
+### Bug Fixes
+
+* ENS content type ([3f61909](https://github.com/jensvogt/euclid-rui/commit/3f61909436b7bb8c2cf94b4d83433576c12495d7))
+* remove event streams ([32f4f09](https://github.com/jensvogt/euclid-rui/commit/32f4f092623c9a2c15675832ac3efb466c510a0c))
+
 ## [1.0.27](https://github.com/jensvogt/euclid-rui/compare/1.0.26...v1.0.27) (2026-09-03)
 
 
