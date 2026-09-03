@@ -33,11 +33,10 @@ public:
     int autoRefreshSeconds() const { return m_autoRefreshSeconds; }
     Q_INVOKABLE void setAutoRefreshSeconds(int seconds);
 
-    // Whether the pages that show a table re-read it on their own - both on the timer above and
-    // when an event says something changed. Off by default, and deliberately so: a table that
-    // reloads under the reader is unusable exactly when it matters most. Under any real load the
-    // counts move and the sort order with them, so rows change place between looking and clicking,
-    // and an event-driven reload arrives as often as the system is busy.
+    // Whether the pages that show a table re-read it on their own, on the interval above. Off by
+    // default, and deliberately so: a table that reloads under the reader is unusable exactly when
+    // it matters most. Under any real load the counts move and the sort order with them, so rows
+    // change place between looking and clicking.
     //
     // Off does not mean stale: the table's own refresh button, F5 and navigating to the page all
     // still re-read it, and so does anything the user did that changed the data.

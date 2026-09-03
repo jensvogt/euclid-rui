@@ -60,7 +60,6 @@ qt_add_executable(euclid_rui main.cpp
         client/EnsClient.h client/EnsClient.cpp
         client/EkmClient.h client/EkmClient.cpp
         client/EmoClient.h client/EmoClient.cpp
-        client/EventStreamClient.h client/EventStreamClient.cpp
 )
 
 set_source_files_properties(qml/components/DateFormat.qml PROPERTIES
@@ -125,7 +124,6 @@ qt_add_qml_module(euclid_rui
         qml/components/ImportExportDialog.qml
         qml/components/ServiceModuleTile.qml
         qml/components/ToggleSwitch.qml
-        qml/components/RefreshThrottle.qml
         qml/components/SectionHeader.qml
         qml/components/ActivityRow.qml
         RESOURCES

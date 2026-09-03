@@ -70,38 +70,6 @@ Item {
         onTriggered: root.refresh()
     }
 
-    // Events are what actually changed something; the timer above stays as the fallback for an
-    // installation without the event service, and for anything that changes without an event.
-    Connections {
-        target: eventStream
-        function onEventReceived(eventType, payload) {
-            // The event that says something changed is exactly what makes a busy system
-            // unreadable: it arrives as often as the system is busy, and each one reorders
-            // the table. Off unless asked for - see AppSettings::liveListUpdates().
-            if (!appSettings.liveListUpdates)
-                return
-            if (!root.visible || !root.loggedIn)
-                return
-            if (["esm.object.created", "esm.object.updated", "esm.object.deleted"].indexOf(eventType) >= 0) {
-                // A bucket listing shows counts and sizes, so any object event changes it -
-                // which bucket the object was in does not matter here.
-                refreshThrottle.request()
-            } else if (["esm.bucket.modified", "esm.bucket.deleted"].indexOf(eventType) >= 0) {
-                // The bucket itself changed: created, renamed away from the name on screen, or
-                // deleted - including by another window, which is the case a timer handles worst.
-                refreshThrottle.request()
-            }
-        }
-    }
-
-    // Events arrive as fast as the system produces them; this is what keeps the table from
-    // reloading faster than the configured interval allows. See RefreshThrottle.
-    RefreshThrottle {
-        id: refreshThrottle
-        minimumIntervalMs: Math.max(2000, appSettings.autoRefreshSeconds * 1000)
-        onFired: root.refresh()
-    }
-
     Connections {
         target: esmClient
         function onBucketsLoaded(list, total) {
