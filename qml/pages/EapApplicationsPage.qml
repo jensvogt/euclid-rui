@@ -203,19 +203,6 @@ Item {
         readonly property string deployedVersion: application && application.version ? String(application.version) : ""
         readonly property string deployedArtifact: application && application.artifactKey ? String(application.artifactKey) : ""
 
-        // Refused before anything is uploaded rather than after: the server rejects a redeploy that
-        // does not move the version on, and it would do so with the new build already sitting in the
-        // bucket, where the next restart would pick it up anyway. The other half of that rule - the
-        // bytes have to differ too - is left to the server, since a build with the same checksum
-        // overwrites the artifact with what it already contains.
-        readonly property string localRefusal: {
-            const version = redeployVersionField.text.trim()
-            if (version.length === 0 || redeployDialog.deployedVersion.length === 0) return ""
-            return version === redeployDialog.deployedVersion
-                   ? "Version " + version + " is already deployed - a new build needs a new version."
-                   : ""
-        }
-
         // Same rule the server and the CLI use: the first x.y.z anywhere in the name.
         function versionFromName(name) {
             const match = /(\d+)\.(\d+)\.(\d+)/.exec(name)
@@ -357,11 +344,12 @@ Item {
                     Keys.onReturnPressed: if (redeployButton.enabled) redeployButton.clicked()
                 }
                 Text {
-                    text: redeployDialog.localRefusal.length > 0
-                          ? redeployDialog.localRefusal
-                          : "Read out of the build's file name where it has one. It has to differ from the deployed "
-                            + "version, and so do the artifact's bytes - EAP refuses a redeploy that is not a new build."
-                    color: redeployDialog.localRefusal.length > 0 ? "#ffb545" : "#6b7280"
+                    // The same version can be deployed again - a rebuilt snapshot keeps its number.
+                    // What EAP refuses is a build that is byte for byte the one already running,
+                    // and only the server can see that, after the upload.
+                    text: "Read out of the build's file name where it has one. Deploying the same version again is "
+                          + "fine; a build identical to the one already deployed is refused, since nothing would change."
+                    color: "#6b7280"
                     font.pixelSize: 11
                     wrapMode: Text.WordWrap
                     width: parent.width
@@ -425,7 +413,6 @@ Item {
                              && redeployDialog.pendingFile.toString().length > 0
                              && redeployArtifactField.text.trim().length > 0
                              && redeployVersionField.text.trim().length > 0
-                             && redeployDialog.localRefusal.length === 0
                              && redeployDialog.bucketErn.length > 0
                     onClicked: {
                         redeployDialog.errorText = ""
