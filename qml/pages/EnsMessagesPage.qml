@@ -44,6 +44,7 @@ Item {
     readonly property var columns: {
         let cols = [
             { title: "Message ID", key: "messageId", fill: true },
+            { title: "Content Type", key: "contentType" },
             { title: "Status", key: "status", formatter: function (v) { return v && v.length > 0 ? v : "—" }, colorFor: function (v) { return root.statusColor(v) } },
             { title: "Size", key: "size", formatter: function (v, row) { return SizeFormat.format(root.byteLength(row.body)) } },
             { title: "Created", key: "created", formatter: function (v) { return DateFormat.format(v) } },
@@ -436,6 +437,22 @@ Item {
                 }
             }
         }
+    }
+
+    // An ENS message carries a content type - the server derives it from the body when the message
+    // is sent - so that is what the viewer is told, and it only falls back to reading the body
+    // itself when the message came from somewhere that recorded nothing.
+    //
+    // Never claimed for a truncated body: half a document does not parse, and the viewer would
+    // report that in a way that reads like the message is malformed rather than merely cut short.
+    readonly property string bodyContentType: {
+        if (root.bodyTruncated) return "text/plain"
+        const declared = String(root.detail("contentType", "")).trim()
+        if (declared.length > 0) return declared
+        const start = root.bodyPreview.trim().charAt(0)
+        if (start === "{" || start === "[") return "application/json"
+        if (start === "<") return "application/xml"
+        return "text/plain"
     }
 
     ScrollView {

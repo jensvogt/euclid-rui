@@ -19,7 +19,8 @@ Item {
 
     Rectangle {
         anchors.fill: parent
-        color: "#2b2b2b"
+//        color: "#2b2b2b"
+        color: "#20242e"
         radius: 8
         border.color: "#3f3f3f"
         border.width: 1

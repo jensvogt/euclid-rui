@@ -51,6 +51,22 @@ Item {
     readonly property bool bodyTruncated: fullBody.length > bodyPreviewLimit
     readonly property string bodyPreview: bodyTruncated ? fullBody.substring(0, bodyPreviewLimit) : fullBody
 
+    // An EQS message carries a content type - the server derives it from the body when the message
+    // is sent - so that is what the viewer is told, and it only falls back to reading the body
+    // itself when the message came from somewhere that recorded nothing.
+    //
+    // Never claimed for a truncated body: half a document does not parse, and the viewer would
+    // report that in a way that reads like the message is malformed rather than merely cut short.
+    readonly property string bodyContentType: {
+        if (root.bodyTruncated) return "text/plain"
+        const declared = String(root.detail("contentType", "")).trim()
+        if (declared.length > 0) return declared
+        const start = root.bodyPreview.trim().charAt(0)
+        if (start === "{" || start === "[") return "application/json"
+        if (start === "<") return "application/xml"
+        return "text/plain"
+    }
+
     ScrollView {
         anchors.fill: parent
         anchors.margins: 28
@@ -110,7 +126,7 @@ Item {
                     accent: root.priorityColor(root.priority)
                 }
                 StatCard { title: "Size"; value: SizeFormat.format(root.detail("size", 0)); trend: "on disk"; trendUp: true; accent: "#c56bff" }
-                StatCard { title: "Content Type"; value: root.detail("contentType", "—"); trend: "format"; trendUp: true; accent: "#4f8cff" }
+                StatCard { title: "Content Type"; value: root.detail("contentType", "—"); trend: "format"; trendUp: true; accent: "#4f8cff"; width:440 }
             }
 
             Rectangle {
@@ -226,29 +242,21 @@ Item {
                         }
                     }
 
-                    Rectangle {
+                    // Read-only: a message that has been sent is what it is, and EQS has no action
+                    // that would write a changed body back.
+                    EditableText {
+                        id: bodyView
                         width: parent.width
-                        height: Math.min(300, bodyText.implicitHeight + 24)
-                        radius: 8
-                        color: "#14161b"
-                        border.color: "#2c313c"
-                        border.width: 1
-
-                        ScrollView {
-                            anchors.fill: parent
-                            anchors.margins: 12
-                            clip: true
-
-                            Text {
-                                id: bodyText
-                                width: parent.width
-                                text: root.bodyPreview.length > 0 ? root.bodyPreview : "(empty body)"
-                                color: "#c4c9d1"
-                                font.family: "monospace"
-                                font.pixelSize: 12
-                                wrapMode: Text.Wrap
-                            }
-                        }
+                        // Grows with the body up to the cap the plain text view had, so a two-line
+                        // message does not sit in a panel sized for a hundred.
+                        height: Math.max(120, Math.min(300, bodyView.implicitContentHeight))
+                        readOnly: true
+                        contentType: root.bodyContentType
+                        content: root.bodyPreview
+                        // A message body is as often one long line as it is code, so it is wrapped
+                        // rather than scrolled sideways - which is what the plain view did too.
+                        wrapMode: TextArea.Wrap
+                        emptyText: "(empty body)"
                     }
                 }
             }

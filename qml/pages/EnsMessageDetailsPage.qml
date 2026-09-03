@@ -107,6 +107,7 @@ Item {
                     accent: root.statusColor(root.status)
                 }
                 StatCard { title: "Size"; value: SizeFormat.format(root.byteLength(root.fullBody)); trend: "on disk"; trendUp: true; accent: "#c56bff" }
+                StatCard { title: "Content Type"; value: root.detail("contentType", "—"); trend: "format"; trendUp: true; accent: "#4f8cff"; width:440 }
             }
 
             Rectangle {

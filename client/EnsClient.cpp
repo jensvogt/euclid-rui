@@ -132,6 +132,7 @@ void EnsClient::fetchMessages(const QString &topicErn, const int pageIndex, cons
                  entry["body"] = message.value("body").toString();
                  entry["md5Body"] = message.value("md5Body").toString();
                  entry["md5Attributes"] = message.value("md5Attributes").toString();
+                 entry["contentType"] = message.value("contentType").toString();
                  entry["created"] = message.value("created").toString();
                  entry["modified"] = message.value("modified").toString();
                  messages << entry;
