@@ -40,6 +40,21 @@ Item {
     // DAY resolution, because the bars are days. One bucket costs one row per label, so the cap is
     // buckets * labels: far more than the seven days drawn, since the oldest bucket of a response
     // that hit the cap is dropped server-side as incomplete.
+    // What euclid's MongoDB occupies, every collection of it together. One label - the database
+    // name - so there is nothing to fold, and it arrives in bytes for SizeFormat to render.
+    property real databaseSize: -1
+    // How many collections that database holds, and how many documents across them. Both single
+    // labelled gauges like the size above, and all three move at emo's bucket cadence.
+    property real databaseCollections: -1
+    property real databaseObjects: -1
+    // The three sizes MongoDB reports separately, and they measure different things: data size is
+    // the documents uncompressed, storage size what their collections actually occupy after
+    // compression, index size what the indexes add on top. Storage below data is compression
+    // working, not an error.
+    property real databaseDataSize: -1
+    property real databaseIndexSize: -1
+    property real databaseStorageSize: -1
+
     readonly property string trafficMetric: "gateway-service-count"
     readonly property int trafficRowLimit: 96
     property var trafficPoints: []
@@ -90,6 +105,12 @@ Item {
             return
         emoClient.fetchAverage("system-cpu-usage")
         emoClient.fetchAverage("system-memory-usage-percent")
+        emoClient.fetchAverage("database-total-size")
+        emoClient.fetchAverage("database-collections")
+        emoClient.fetchAverage("database-objects")
+        emoClient.fetchAverage("database-data-size")
+        emoClient.fetchAverage("database-index-size")
+        emoClient.fetchAverage("database-storage-size")
         emoClient.fetchAggregatedSeries(root.trafficMetric, root.trafficRowLimit, "DAY")
         emmClient.fetchModules()
     }
@@ -118,12 +139,24 @@ Item {
         function onAverageLoaded(name, value) {
             if (name === "system-cpu-usage") root.cpuPercent = value
             else if (name === "system-memory-usage-percent") root.memoryPercent = value
+            else if (name === "database-total-size") root.databaseSize = value
+            else if (name === "database-collections") root.databaseCollections = value
+            else if (name === "database-objects") root.databaseObjects = value
+            else if (name === "database-data-size") root.databaseDataSize = value
+            else if (name === "database-index-size") root.databaseIndexSize = value
+            else if (name === "database-storage-size") root.databaseStorageSize = value
             else return
             root.markUpdated()
         }
         function onAverageFailed(name, message) {
             if (name === "system-cpu-usage") root.cpuPercent = -1
             else if (name === "system-memory-usage-percent") root.memoryPercent = -1
+            else if (name === "database-total-size") root.databaseSize = -1
+            else if (name === "database-collections") root.databaseCollections = -1
+            else if (name === "database-objects") root.databaseObjects = -1
+            else if (name === "database-data-size") root.databaseDataSize = -1
+            else if (name === "database-index-size") root.databaseIndexSize = -1
+            else if (name === "database-storage-size") root.databaseStorageSize = -1
         }
         // The analytics page asks for this metric too, but per method - an aggregated response is
         // the one with no label, which is what this page asked for and what it draws.
@@ -177,11 +210,26 @@ Item {
                 subtitle: "Welcome back, here's what's happening today."
             }
 
-            Flow {
+            // A Grid rather than a Flow so the cards fill the row exactly: Flow lays children out
+            // at their own width and leaves whatever is left over as a ragged gap on the right,
+            // while this divides the row between however many fit and stretches each to its share.
+            Grid {
+                id: statGrid
                 width: parent.width
                 spacing: 18
 
+                // Kept explicit: a Grid cannot ask how many children it has in a binding that
+                // re-evaluates, so adding or removing a card above means changing this too.
+                readonly property int cardCount: 7
+                // Below this a card is too narrow for its value, so the row wraps instead.
+                readonly property int minCardWidth: 200
+
+                columns: Math.max(1, Math.min(statGrid.cardCount,
+                                              Math.floor((statGrid.width + statGrid.spacing) / (statGrid.minCardWidth + statGrid.spacing))))
+                readonly property real cellWidth: (statGrid.width - statGrid.spacing * (statGrid.columns - 1)) / statGrid.columns
+
                 StatCard {
+                    width: statGrid.cellWidth
                     title: "Active Modules"
                     value: root.modulesKnown ? String(root.runningModules) : "—"
                     // The denominator is what makes the number mean anything: 6 is good news out
@@ -197,23 +245,51 @@ Item {
                     accent: "#4f8cff"
                 }
                 StatCard {
-                    title: "Revenue"
-                    value: "$48,920"
-                    trend: "+8.1% this week"
+                    width: statGrid.cellWidth
+                    title: "Database Size"
+                    value: root.databaseSize >= 0 ? SizeFormat.format(root.databaseSize) : "—"
+                    trend: "on disk"
                     trendUp: true
                     accent: "#4cd97b"
                 }
                 StatCard {
-                    title: "Error Rate"
-                    value: "0.42%"
-                    trend: "-1.2% this week"
-                    trendUp: false
+                    width: statGrid.cellWidth
+                    title: "Data Size"
+                    value: root.databaseDataSize >= 0 ? SizeFormat.format(root.databaseDataSize) : "—"
+                    trend: "uncompressed"
+                    trendUp: true
+                    accent: "#4cd97b"
+                }
+                StatCard {
+                    width: statGrid.cellWidth
+                    title: "Index Size"
+                    value: root.databaseIndexSize >= 0 ? SizeFormat.format(root.databaseIndexSize) : "—"
+                    trend: "indexes"
+                    trendUp: true
+                    accent: "#4cd97b"
+                }
+                StatCard {
+                    width: statGrid.cellWidth
+                    title: "Storage Size"
+                    value: root.databaseStorageSize >= 0 ? SizeFormat.format(root.databaseStorageSize) : "—"
+                    trend: "allocated"
+                    trendUp: true
+                    accent: "#4cd97b"
+                }
+                StatCard {
+                    width: statGrid.cellWidth
+                    title: "Collections"
+                    value: root.databaseCollections >= 0 ? String(root.databaseCollections) : "—"
+                    trend: "in the database"
+                    trendUp: true
                     accent: "#ffb545"
                 }
                 StatCard {
-                    title: "Avg. Session"
-                    value: "6m 12s"
-                    trend: "+0.8% this week"
+                    width: statGrid.cellWidth
+                    title: "Documents"
+                    // Grouped rather than raw: 1486668 says less at a glance than 1,486,668.
+                    value: root.databaseObjects >= 0 ? root.databaseObjects.toLocaleString(Qt.locale(), "f", 0) : "—"
+                    trend: "across all collections"
                     trendUp: true
                     accent: "#c56bff"
                 }
