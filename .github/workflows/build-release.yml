@@ -51,7 +51,6 @@ env:
   # Bump to force every static-Qt cache to rebuild from scratch (e.g. after changing QT_MODULES).
   QT_CACHE_VERSION: "v3"
   APP_NAME: "euclid-rui"
-  BIN_NAME: "euclid_rui"
   INSTALLER_ID: "de.jensvogt.euclidrui" # Qt Installer Framework package path (Windows only)
   # Every -dev package Qt's "xcb_syslibs" configure test links against (qtbase
   # src/gui/configure.cmake: XCB::CURSOR ICCCM UTIL IMAGE KEYSYMS RANDR RENDER RENDERUTIL SHAPE
@@ -307,7 +306,7 @@ jobs:
           # Statically linked - the single binary is the whole program, no Qt runtime to bundle -
           # but the desktop entry and its icons go in beside it, or the application has no name and
           # no icon in the launcher. Shared with the RPM job so both packages hold the same tree.
-          dist/linux/package-tree.sh "$BUILD_DIR/$BIN_NAME" "$PACKAGE_DIR" "$APP_NAME"
+          dist/linux/package-tree.sh "$BUILD_DIR/$APP_NAME" "$PACKAGE_DIR" "$APP_NAME"
 
       - name: Build DEB with fpm
         run: |
@@ -359,7 +358,7 @@ jobs:
           PACKAGE_DIR=package
           echo "PACKAGE_DIR=$PACKAGE_DIR" >> $GITHUB_ENV
           # Same tree as the DEB: binary, desktop entry, themed icons.
-          dist/linux/package-tree.sh "$BUILD_DIR/$BIN_NAME" "$PACKAGE_DIR" "$APP_NAME"
+          dist/linux/package-tree.sh "$BUILD_DIR/$APP_NAME" "$PACKAGE_DIR" "$APP_NAME"
 
       - name: Build RPM with fpm
         run: |
@@ -494,7 +493,7 @@ jobs:
             # to wrapping the raw binary if that didn't happen for some reason.
             echo "No .app bundle at $APP_BUNDLE, packaging the raw binary instead"
             mkdir -p "dist-root/${APP_NAME}.app/Contents/MacOS"
-            cp "$BUILD_DIR/$BIN_NAME" "dist-root/${APP_NAME}.app/Contents/MacOS/$APP_NAME"
+            cp "$BUILD_DIR/$APP_NAME" "dist-root/${APP_NAME}.app/Contents/MacOS/$APP_NAME"
             APP_BUNDLE="dist-root/${APP_NAME}.app"
           fi
           # Ad-hoc signed (no Apple Developer ID here) - fine for local/manual install, not
@@ -568,7 +567,7 @@ jobs:
           # job (which installs a dynamic Qt via aqtinstall and has to bundle its runtime).
           $dataDir = "$env:INSTALLER_DIR\packages\$env:INSTALLER_ID\data"
           New-Item -ItemType Directory -Path $dataDir -Force | Out-Null
-          Copy-Item "$env:BUILD_DIR\$env:BIN_NAME.exe" "$dataDir\$env:APP_NAME.exe"
+          Copy-Item "$env:BUILD_DIR\$env:APP_NAME.exe" "$dataDir\$env:APP_NAME.exe"
 
       - name: Build Qt Installer Framework installer (binarycreator)
         shell: powershell

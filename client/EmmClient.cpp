@@ -92,13 +92,25 @@ void EmmClient::fetchModules() {
              for (const QJsonArray array = response.value("modules").toArray(); const auto &value : array) {
                  const QJsonObject module = value.toObject();
 
-                 // The instance array itself is left out: what a caller wants from a list of
-                 // modules is how many of each are up, and fetchModuleStatus() is there for the
-                 // one module whose instances actually matter.
+                 // The instances are carried through as well as counted: a list only needs the
+                 // count, but the details page shows the processes themselves - which pid, in what
+                 // state, restarted how often - and they arrive in this same answer.
                  int runningInstances = 0;
+                 QVariantList instanceList;
                  for (const QJsonArray instances = module.value("instances").toArray(); const auto &instanceValue : instances) {
-                     if (instanceValue.toObject().value("state").toString() == QLatin1String("RUNNING"))
+                     const QJsonObject instance = instanceValue.toObject();
+                     if (instance.value("state").toString() == QLatin1String("RUNNING"))
                          ++runningInstances;
+
+                     QVariantMap entry;
+                     entry["instanceId"] = instance.value("instanceId").toString();
+                     entry["pid"] = instance.value("pid").toInt();
+                     entry["state"] = instance.value("state").toString();
+                     entry["socketPath"] = instance.value("socketPath").toString();
+                     entry["restartCount"] = instance.value("restartCount").toInt();
+                     entry["created"] = instance.value("created").toString();
+                     entry["modified"] = instance.value("modified").toString();
+                     instanceList << entry;
                  }
 
                  QVariantMap entry;
@@ -119,6 +131,15 @@ void EmmClient::fetchModules() {
                  entry["desiredMaxInstances"] = module.value("desiredMaxInstances").toInt(-1);
                  entry["desiredThreads"] = module.value("desiredThreads").toInt(-1);
                  entry["runningInstances"] = runningInstances;
+                 entry["instances"] = instanceList;
+                 // What the manager runs and where it listens - only interesting one module at a
+                 // time, which is what the details page is.
+                 entry["executable"] = module.value("executable").toString();
+                 entry["socketPath"] = module.value("socketPath").toString();
+                 entry["maxRestarts"] = module.value("maxRestarts").toInt(-1);
+                 // Null for a module that has never started, which is why it is read as a string
+                 // rather than defaulted to an epoch date nobody meant.
+                 entry["lastStartTime"] = module.value("lastStartTime").toString();
                  entry["created"] = module.value("created").toString();
                  entry["modified"] = module.value("modified").toString();
                  modules << entry;

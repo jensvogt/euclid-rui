@@ -100,9 +100,28 @@ Item {
         return total
     }
 
-    function refresh() {
+    // Set while a refresh the user asked for is outstanding. Everything on this page comes from
+    // emo, which answers out of five-minute buckets, and the page re-reads itself every
+    // autoRefreshSeconds regardless - so F5 nearly always brings back the numbers already on
+    // screen. Without an acknowledgement, that reads as though the key did nothing.
+    property bool refreshing: false
+
+    // Answers arrive in a few milliseconds against a local gateway, far too fast to see. The hold
+    // keeps the acknowledgement on screen long enough to read; it is not a timeout, and a refresh
+    // that fails outright still clears it rather than hanging on "Refreshing".
+    Timer {
+        id: refreshingHold
+        interval: 900
+        onTriggered: root.refreshing = false
+    }
+
+    function refresh(manual) {
         if (!root.loggedIn)
             return
+        if (manual) {
+            root.refreshing = true
+            refreshingHold.restart()
+        }
         emoClient.fetchAverage("system-cpu-usage")
         emoClient.fetchAverage("system-memory-usage-percent")
         emoClient.fetchAverage("database-total-size")
@@ -492,8 +511,8 @@ Item {
         anchors.bottom: parent.bottom
         anchors.leftMargin: 28
         anchors.bottomMargin: 12
-        text: "Last update " + root.lastUpdatedText
-        color: "#6b7280"
+        text: root.refreshing ? "Refreshing…" : "Last update " + root.lastUpdatedText
+        color: root.refreshing ? "#4f8cff" : "#6b7280"
         font.pixelSize: 11
     }
 }

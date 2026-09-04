@@ -7,6 +7,7 @@
 #include <QJsonObject>
 #include <QJsonParseError>
 #include <QSettings>
+#include <QUrl>
 #include <algorithm>
 
 namespace {
@@ -30,11 +31,12 @@ constexpr auto kDefaultAuthMode = "bearer";
 constexpr auto kAuthModeKey = "authMode";
 constexpr auto kAccessKeyIdKey = "accessKeyId";
 constexpr auto kSecretAccessKeyKey = "secretAccessKey";
+constexpr auto kLastFileDialogFolderKey = "lastFileDialogFolder";
 
 bool isValidPort(const int port) { return port > 0 && port <= 65535; }
 
 bool isKnownAuthMode(const QString &mode) {
-    return mode == QLatin1String("bearer") || mode == QLatin1String("sigv4") || mode == QLatin1String("rfc9421");
+    return mode == QLatin1String("bearer") || mode == QLatin1String("rfc9421");
 }
 }
 
@@ -52,7 +54,9 @@ AppSettings::AppSettings(QObject *parent)
       m_host(kDefaultHost),
       m_port(kDefaultPort),
       m_useTls(kDefaultUseTls),
-      m_authMode(kDefaultAuthMode) {
+      m_authMode(kDefaultAuthMode),
+      // Never empty, so every file dialog can bind to it without a fallback of its own.
+      m_lastFileDialogFolder(QUrl::fromLocalFile(QDir::homePath()).toString()) {
 
     load();
 
@@ -66,6 +70,13 @@ AppSettings::AppSettings(QObject *parent)
         m_port = kDefaultPort;
     // An unknown mode would leave every request unauthenticated in a way that looks like a server
     // problem, so fall back rather than trust the file.
+    // A profile written when SigV4 was still offered keeps signing, with the scheme that
+    // replaced it: both prove the same request with the same access key, so this is a change of
+    // spelling rather than of what the setting meant. Falling back to kDefaultAuthMode instead
+    // would silently stop signing and start sending a bearer token, which is the one outcome
+    // nobody chose.
+    if (m_authMode == QLatin1String("sigv4"))
+        m_authMode = QStringLiteral("rfc9421");
     if (!isKnownAuthMode(m_authMode))
         m_authMode = kDefaultAuthMode;
 
@@ -106,6 +117,8 @@ void AppSettings::load() {
         m_accessKeyId = value.toString();
     if (const QJsonValue value = root.value(kSecretAccessKeyKey); value.isString())
         m_secretAccessKey = value.toString();
+    if (const QJsonValue value = root.value(kLastFileDialogFolderKey); value.isString() && !value.toString().isEmpty())
+        m_lastFileDialogFolder = value.toString();
 
     const QJsonObject gateway = root.value(kGatewayKey).toObject();
     if (const QJsonValue value = gateway.value(kHostKey); value.isString())
@@ -135,6 +148,7 @@ void AppSettings::save() const {
     root[kAuthModeKey] = m_authMode;
     root[kAccessKeyIdKey] = m_accessKeyId;
     root[kSecretAccessKeyKey] = m_secretAccessKey;
+    root[kLastFileDialogFolderKey] = m_lastFileDialogFolder;
     root[kGatewayKey] = gateway;
 
     QFile file(path);
@@ -192,6 +206,16 @@ void AppSettings::setLiveListUpdates(const bool enabled) {
     m_liveListUpdates = enabled;
     save();
     emit liveListUpdatesChanged();
+}
+
+void AppSettings::setLastFileDialogFolder(const QString &folder) {
+    // An empty value would leave the next dialog with nothing to open at, so it is ignored rather
+    // than stored - the previous folder is a better answer than none.
+    if (folder.isEmpty() || folder == m_lastFileDialogFolder)
+        return;
+    m_lastFileDialogFolder = folder;
+    save();
+    emit lastFileDialogFolderChanged();
 }
 
 void AppSettings::setHost(const QString &host) {

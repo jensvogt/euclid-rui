@@ -36,6 +36,7 @@ Item {
     readonly property bool isAdmin: euclidClient.isAdmin
 
     signal back()
+    signal openModuleDetails(string moduleName, var details)
 
     // Enabled and up, enabled and down, or switched off in the registry. A module nobody asked to
     // run is not a problem, so it reads grey rather than red.
@@ -514,7 +515,14 @@ Item {
                 // What EMM will accept for the row decides what is offered: start and stop only
                 // for a core euclid module, restart only for one that is not stopped. Saying so as
                 // a greyed-out item beats being refused after the click.
+                rowsClickable: true
+                onRowClicked: (row) => root.openModuleDetails(row.name, row)
+
                 contextMenuActions: [
+                    {
+                        text: "Details",
+                        action: function(row) { root.openModuleDetails(row.name, row) }
+                    },
                     {
                         text: "Start",
                         enabled: function(row) { return !!row && row.core && row.desiredStopped },

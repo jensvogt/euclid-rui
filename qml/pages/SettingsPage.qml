@@ -316,8 +316,12 @@ Item {
                             id: authModeCombo
                             width: 260
                             // Index order must match `modes` below.
-                            property var modes: [ "bearer", "sigv4", "rfc9421" ]
-                            model: [ "Bearer token (login)", "AWS SigV4", "RFC 9421 message signature" ]
+                            // SigV4 is no longer offered: signed requests from the RUI use RFC
+                            // 9421, the open standard for the same job. A profile still holding
+                            // "sigv4" is migrated to it on load, so nothing that was signing
+                            // stops signing.
+                            property var modes: [ "bearer", "rfc9421" ]
+                            model: [ "Bearer token (login)", "RFC 9421 message signature" ]
                             Material.theme: Material.Dark
                             Material.accent: "#4f8cff"
                             // Set imperatively rather than bound: a ComboBox clobbers a

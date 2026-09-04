@@ -88,7 +88,7 @@ void EuclidBaseClient::authorize(QNetworkRequest &request, const QByteArray &bod
     if (!m_namespace.isEmpty())
         request.setRawHeader("x-euclid-namespace", m_namespace.toUtf8());
 
-    const bool signing = (m_authMode == QLatin1String("sigv4") || m_authMode == QLatin1String("rfc9421"))
+    const bool signing = m_authMode == QLatin1String("rfc9421")
                          && !m_accessKeyId.isEmpty() && !m_secretAccessKey.isEmpty();
     if (!signing) {
         request.setRawHeader("Authorization", "Bearer " + m_token.toUtf8());
@@ -108,13 +108,14 @@ void EuclidBaseClient::authorize(QNetworkRequest &request, const QByteArray &bod
     credentials.accessKeyId = m_accessKeyId;
     credentials.secretAccessKey = m_secretAccessKey;
     credentials.region = m_region;
-    // SigV4 scopes a signature to a service; the server re-derives the key from whatever the
-    // credential scope names, so the routed module is the honest choice.
+    // Carried for the credential scope; the server re-derives the key from whatever that scope
+    // names, so the routed module is the honest choice.
     credentials.service = QString::fromUtf8(request.rawHeader("x-euclid-target"));
 
-    const auto signed_ = m_authMode == QLatin1String("sigv4")
-                                 ? RequestSigner::signSigV4(signable, credentials)
-                                 : RequestSigner::signRfc9421(signable, credentials);
+    // RFC 9421 is the only scheme the RUI signs with. SigV4 proved the same thing with the same
+    // key and the server still accepts it, but there is no reason to send a proprietary
+    // canonicalisation where an open standard says it as well.
+    const auto signed_ = RequestSigner::signRfc9421(signable, credentials);
     for (auto it = signed_.constBegin(); it != signed_.constEnd(); ++it)
         request.setRawHeader(it.key().toUtf8(), it.value().toUtf8());
 }
