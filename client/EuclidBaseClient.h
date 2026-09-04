@@ -115,7 +115,7 @@ private:
     // Applies whichever scheme m_authMode names to a request that is about to be sent. `target`
     // and `action` are already on the request; the body is passed separately because the
     // signature covers it and QNetworkRequest cannot be asked for it afterwards.
-    void authorize(QNetworkRequest &request, const QByteArray &body);
+    void authorize(QNetworkRequest &request, const QByteArray &body) const;
 
     QNetworkAccessManager m_networkManager;
     QString m_baseUrl;

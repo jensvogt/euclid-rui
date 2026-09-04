@@ -6,9 +6,10 @@ Item {
     id: root
     property bool loggedIn: false
 
-    // The dashboard shows overall system load, not a single module's - "average" over the
-    // last hour across all modules (no labelName/labelValue filter) is the closest thing emo
-    // exposes to a system-wide figure.
+    // The machine's load, both figures read the same way: emo samples "system-cpu-usage" and
+    // "system-memory-usage-percent" from /proc, labelled by host. Not the per-module
+    // "euclid-cpu-usage"/"euclid-memory-usage-percent", which answer what one process holds - the
+    // memory gauge used to read one of those and showed a module's own 0.02% as the machine's.
     property real cpuPercent: -1
     property real memoryPercent: -1
 
@@ -87,8 +88,8 @@ Item {
     function refresh() {
         if (!root.loggedIn)
             return
-        emoClient.fetchAverage("euclid-cpu-usage")
-        emoClient.fetchAverage("euclid-memory-usage-percent")
+        emoClient.fetchAverage("system-cpu-usage")
+        emoClient.fetchAverage("system-memory-usage-percent")
         emoClient.fetchAggregatedSeries(root.trafficMetric, root.trafficRowLimit, "DAY")
         emmClient.fetchModules()
     }
@@ -115,14 +116,14 @@ Item {
     Connections {
         target: emoClient
         function onAverageLoaded(name, value) {
-            if (name === "euclid-cpu-usage") root.cpuPercent = value
-            else if (name === "euclid-memory-usage-percent") root.memoryPercent = value
+            if (name === "system-cpu-usage") root.cpuPercent = value
+            else if (name === "system-memory-usage-percent") root.memoryPercent = value
             else return
             root.markUpdated()
         }
         function onAverageFailed(name, message) {
-            if (name === "euclid-cpu-usage") root.cpuPercent = -1
-            else if (name === "euclid-memory-usage-percent") root.memoryPercent = -1
+            if (name === "system-cpu-usage") root.cpuPercent = -1
+            else if (name === "system-memory-usage-percent") root.memoryPercent = -1
         }
         // The analytics page asks for this metric too, but per method - an aggregated response is
         // the one with no label, which is what this page asked for and what it draws.

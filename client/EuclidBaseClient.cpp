@@ -70,7 +70,7 @@ void EuclidBaseClient::setAccessKey(const QString &accessKeyId, const QString &s
 // Everything an authorized request needs to prove itself. The x-euclid-* headers are set here
 // rather than at the call sites because both signature schemes cover them: a header added after
 // signing would not be covered, and one changed afterwards would break the signature.
-void EuclidBaseClient::authorize(QNetworkRequest &request, const QByteArray &body) {
+void EuclidBaseClient::authorize(QNetworkRequest &request, const QByteArray &body) const {
 
     const QUrl url(m_baseUrl);
     // Same spelling Qt puts in the Host header, which is what the server signs against: the port
@@ -126,7 +126,7 @@ void EuclidBaseClient::setBusy(const bool busy) {
     emit busyChanged();
 }
 
-QNetworkReply *EuclidBaseClient::post(const QString &target, const QString &action, const QJsonObject &body, bool authorized,
+QNetworkReply *EuclidBaseClient::post(const QString &target, const QString &action, const QJsonObject &body, const bool authorized,
                              const std::function<void(const QJsonObject &)> &onSuccess,
                              const std::function<void(const QString &)> &onError,
                              const int timeoutMs) {

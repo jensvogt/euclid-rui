@@ -45,6 +45,9 @@ Item {
     }
 
     readonly property string status: detail("status", "")
+    // The topic this message was published to. Carried on the message itself, so the page has it
+    // without having to look the topic up.
+    readonly property string topicErn: detail("topicErn", "")
 
     // Qt Quick's Text layout is O(n) in a way that becomes very noticeably slow (multi-second UI
     // freeze) on bodies in the hundreds-of-KB range, which message bodies can legitimately reach -
@@ -134,12 +137,17 @@ Item {
                         columnSpacing: 24
                         rowSpacing: 16
 
-                        DetailField { width: (identityCol.width - 48) / 3; label: "Topic"; value: root.topicName }
+                        DetailField { width: (identityCol.width - 48) / 3; label: "Topic"; value: root.topicName; copyable: true }
                         DetailField { width: (identityCol.width - 48) / 3; label: "Region"; value: root.ernPart(2) }
                         DetailField { width: (identityCol.width - 48) / 3; label: "Account ID"; value: root.ernPart(3) }
                         DetailField { width: (identityCol.width - 48) / 3; label: "Created"; value: DateFormat.format(root.detail("created", "")) }
                         DetailField { width: (identityCol.width - 48) / 3; label: "Modified"; value: DateFormat.format(root.detail("modified", "")) }
                     }
+
+                    // Its own row: an ERN is long enough to elide in a third of the tile, and it is
+                    // what the CLI and every other client want pasted in.
+                    DetailField { width: identityCol.width; label: "Message ERN"; value: root.messageErn; copyable: true }
+                    DetailField { width: identityCol.width; label: "Topic ERN"; value: root.topicErn; copyable: true }
                 }
             }
 

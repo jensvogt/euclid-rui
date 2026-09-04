@@ -69,6 +69,8 @@ private:
     void fetchLatestMetric(const QString &metricName, const QString &moduleName,
                             const std::function<void(double)> &onValue, const std::function<void(const QString &)> &onError) const;
 
+    void fetchLatestMetric(const QString &metricName, const std::function<void(double)> &onValue, const std::function<void(const QString &)> &onError) const;
+
     void fetchLatestAvgMetric(const QString &metricName, const std::function<void(double)> &onValue, const std::function<void(const QString &)> &onError) const;
 
     EuclidBaseClient *m_base;
