@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.29](https://github.com/jensvogt/euclid-rui/compare/1.0.28...v1.0.29) (2026-09-04)
+
+
+### Bug Fixes
+
+* monitoring values on dashboard ([fd45365](https://github.com/jensvogt/euclid-rui/commit/fd453653b7bdc4b64525a5cc4169b8f1ee6cdd87))
+* monitoring values on dashboard ([5874f22](https://github.com/jensvogt/euclid-rui/commit/5874f22feec4db86d809c161580c8e15a574d592))
+
 ## [1.0.28](https://github.com/jensvogt/euclid-rui/compare/1.0.27...v1.0.28) (2026-09-03)
 
 
