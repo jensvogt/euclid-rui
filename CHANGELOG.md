@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.30](https://github.com/jensvogt/euclid-rui/compare/1.0.29...v1.0.30) (2026-09-04)
+
+
+### Bug Fixes
+
+* auto scaler ([75029e7](https://github.com/jensvogt/euclid-rui/commit/75029e7fa29d20d4208e3ace8117443f11c7a79b))
+
 ## [1.0.29](https://github.com/jensvogt/euclid-rui/compare/1.0.28...v1.0.29) (2026-09-04)
 
 
