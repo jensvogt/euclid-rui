@@ -25,6 +25,9 @@ Item {
 
     // Not "state": QQuickItem already has one (the Item state machine), and shadowing it silently
     // changes what every state-related binding on this page means.
+    readonly property int minInstances: Number(detail("minInstances", 1))
+    readonly property int maxInstances: Number(detail("maxInstances", 1))
+
     readonly property string applicationState: detail("state", "")
     readonly property string desiredState: detail("desiredState", "")
 
@@ -151,6 +154,14 @@ Item {
                     anchors.right: parent.right
                     anchors.verticalCenter: sectionHeader.verticalCenter
                     spacing: 8
+
+                    Button {
+                        text: "Scale…"
+                        flat: true
+                        Material.theme: Material.Dark
+                        Material.accent: "#4f8cff"
+                        onClicked: scaleDialog.open()
+                    }
 
                     Button {
                         text: "Start"
@@ -595,6 +606,166 @@ Item {
                     onClicked: {
                         environmentDialog.errorText = ""
                         root.addEnvironmentVariable(variableNameField.text.trim(), variableValueField.text)
+                    }
+                }
+            }
+        }
+    }
+
+    // The autoscaler's bounds. Sent through update-application, which changes only the fields it is
+    // given, so the rest of the definition is untouched - and like every other change to a
+    // definition, the manager restarts the pool onto it within a few seconds.
+    Dialog {
+        id: scaleDialog
+        modal: true
+        anchors.centerIn: parent
+        width: 420
+        padding: 28
+        topPadding: 24
+        bottomPadding: 24
+        standardButtons: Dialog.NoButton
+
+        readonly property int wantedMin: parseInt(minField.text, 10)
+        readonly property int wantedMax: parseInt(maxField.text, 10)
+        readonly property bool valid: !isNaN(scaleDialog.wantedMin) && !isNaN(scaleDialog.wantedMax)
+                                      && scaleDialog.wantedMin >= 0 && scaleDialog.wantedMax >= 1
+                                      && scaleDialog.wantedMin <= scaleDialog.wantedMax
+
+        readonly property string problem: {
+            if (isNaN(scaleDialog.wantedMin) || isNaN(scaleDialog.wantedMax)) return ""
+            if (scaleDialog.wantedMax < 1) return "The ceiling has to be at least 1."
+            if (scaleDialog.wantedMin > scaleDialog.wantedMax)
+                return "The floor (" + scaleDialog.wantedMin + ") cannot be above the ceiling (" + scaleDialog.wantedMax + ")."
+            return ""
+        }
+
+        background: Rectangle {
+            radius: 16
+            color: "#1b1e25"
+            border.color: "#2c313c"
+            border.width: 1
+        }
+
+        onOpened: {
+            minField.text = String(root.minInstances)
+            maxField.text = String(root.maxInstances)
+            minField.forceActiveFocus()
+            minField.selectAll()
+        }
+
+        contentItem: Column {
+            width: scaleDialog.availableWidth
+            spacing: 18
+
+            Column {
+                width: parent.width
+                spacing: 4
+                Text { text: "Scale Application"; color: "white"; font.pixelSize: 18; font.bold: true }
+                Text {
+                    text: root.applicationId + "  ·  " + root.detail("instances", 0) + " running, currently "
+                          + root.minInstances + "–" + root.maxInstances
+                    color: "#9aa1ac"
+                    font.pixelSize: 12
+                    elide: Text.ElideRight
+                    width: parent.width
+                }
+            }
+
+            Text {
+                width: parent.width
+                wrapMode: Text.WordWrap
+                color: "#6b7280"
+                font.pixelSize: 11
+                text: "The floor is what the manager keeps running; the ceiling is as far as the autoscaler may go "
+                      + "under load. Raising the floor starts instances, raising the ceiling only permits them."
+            }
+
+            Row {
+                width: parent.width
+                spacing: 12
+
+                Column {
+                    width: (scaleDialog.availableWidth - 12) / 2
+                    spacing: 6
+                    Text { text: "Min instances"; color: "#9aa1ac"; font.pixelSize: 12 }
+                    TextField {
+                        id: minField
+                        width: parent.width
+                        Material.accent: "#4f8cff"
+                        selectByMouse: true
+                        validator: IntValidator { bottom: 0; top: 999 }
+                        Keys.onReturnPressed: maxField.forceActiveFocus()
+                    }
+                }
+
+                Column {
+                    width: (scaleDialog.availableWidth - 12) / 2
+                    spacing: 6
+                    Text { text: "Max instances"; color: "#9aa1ac"; font.pixelSize: 12 }
+                    TextField {
+                        id: maxField
+                        width: parent.width
+                        Material.accent: "#4f8cff"
+                        selectByMouse: true
+                        validator: IntValidator { bottom: 1; top: 999 }
+                        Keys.onReturnPressed: if (applyScaleButton.enabled) applyScaleButton.clicked()
+                    }
+                }
+            }
+
+            // A floor of zero is accepted here, unlike the module page's: an application pool that
+            // scales away when idle is reached through EAP rather than the gateway's module
+            // routing, so nothing about it depends on an instance being up to bring it back.
+            Text {
+                width: parent.width
+                wrapMode: Text.WordWrap
+                color: "#ffb545"
+                font.pixelSize: 12
+                visible: scaleDialog.wantedMin === 0
+                text: "⚠  With a floor of 0 the pool drains to nothing when idle. Whatever the application does on "
+                      + "its own - polling a queue, watching a bucket - stops while it has no instances."
+            }
+
+            Text {
+                width: parent.width
+                wrapMode: Text.WordWrap
+                color: "#ff6b6b"
+                font.pixelSize: 12
+                visible: scaleDialog.problem.length > 0
+                text: scaleDialog.problem
+            }
+
+            Item {
+                width: parent.width
+                height: 40
+
+                Button {
+                    text: "Cancel"
+                    flat: true
+                    anchors.left: parent.left
+                    anchors.verticalCenter: parent.verticalCenter
+                    Material.theme: Material.Dark
+                    onClicked: scaleDialog.close()
+                }
+
+                Button {
+                    id: applyScaleButton
+                    text: "Apply"
+                    highlighted: true
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    Material.theme: Material.Dark
+                    Material.accent: "#4f8cff"
+                    enabled: scaleDialog.valid
+                             && (scaleDialog.wantedMin !== root.minInstances
+                                 || scaleDialog.wantedMax !== root.maxInstances)
+                    onClicked: {
+                        root.error = ""
+                        eapClient.updateApplication(root.applicationId, {
+                            minInstances: scaleDialog.wantedMin,
+                            maxInstances: scaleDialog.wantedMax
+                        })
+                        scaleDialog.close()
                     }
                 }
             }

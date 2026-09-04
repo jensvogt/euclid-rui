@@ -185,7 +185,12 @@ Item {
     FileDialog {
         id: fileDialog
         title: "Select a file to upload"
+        // Opens where the last file dialog was left, and records where this one ends up - see
+        // AppSettings::lastFileDialogFolder. The binding is what a freshly created dialog starts
+        // from; navigating inside it replaces the value, which onAccepted then stores.
+        currentFolder: appSettings.lastFileDialogFolder
         onAccepted: {
+            appSettings.lastFileDialogFolder = currentFolder
             addObjectDialog.selectedFileUrl = selectedFile
             addObjectDialog.open()
         }

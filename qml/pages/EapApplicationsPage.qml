@@ -33,8 +33,20 @@ Item {
         { title: "Runs as", key: "userId" },
         { title: "State", key: "state", colorFor: function (v) { return root.stateColor(v) } },
         { title: "Desired", key: "desiredState", colorFor: function (v) { return root.stateColor(v) } },
-        { title: "Instances", key: "instances" },
+        // Running against the ceiling the pool may grow to, which is the pair that says whether
+        // there is headroom left. The floor is on the details page: it matters when scaling, not
+        // when reading down a list.
+        {
+            title: "Instances",
+            key: "instances",
+            formatter: function (v, row) {
+                return row ? Number(v) + " / " + Number(row.maxInstances) : String(v)
+            }
+        },
         { title: "Created", key: "created", formatter: function (v) { return DateFormat.format(v) } },
+        // Moves on every change EAP stamps - a redeploy, a scaling change, a start or a stop - so
+        // it is the column that says when an application was last touched, which "Created" cannot.
+        { title: "Modified", key: "modified", formatter: function (v) { return DateFormat.format(v) } },
         { title: "Ern", key: "ern", hidden: true }
     ]
 
@@ -95,7 +107,12 @@ Item {
     FileDialog {
         id: artifactFileDialog
         title: "Select the application artifact"
+        // Opens where the last file dialog was left, and records where this one ends up - see
+        // AppSettings::lastFileDialogFolder. The binding is what a freshly created dialog starts
+        // from; navigating inside it replaces the value, which onAccepted then stores.
+        currentFolder: appSettings.lastFileDialogFolder
         onAccepted: {
+            appSettings.lastFileDialogFolder = currentFolder
             createApplicationDialog.pendingFile = selectedFile
             // The key defaults to the file's own name, which is what an operator would type anyway.
             const path = selectedFile.toString()
@@ -169,7 +186,14 @@ Item {
     FileDialog {
         id: redeployFileDialog
         title: "Select the new build"
-        onAccepted: redeployDialog.takeFile(selectedFile)
+        // Opens where the last file dialog was left, and records where this one ends up - see
+        // AppSettings::lastFileDialogFolder. The binding is what a freshly created dialog starts
+        // from; navigating inside it replaces the value, which onAccepted then stores.
+        currentFolder: appSettings.lastFileDialogFolder
+        onAccepted: {
+            appSettings.lastFileDialogFolder = currentFolder
+            redeployDialog.takeFile(selectedFile)
+        }
     }
 
     // "eap redeploy-application" as a dialog: upload the new build into the application's own

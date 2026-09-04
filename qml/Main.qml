@@ -131,6 +131,10 @@ ApplicationWindow {
     property string selectedTransferServerId: ""
     property var selectedTransferServerDetails: ({})
 
+    // EMM
+    property string selectedModuleName: ""
+    property var selectedModuleDetails: ({})
+
     // EKM
     property int ekmKeyCount: -1
     property double ekmServiceCount: -1
@@ -359,7 +363,12 @@ ApplicationWindow {
         for (let i = 0; i < pageLoader.children.length; ++i) {
             const page = pageLoader.children[i]
             if (page.visible && typeof page.refresh === "function") {
-                page.refresh()
+                // The argument marks the refresh as one the user asked for, as opposed to the
+                // periodic one each page runs on its own timer. Pages that have nothing different
+                // to do about it declare refresh() without a parameter and ignore it; the dashboard
+                // uses it to say out loud that it re-read, since its figures rarely change between
+                // two keystrokes and it would otherwise look like the key did nothing.
+                page.refresh(true)
                 return
             }
         }
@@ -1029,6 +1038,20 @@ ApplicationWindow {
                     loggedIn: window.loggedIn
                     namespaceName: window.currentNamespace
                     onBack: window.currentRoute = "dashboard"
+                    onOpenModuleDetails: (moduleName, details) => {
+                        window.selectedModuleName = moduleName
+                        window.selectedModuleDetails = details
+                        window.currentRoute = "modules-emm-details"
+                    }
+                }
+                EmmModuleDetailsPage {
+                    anchors.fill: parent
+                    visible: window.currentRoute === "modules-emm-details"
+                    loggedIn: window.loggedIn
+                    namespaceName: window.currentNamespace
+                    moduleName: window.selectedModuleName
+                    details: window.selectedModuleDetails
+                    onBack: window.currentRoute = "modules-emm"
                 }
 
                 ModulePage {

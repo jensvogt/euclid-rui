@@ -116,8 +116,13 @@ Dialog {
         title: "Save the export as"
         fileMode: FileDialog.SaveFile
         defaultSuffix: "json"
+        // Opens where the last file dialog was left, and records where this one ends up - see
+        // AppSettings::lastFileDialogFolder. The binding is what a freshly created dialog starts
+        // from; navigating inside it replaces the value, which onAccepted then stores.
+        currentFolder: appSettings.lastFileDialogFolder
         nameFilters: ["JSON files (*.json)", "All files (*)"]
         onAccepted: {
+            appSettings.lastFileDialogFolder = currentFolder
             root.exportError = ""
             root.exportResult = []
             root.exporting = true
@@ -131,8 +136,13 @@ Dialog {
     FileDialog {
         id: importFileDialog
         title: "Select a euclid export file"
+        // Opens where the last file dialog was left, and records where this one ends up - see
+        // AppSettings::lastFileDialogFolder. The binding is what a freshly created dialog starts
+        // from; navigating inside it replaces the value, which onAccepted then stores.
+        currentFolder: appSettings.lastFileDialogFolder
         nameFilters: ["JSON files (*.json)", "All files (*)"]
         onAccepted: {
+            appSettings.lastFileDialogFolder = currentFolder
             root.importResult = null
             root.importError = ""
             root.importFile = selectedFile

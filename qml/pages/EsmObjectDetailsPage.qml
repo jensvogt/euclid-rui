@@ -240,7 +240,12 @@ Item {
         id: saveFileDialog
         title: "Save object as"
         fileMode: FileDialog.SaveFile
+        // Opens where the last file dialog was left, and records where this one ends up - see
+        // AppSettings::lastFileDialogFolder. The binding is what a freshly created dialog starts
+        // from; navigating inside it replaces the value, which onAccepted then stores.
+        currentFolder: appSettings.lastFileDialogFolder
         onAccepted: {
+            appSettings.lastFileDialogFolder = currentFolder
             root.downloadError = ""
             root.downloadStatus = "Starting…"
             root.downloading = true

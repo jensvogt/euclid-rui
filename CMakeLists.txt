@@ -47,7 +47,7 @@ qt_standard_project_setup(REQUIRES 6.4)
 
 qt_policy(SET QTP0004 NEW)
 
-qt_add_executable(euclid_rui main.cpp
+qt_add_executable(euclid-rui main.cpp
         AppSettings.h AppSettings.cpp
         client/EuclidBaseClient.h client/EuclidBaseClient.cpp
         client/RequestSigner.h client/RequestSigner.cpp
@@ -69,7 +69,7 @@ set_source_files_properties(qml/components/SizeFormat.qml PROPERTIES
         QT_QML_SINGLETON_TYPE TRUE
 )
 
-qt_add_qml_module(euclid_rui
+qt_add_qml_module(euclid-rui
         URI EuclidRui
         VERSION 1.0
         QML_FILES
@@ -105,6 +105,7 @@ qt_add_qml_module(euclid_rui
         qml/pages/EnsMessageDetailsPage.qml
         qml/pages/EkmKeysPage.qml
         qml/pages/EmmModulesPage.qml
+        qml/pages/EmmModuleDetailsPage.qml
         qml/pages/EkmKeyDetailsPage.qml
         qml/components/SideNav.qml
         qml/components/NavButton.qml
@@ -138,14 +139,14 @@ qt_add_qml_module(euclid_rui
 # This also brings in Qt's entry point shim: Qt6::Core only pulls in Qt6::EntryPointPrivate (which
 # provides WinMain and calls main) when WIN32_EXECUTABLE is set - see qtbase/src/corelib
 # /CMakeLists.txt:1569-1581 - so the two have to be turned on together, and are.
-set_target_properties(euclid_rui PROPERTIES WIN32_EXECUTABLE TRUE)
+set_target_properties(euclid-rui PROPERTIES WIN32_EXECUTABLE TRUE)
 
 # version.txt is already the single source of the version (release-please updates it, and the
 # Windows installer templates are filled from it above); this hands the same string to the app so
 # the window title cannot drift from what was shipped.
-target_compile_definitions(euclid_rui PRIVATE APP_VERSION="${VERSION_STRING}" BUILD_DATE="${RELEASE_DATE}")
+target_compile_definitions(euclid-rui PRIVATE APP_VERSION="${VERSION_STRING}" BUILD_DATE="${RELEASE_DATE}")
 
-target_link_libraries(euclid_rui
+target_link_libraries(euclid-rui
         PRIVATE
         Qt6::Core
         Qt6::Gui

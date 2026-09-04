@@ -23,6 +23,7 @@ class AppSettings : public QObject {
     Q_PROPERTY(QString authMode READ authMode WRITE setAuthMode NOTIFY credentialsChanged)
     Q_PROPERTY(QString accessKeyId READ accessKeyId WRITE setAccessKeyId NOTIFY credentialsChanged)
     Q_PROPERTY(QString secretAccessKey READ secretAccessKey WRITE setSecretAccessKey NOTIFY credentialsChanged)
+    Q_PROPERTY(QString lastFileDialogFolder READ lastFileDialogFolder WRITE setLastFileDialogFolder NOTIFY lastFileDialogFolderChanged)
     Q_PROPERTY(QString configFilePath READ configFilePath CONSTANT)
 
 public:
@@ -88,6 +89,17 @@ public:
     QString secretAccessKey() const { return m_secretAccessKey; }
     Q_INVOKABLE void setSecretAccessKey(const QString &secretAccessKey);
 
+    // Where the last file dialog was when it was accepted, as a "file://" URL, so the next one
+    // opens there instead of wherever the platform would start. One value for all of them rather
+    // than one each: picking a file and then saving something beside it is the normal sequence,
+    // and it is the same directory both times.
+    //
+    // Defaults to the user's home directory, so the property is never empty and the dialogs can
+    // bind to it unconditionally.
+    [[nodiscard]]
+    QString lastFileDialogFolder() const { return m_lastFileDialogFolder; }
+    Q_INVOKABLE void setLastFileDialogFolder(const QString &folder);
+
     // Absolute path of the JSON file above, e.g. "/home/alice/.euclid/rui.json". Shown in the
     // settings page so the file this writes is findable without guessing.
     [[nodiscard]]
@@ -95,6 +107,7 @@ public:
 
 signals:
     void autoRefreshSecondsChanged();
+    void lastFileDialogFolderChanged();
     void liveListUpdatesChanged();
     // One signal for host/port/useTls: they only matter as the URL they compose into, and every
     // consumer cares about that rather than the individual parts.
@@ -118,4 +131,5 @@ private:
     QString m_authMode;
     QString m_accessKeyId;
     QString m_secretAccessKey;
+    QString m_lastFileDialogFolder;
 };
