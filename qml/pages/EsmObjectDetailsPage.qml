@@ -336,7 +336,7 @@ Item {
                         columnSpacing: 24
                         rowSpacing: 16
 
-                        DetailField { width: (identityCol.width - 48) / 3; label: "Bucket"; value: root.bucketName }
+                        DetailField { width: (identityCol.width - 48) / 3; label: "Bucket"; value: root.bucketName; copyable: true }
                         DetailField { width: (identityCol.width - 48) / 3; label: "Region"; value: root.ernPart(2) }
                         DetailField { width: (identityCol.width - 48) / 3; label: "Account ID"; value: root.ernPart(3) }
                         DetailField { width: (identityCol.width - 48) / 3; label: "Namespace"; value: root.ernPart(4) }
@@ -349,6 +349,7 @@ Item {
                     // the CLI and every other client want pasted in.
                     DetailField { width: identityCol.width; label: "Key"; value: root.objectKey; copyable: true }
                     DetailField { width: identityCol.width; label: "Object ERN"; value: root.objectErn; copyable: true }
+                    DetailField { width: identityCol.width; label: "Bucket ERN"; value: root.bucketErn; copyable: true }
                 }
             }
 

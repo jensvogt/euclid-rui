@@ -19,7 +19,11 @@ public:
                                   const QString &sortColumn = QStringLiteral("name"),
                                   const QString &sortDirection = QStringLiteral("asc"));
     Q_INVOKABLE void createBucket(const QString &name);
-    Q_INVOKABLE void purgeBucket(const QString &bucketErn);
+    // Deletes every object in the bucket. `async` hands the work to the server's background
+    // purge, which answers "accepted" and keeps deleting after the reply - the only workable way
+    // for a bucket holding more objects than a request can get through before timing out. The
+    // counts catch up on later refreshes rather than being right in the answer.
+    Q_INVOKABLE void purgeBucket(const QString &bucketErn, bool async = false);
     // A bucket's name is part of its ERN and of every object ERN inside it, so a rename rewrites
     // all of them server-side and repoints subscriptions; the counts come back in bucketRenamed().
     // Refused (409) while a transfer server still serves the bucket, since its clients are
@@ -120,6 +124,10 @@ signals:
     // `objects` and `subscriptions` are how many of each the server rewrote to the new ERN.
     void bucketRenamed(const QString &name, const QString &ern, int objects, int subscriptions);
     void bucketRenameFailed(const QString &message);
+    // A purge the server accepted. `async` says whether it is still running: false means the
+    // objects are gone, true means the server is working through them and the bucket's counts will
+    // fall over the next refreshes. `objects` is how many there were when it started.
+    void bucketPurged(const QString &bucketErn, bool async, int objects);
     void bucketTagAdded(const QString &bucketErn, const QString &key, const QString &value);
     void bucketTagAddFailed(const QString &message);
     void bucketTagDeleted(const QString &bucketErn, const QString &key);

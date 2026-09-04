@@ -19,6 +19,9 @@ Item {
     property bool loading: false
     property string error: ""
     property string lastUpdatedText: "—"
+    // What the last purge did. Kept next to the table because a background purge is still running
+    // when the answer arrives, and nothing else on screen would say so.
+    property string purgeNote: ""
 
     readonly property var columns: {
         let cols = [
@@ -41,6 +44,21 @@ Item {
             { title: "Ern", key: "ern", hidden: true }
         ]
         return cols
+    }
+
+    // Above this many objects a purge is handed to the server's background worker instead of being
+    // waited for. A synchronous purge deletes them one request at a time and a bucket of any real
+    // size outlives the request's transfer timeout, which leaves the caller with an error and the
+    // server still deleting - the worst of both.
+    readonly property int asyncPurgeThreshold: 1000
+
+    // Purges outright when there is little to do, and asks first when there is not.
+    function purge(row) {
+        if (Number(row.objects) > root.asyncPurgeThreshold) {
+            purgeDialog.openFor(row)
+            return
+        }
+        esmClient.purgeBucket(row.ern, false)
     }
 
     signal back()
@@ -88,6 +106,12 @@ Item {
             refresh()
         }
 
+        function onBucketPurged(bucketErn, async, objects) {
+            root.purgeNote = async
+                    ? "Purging " + objects + " object(s) in the background. The bucket's counts fall as it works through them."
+                    : "Purged " + objects + " object(s)."
+        }
+
         function onBucketCreated(name) {
             createBucketDialog.creating = false
             createBucketDialog.close()
@@ -103,6 +127,115 @@ Item {
         function onBucketRenameFailed(message) {
             renameBucketDialog.renaming = false
             renameBucketDialog.errorText = message
+        }
+    }
+
+    // Asked rather than assumed: a background purge answers immediately and keeps deleting, so the
+    // bucket is not empty when the dialog closes and anything watching it will see the count fall
+    // over the following minutes. That is worth saying before starting one.
+    Dialog {
+        id: purgeDialog
+        modal: true
+        anchors.centerIn: parent
+        width: 440
+        padding: 28
+        topPadding: 24
+        bottomPadding: 24
+        standardButtons: Dialog.NoButton
+
+        property var bucket: null
+        readonly property string bucketName: bucket ? String(bucket.name) : ""
+        readonly property int objectCount: bucket ? Number(bucket.objects) : 0
+
+        function openFor(row) {
+            purgeDialog.bucket = row
+            purgeDialog.open()
+        }
+
+        background: Rectangle {
+            radius: 16
+            color: "#1b1e25"
+            border.color: "#2c313c"
+            border.width: 1
+        }
+
+        contentItem: Column {
+            width: purgeDialog.availableWidth
+            spacing: 18
+
+            Column {
+                width: parent.width
+                spacing: 4
+                Text { text: "Purge Bucket"; color: "white"; font.pixelSize: 18; font.bold: true }
+                Text {
+                    text: purgeDialog.bucketName + "  ·  " + purgeDialog.objectCount + " objects"
+                    color: "#9aa1ac"
+                    font.pixelSize: 12
+                    elide: Text.ElideRight
+                    width: parent.width
+                }
+            }
+
+            Text {
+                width: parent.width
+                wrapMode: Text.WordWrap
+                color: "#e0a458"
+                font.pixelSize: 12
+                text: "⚠  Every object in this bucket is deleted, and there is no undo. Objects are removed one at "
+                      + "a time, so " + purgeDialog.objectCount + " of them take a while."
+            }
+
+            Text {
+                width: parent.width
+                wrapMode: Text.WordWrap
+                color: "#6b7280"
+                font.pixelSize: 11
+                text: "Deleting in the background hands the work to the server and answers straight away: the bucket "
+                      + "is not empty when this dialog closes, and its counts fall over the following refreshes. "
+                      + "Waiting for it keeps this window on the request until every object is gone, which for a "
+                      + "bucket this size can outlast the request's own timeout."
+            }
+
+            Item {
+                width: parent.width
+                height: 40
+
+                Button {
+                    text: "Cancel"
+                    flat: true
+                    anchors.left: parent.left
+                    anchors.verticalCenter: parent.verticalCenter
+                    Material.theme: Material.Dark
+                    onClicked: purgeDialog.close()
+                }
+
+                Row {
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: 8
+
+                    Button {
+                        text: "Wait for it"
+                        flat: true
+                        Material.theme: Material.Dark
+                        Material.accent: "#ff6b6b"
+                        onClicked: {
+                            esmClient.purgeBucket(purgeDialog.bucket.ern, false)
+                            purgeDialog.close()
+                        }
+                    }
+                    Button {
+                        text: "Delete in background"
+                        highlighted: true
+                        Material.theme: Material.Dark
+                        Material.accent: "#4f8cff"
+                        onClicked: {
+                            esmClient.purgeBucket(purgeDialog.bucket.ern, true)
+                            purgeDialog.close()
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -400,6 +533,7 @@ Item {
             }
 
             DataTable {
+                id: bucketTable
                 width: parent.width
                 columns: root.columns
                 rows: root.buckets
@@ -452,7 +586,7 @@ Item {
                             return !!row && Number(row.objects) > 0
                         },
                         action: function(row) {
-                            esmClient.purgeBucket(row.ern)
+                            root.purge(row)
                         }
                     },
                     {

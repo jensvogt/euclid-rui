@@ -153,12 +153,17 @@ Item {
                         columnSpacing: 24
                         rowSpacing: 16
 
-                        DetailField { width: (identityCol.width - 48) / 3; label: "Queue"; value: root.queueName }
+                        DetailField { width: (identityCol.width - 48) / 3; label: "Queue"; value: root.queueName; copyable: true }
                         DetailField { width: (identityCol.width - 48) / 3; label: "Region"; value: root.ernPart(2) }
                         DetailField { width: (identityCol.width - 48) / 3; label: "Account ID"; value: root.ernPart(3) }
                         DetailField { width: (identityCol.width - 48) / 3; label: "Created"; value: DateFormat.format(root.detail("created", "")) }
                         DetailField { width: (identityCol.width - 48) / 3; label: "Modified"; value: DateFormat.format(root.detail("modified", "")) }
                     }
+
+                    // Its own row: an ERN is long enough to elide in a third of the tile, and it is
+                    // what the CLI and every other client want pasted in.
+                    DetailField { width: identityCol.width; label: "Message ERN"; value: root.messageErn; copyable: true }
+                    DetailField { width: identityCol.width; label: "Queue ERN"; value: root.queueErn; copyable: true }
                 }
             }
 

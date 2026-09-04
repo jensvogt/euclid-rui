@@ -6,6 +6,13 @@
 
 #include <map>
 
+namespace {
+// One bucket of a labelled metric is one row per label: eleven modules for the memory gauges,
+// around twenty actions for a module's service counts. This is the cap on how many of those rows
+// are asked for, and it only has to cover the newest bucket - the server cuts newest-first.
+constexpr int kLabelFoldLimit = 128;
+}
+
 EmoClient::EmoClient(EuclidBaseClient *baseClient, QObject *parent) : QObject(parent), m_base(baseClient) {}
 
 void EmoClient::fetchLatestMetric(const QString &metricName, const QString &moduleName, const std::function<void(double)> &onValue, const std::function<void(const QString &)> &onError) const {
@@ -27,13 +34,80 @@ void EmoClient::fetchLatestMetric(const QString &metricName, const QString &modu
          onError);
 }
 
+void EmoClient::fetchLatestMetric(const QString &metricName, const std::function<void(double)> &onValue, const std::function<void(const QString &)> &onError) const {
+    QJsonObject body;
+    body["name"] = metricName;
+    body["labelName"] = "host";
+    body["labelValue"] = "vogje01-desktop";
+    body["resolution"] = "RAW";
+    body["limit"] = 1;
+
+    m_base->post("emo", "list", body, true,
+         [onValue, onError](const QJsonObject &response) {
+             const QJsonArray items = response.value("items").toArray();
+             if (items.isEmpty()) {
+                 onError("No data available yet");
+                 return;
+             }
+             onValue(items.first().toObject().value("value").toDouble());
+         },
+         onError);
+}
+
 void EmoClient::fetchLatestAvgMetric(const QString &metricName, const std::function<void(double)> &onValue, const std::function<void(const QString &)> &onError) const {
     QJsonObject body;
     body["name"] = metricName;
+    body["resolution"] = "RAW";
+    // Enough rows to hold the newest bucket across every label the metric has. Asking for one row
+    // was the bug this replaces: almost every metric here is labelled - memory usage per module,
+    // service counts per action - so "the first row" was one arbitrary module's memory, or one
+    // action's request count, reported as though it were the whole figure.
+    body["limit"] = kLabelFoldLimit;
 
-    m_base->post("emo", "average", body, true,
+    m_base->post("emo", "list", body, true,
          [onValue, onError](const QJsonObject &response) {
-             onValue(response["average"].toDouble());
+             const QJsonArray items = response.value("items").toArray();
+             if (items.isEmpty()) {
+                 onError("No data available yet");
+                 return;
+             }
+
+             // Rows come back newest-first, so the newest timestamp is the bucket to fold; the
+             // ones behind it are older buckets of the same labels.
+             QString newest;
+             for (const QJsonValue &item: items) {
+                 const auto timestamp = item.toObject().value("timestamp").toString();
+                 if (timestamp > newest) newest = timestamp;
+             }
+
+             // The same rule emo's own rollups use, and fetchAggregatedSeries with them: a RATE is
+             // the total over its labels - twenty actions' request counts add up to the module's -
+             // while a GAUGE is their sample-weighted mean, since averaging percentages is what
+             // makes them comparable.
+             double total = 0;
+             double weighted = 0;
+             double samples = 0;
+             long rows = 0;
+             bool rate = false;
+             for (const QJsonValue &item: items) {
+                 const QJsonObject row = item.toObject();
+                 if (row.value("timestamp").toString() != newest) continue;
+                 const double value = row.value("value").toDouble();
+                 const double rowSamples = row.value("samples").toDouble();
+                 total += value;
+                 weighted += value * rowSamples;
+                 samples += rowSamples;
+                 rate = row.value("type").toString() == QLatin1String("RATE");
+                 ++rows;
+             }
+
+             if (rate) {
+                 onValue(total);
+                 return;
+             }
+             // Falls back to the plain mean when the rows carry no sample counts, which is still
+             // the figure for the one-label case every gauge on the dashboard has.
+             onValue(samples > 0 ? weighted / samples : (rows > 0 ? total / static_cast<double>(rows) : 0.0));
          },
          onError);
 }

@@ -60,7 +60,10 @@ Item {
 
     // One instance of this page serves every bucket, so a note about the last one must not follow
     // the user to the next.
-    onBucketErnChanged: root.encryptionNote = ""
+    onBucketErnChanged: {
+        root.encryptionNote = ""
+        root.purgeNote = ""
+    }
 
     Connections {
         target: esmClient
@@ -103,9 +106,20 @@ Item {
             if (bucketErn !== root.bucketErn) return
             root.removeTagLocally(key)
         }
+        function onBucketPurged(bucketErn, async, objects) {
+            if (bucketErn !== root.bucketErn) return
+            root.purgeNote = async
+                    ? "Purging " + objects + " object(s) in the background. The counts above fall as it works through them."
+                    : "Purged " + objects + " object(s)."
+        }
     }
 
     readonly property int objects: Number(detail("objects", 0))
+
+    // See EsmBucketsPage: past this many objects a synchronous purge outlasts its own request.
+    readonly property int asyncPurgeThreshold: 1000
+    // What the last purge did; a background one is still running when the answer arrives.
+    property string purgeNote: ""
 
     ScrollView {
         anchors.fill: parent
@@ -144,7 +158,13 @@ Item {
                         Material.theme: Material.Dark
                         Material.accent: "#ff6b6b"
                         enabled: root.objects > 0
-                        onClicked: esmClient.purgeBucket(root.bucketErn)
+                        onClicked: {
+                            // Same rule as the buckets table: a bucket of any size goes to the
+                            // server's background purge rather than being waited for, and that is
+                            // asked rather than assumed.
+                            if (root.objects > root.asyncPurgeThreshold) purgeDialog.open()
+                            else esmClient.purgeBucket(root.bucketErn, false)
+                        }
                     }
 
                     Button {
@@ -155,6 +175,15 @@ Item {
                         onClicked: root.viewObjects(root.bucketErn, root.bucketName)
                     }
                 }
+            }
+
+            Text {
+                width: parent.width
+                wrapMode: Text.WordWrap
+                color: "#4cd97b"
+                font.pixelSize: 12
+                visible: root.purgeNote.length > 0
+                text: root.purgeNote
             }
 
             Flow {
@@ -348,6 +377,103 @@ Item {
                                     }
                                 }
                             }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Dialog {
+        id: purgeDialog
+        modal: true
+        anchors.centerIn: parent
+        width: 440
+        padding: 28
+        topPadding: 24
+        bottomPadding: 24
+        standardButtons: Dialog.NoButton
+
+        background: Rectangle {
+            radius: 16
+            color: "#1b1e25"
+            border.color: "#2c313c"
+            border.width: 1
+        }
+
+        contentItem: Column {
+            width: purgeDialog.availableWidth
+            spacing: 18
+
+            Column {
+                width: parent.width
+                spacing: 4
+                Text { text: "Purge Bucket"; color: "white"; font.pixelSize: 18; font.bold: true }
+                Text {
+                    text: root.bucketName + "  ·  " + root.objects + " objects"
+                    color: "#9aa1ac"
+                    font.pixelSize: 12
+                    elide: Text.ElideRight
+                    width: parent.width
+                }
+            }
+
+            Text {
+                width: parent.width
+                wrapMode: Text.WordWrap
+                color: "#e0a458"
+                font.pixelSize: 12
+                text: "⚠  Every object in this bucket is deleted, and there is no undo. Objects are removed one at "
+                      + "a time, so " + root.objects + " of them take a while."
+            }
+
+            Text {
+                width: parent.width
+                wrapMode: Text.WordWrap
+                color: "#6b7280"
+                font.pixelSize: 11
+                text: "Deleting in the background hands the work to the server and answers straight away: the bucket "
+                      + "is not empty when this dialog closes, and the counts above fall over the following "
+                      + "refreshes. Waiting for it keeps this window on the request until every object is gone, "
+                      + "which for a bucket this size can outlast the request's own timeout."
+            }
+
+            Item {
+                width: parent.width
+                height: 40
+
+                Button {
+                    text: "Cancel"
+                    flat: true
+                    anchors.left: parent.left
+                    anchors.verticalCenter: parent.verticalCenter
+                    Material.theme: Material.Dark
+                    onClicked: purgeDialog.close()
+                }
+
+                Row {
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: 8
+
+                    Button {
+                        text: "Wait for it"
+                        flat: true
+                        Material.theme: Material.Dark
+                        Material.accent: "#ff6b6b"
+                        onClicked: {
+                            esmClient.purgeBucket(root.bucketErn, false)
+                            purgeDialog.close()
+                        }
+                    }
+                    Button {
+                        text: "Delete in background"
+                        highlighted: true
+                        Material.theme: Material.Dark
+                        Material.accent: "#4f8cff"
+                        onClicked: {
+                            esmClient.purgeBucket(root.bucketErn, true)
+                            purgeDialog.close()
                         }
                     }
                 }

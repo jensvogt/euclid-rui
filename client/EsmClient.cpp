@@ -63,13 +63,20 @@ void EsmClient::createBucket(const QString &name) {
          });
 }
 
-void EsmClient::purgeBucket(const QString &bucketErn) {
+void EsmClient::purgeBucket(const QString &bucketErn, const bool async) {
     QJsonObject body;
     body["ern"] = bucketErn;
     body["prefix"] = "";
+    body["async"] = async;
 
     m_base->post("esm", "purge-bucket", body, true,
-         [this, bucketErn](const QJsonObject &response) {
+         [this, bucketErn, async](const QJsonObject &response) {
+             // "objects" comes back only from the background variant, where it is how many the
+             // bucket held when the purge was accepted; the synchronous one reports what it
+             // actually removed as "count".
+             const int objects = async ? response.value("objects").toInt()
+                                       : response.value("count").toInt();
+             emit bucketPurged(bucketErn, async, objects);
              emit objectsReload(bucketErn);
              emit bucketsReload();
          },
