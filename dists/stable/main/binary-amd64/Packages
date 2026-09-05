@@ -268,3 +268,21 @@ Description: no description given
 License: unknown
 Vendor: none
 
+Package: euclid-rui
+Architecture: amd64
+Version: 1.0.31
+Priority: optional
+Section: default
+Maintainer: <runner@runnervm9xg2d>
+Installed-Size: 80019
+Filename: pool/main/e/euclid-rui/euclid-rui-1.0.31-amd64.deb
+Size: 24966494
+MD5sum: 6b56477e569653b9266dee164a6b2cf2
+SHA1: 9cd5ad8efc10cda5eeb44f53c97e88e9e45f5c9e
+SHA256: 8d7f941382f04ded4ceb09e34d8721b9caa7ae77caed211acb549c1ab7ae713c
+SHA512: 3d218afaf2dd2780e6065c5a69c9bbe5f3a975a073ba04f2f8f4470d8fd160c2ccba00882d8c61a92e1f7ccd3ecb6df9b3d086b4046b44e2742691eefd6995c5
+Homepage: http://example.com/no-uri-given
+Description: no description given
+License: unknown
+Vendor: none
+
