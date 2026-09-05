@@ -71,6 +71,16 @@ Item {
         return "text/plain"
     }
 
+    // The same reading for the full-content dialog, taken from the whole body rather than the
+    // preview: there is no truncation to work around there, so a document the tile above could
+    // only show as plain text can be indented here - which is most of the reason to open it.
+    readonly property string fullBodyContentType: {
+        const start = root.fullBody.trim().charAt(0)
+        if (start === "{" || start === "[") return "application/json"
+        if (start === "<") return "application/xml"
+        return "text/plain"
+    }
+
     ScrollView {
         anchors.fill: parent
         anchors.margins: 28
@@ -277,28 +287,17 @@ Item {
                 }
             }
 
-            Rectangle {
+            // The whole body, in the same viewer the tile behind this dialog uses - so a JSON
+            // message is indented here too, and is selectable rather than merely readable. Read-
+            // only for the same reason as the tile: a published message is what it is.
+            EditableText {
                 width: parent.width
                 height: 420
-                radius: 8
-                color: "#14161b"
-                border.color: "#2c313c"
-                border.width: 1
-
-                ScrollView {
-                    anchors.fill: parent
-                    anchors.margins: 12
-                    clip: true
-
-                    Text {
-                        width: parent.width
-                        text: root.fullBody.length > 0 ? root.fullBody : "(empty body)"
-                        color: "#c4c9d1"
-                        font.family: "monospace"
-                        font.pixelSize: 12
-                        wrapMode: Text.Wrap
-                    }
-                }
+                readOnly: true
+                contentType: root.fullBodyContentType
+                content: root.fullBody
+                wrapMode: TextArea.Wrap
+                emptyText: "(empty body)"
             }
 
             Item {

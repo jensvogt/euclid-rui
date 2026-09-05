@@ -75,15 +75,21 @@ Item {
     // is a single point. `limit` is the number of buckets that span can hold (RAW assumes emo's
     // default 5-minute average-period), so the server's newest-first cut never drops a bucket
     // that's still inside the period.
+    //
+    // The first one is a rolling window rather than a calendar one, and it is the default: at
+    // 09:00 "Today" is nine hours of chart and yesterday's evening - usually the more interesting
+    // half - has just fallen off the left edge. 288 RAW buckets are exactly 24 hours, so it costs
+    // the same query as "Today" and reads the same way.
     readonly property var historyRanges: [
-        { label: "Today",      resolution: "RAW",  limit: 288, timeFormat: "hh:mm" },
-        { label: "This week",  resolution: "HOUR", limit: 168, timeFormat: "ddd hh:mm" },
-        { label: "This month", resolution: "DAY",  limit: 31,  timeFormat: "dd MMM" },
-        { label: "This year",  resolution: "DAY",  limit: 366, timeFormat: "dd MMM" }
+        { id: "last24h", label: "Last 24 hours", resolution: "RAW",  limit: 288, timeFormat: "hh:mm", rollingHours: 24 },
+        { id: "today",   label: "Today",         resolution: "RAW",  limit: 288, timeFormat: "hh:mm" },
+        { id: "week",    label: "This week",     resolution: "HOUR", limit: 168, timeFormat: "ddd hh:mm" },
+        { id: "month",   label: "This month",    resolution: "DAY",  limit: 31,  timeFormat: "dd MMM" },
+        { id: "year",    label: "This year",     resolution: "DAY",  limit: 366, timeFormat: "dd MMM" }
     ]
 
     // Every tile has its own gear, so every tile has its own period: {tileId: rangeIndex}, keyed
-    // by "gateway" or a module id. Absent means the first range (Today).
+    // by "gateway" or a module id. Absent means the first range (Last 24 hours).
     property var rangeIndexByTile: ({})
     // Gateway only. All four methods are always fetched (cheap, and switching one back on
     // shouldn't need a refetch), visibility is purely a client-side display filter.
@@ -168,26 +174,35 @@ Item {
         return ""
     }
 
-    // Start of the selected calendar period. "limit" alone would give the last N buckets, which
-    // at 09:00 would reach back into yesterday and make the "Today" label a lie, so points before
-    // this instant are dropped once they arrive.
+    // Start of the selected period. "limit" alone would give the last N buckets, which at 09:00
+    // would reach back into yesterday and make the "Today" label a lie, so points before this
+    // instant are dropped once they arrive.
     //
     // Month/year boundaries are taken in UTC because DAY buckets are aligned to UTC midnight: a
     // local-midnight boundary would drop the 1st's bucket in every zone west of Greenwich.
     // Today/this week use local midnight, which is what those words mean to the user, and their
     // buckets are at most an hour wide so the boundary is off by at most one point.
+    //
+    // Keyed by the range's id rather than its position, so the list above can be reordered or
+    // added to without silently repointing every case.
     function historyRangeStart(rangeIndex) {
         const now = new Date()
-        switch (rangeIndex) {
+        const range = root.historyRanges[rangeIndex]
+
+        // A rolling window is measured back from this moment; the calendar ones start at a boundary.
+        if (range && range.rollingHours !== undefined)
+            return new Date(now.getTime() - range.rollingHours * 3600000)
+
+        switch (range ? range.id : "today") {
         // This week - back to the most recent Monday (getDay() counts Sunday as 0)
-        case 1: {
+        case "week": {
             const start = new Date(now.getFullYear(), now.getMonth(), now.getDate())
             start.setDate(start.getDate() - (start.getDay() + 6) % 7)
             return start
         }
-        case 2:
+        case "month":
             return new Date(Date.UTC(now.getFullYear(), now.getMonth(), 1))
-        case 3:
+        case "year":
             return new Date(Date.UTC(now.getFullYear(), 0, 1))
         default:
             return new Date(now.getFullYear(), now.getMonth(), now.getDate())

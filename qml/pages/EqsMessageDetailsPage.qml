@@ -67,6 +67,18 @@ Item {
         return "text/plain"
     }
 
+    // The same reading for the full-content dialog, which is the one place the whole body is on
+    // screen. It has no truncation to work around, so a document that was only ever shown as plain
+    // text in the tile above can be indented here - which is most of the reason to open it.
+    readonly property string fullBodyContentType: {
+        const declared = String(root.detail("contentType", "")).trim()
+        if (declared.length > 0) return declared
+        const start = root.fullBody.trim().charAt(0)
+        if (start === "{" || start === "[") return "application/json"
+        if (start === "<") return "application/xml"
+        return "text/plain"
+    }
+
     ScrollView {
         anchors.fill: parent
         anchors.margins: 28
@@ -298,28 +310,17 @@ Item {
                 }
             }
 
-            Rectangle {
+            // The whole body, in the same viewer the tile behind this dialog uses - so a JSON
+            // message is indented here too, and is selectable rather than merely readable. Read-
+            // only for the same reason as the tile: EQS has no action that writes a body back.
+            EditableText {
                 width: parent.width
                 height: 420
-                radius: 8
-                color: "#14161b"
-                border.color: "#2c313c"
-                border.width: 1
-
-                ScrollView {
-                    anchors.fill: parent
-                    anchors.margins: 12
-                    clip: true
-
-                    Text {
-                        width: parent.width
-                        text: root.fullBody.length > 0 ? root.fullBody : "(empty body)"
-                        color: "#c4c9d1"
-                        font.family: "monospace"
-                        font.pixelSize: 12
-                        wrapMode: Text.Wrap
-                    }
-                }
+                readOnly: true
+                contentType: root.fullBodyContentType
+                content: root.fullBody
+                wrapMode: TextArea.Wrap
+                emptyText: "(empty body)"
             }
 
             Item {

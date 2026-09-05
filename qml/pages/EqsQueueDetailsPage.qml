@@ -184,6 +184,9 @@ Item {
                         DetailField { width: (identityCol.width - 48) / 3; label: "Modified"; value: DateFormat.format(root.detail("modified", "")) }
                     }
 
+                    // The name above the ERN it is the tail of: it is what every client API and
+                    // every command line asks for, so it is the one worth copying most often.
+                    DetailField { width: identityCol.width; label: "Queue name"; value: root.queueName; copyable: true }
                     DetailField { width: identityCol.width; label: "Queue ERN"; value: root.queueErn; copyable: true }
                 }
             }
