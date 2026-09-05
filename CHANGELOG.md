@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.31](https://github.com/jensvogt/euclid-rui/compare/1.0.30...v1.0.31) (2026-09-05)
+
+
+### Bug Fixes
+
+* auto scaler issues, clean shutdown ([47a32b5](https://github.com/jensvogt/euclid-rui/commit/47a32b56b3da0217f93bcd09313c70352c69b723))
+* auto scaler issues, clean shutdown ([9885d48](https://github.com/jensvogt/euclid-rui/commit/9885d48b4f69a83e090062dc32557ef79950624b))
+
 ## [1.0.30](https://github.com/jensvogt/euclid-rui/compare/1.0.29...v1.0.30) (2026-09-04)
 
 
