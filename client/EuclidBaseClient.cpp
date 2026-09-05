@@ -135,6 +135,18 @@ QNetworkReply *EuclidBaseClient::post(const QString &target, const QString &acti
     request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
     request.setRawHeader("x-euclid-target", target.toUtf8());
     request.setRawHeader("x-euclid-action", action.toUtf8());
+
+    // Listing something is the UI describing the system, not asking it to do work, and every page
+    // here re-lists on a timer for as long as it is open. Counted as load, a browser left on the
+    // queues page would hold EQS at whatever size it had reached and stop it ever scaling down -
+    // the monitoring preventing the thing it exists to watch.
+    //
+    // Everything else the RUI sends is a person doing something: creating a queue, publishing a
+    // message, stopping an application. Those are real, and are counted. Deliberately not signed
+    // (see RequestSigner's covered components) - it is a hint about intent, not a credential.
+    if (action.startsWith(QLatin1String("list"))) {
+        request.setRawHeader("x-euclid-internal", "true");
+    }
     const QByteArray payload = QJsonDocument(body).toJson(QJsonDocument::Compact);
     if (authorized) {
         authorize(request, payload);

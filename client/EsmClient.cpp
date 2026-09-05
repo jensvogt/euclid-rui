@@ -33,8 +33,12 @@ void EsmClient::fetchBuckets(const QString &prefix, const int pageIndex, const i
                  entry["name"] = bucket.value("name").toString();
                  entry["ern"] = bucket.value("ern").toString();
                  entry["owner"] = bucket.value("owner").toString();
-                 entry["size"] = bucket.value("size").toInt();
-                 entry["objects"] = bucket.value("objects").toInt();
+                 // 64-bit deliberately. QJsonValue::toInt() does not truncate a number that will
+                 // not fit an int, it abandons it and returns its default - so a 30 GB bucket came
+                 // through as 0 and rendered as "0 B", a wrong answer that reads like an empty
+                 // bucket. Both of these pass 2^31 in an installation of any size.
+                 entry["size"] = bucket.value("size").toInteger();
+                 entry["objects"] = bucket.value("objects").toInteger();
                  entry["tags"] = bucket.value("tags").toObject().toVariantMap();
                  entry["encrypted"] = bucket.value("encrypted").toBool();
                  entry["encryptionKeyErn"] = bucket.value("encryptionKeyErn").toString();

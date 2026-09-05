@@ -65,10 +65,11 @@ Item {
             title: "Instances",
             key: "runningInstances",
             sortable: false,
-            // Against the bounds the autoscaler works within: 1 of 1–4 is healthy, 0 of 1–4 is the
-            // number that matters.
+            // Running against the ceiling the autoscaler may grow to, written the way the EAP
+            // applications table writes it. The floor is on the details page, where the pending
+            // "1 → 3" of a scaling change belongs with it.
             formatter: function (v, row) {
-                return row ? v + " (" + row.minInstances + "–" + row.maxInstances + ")" : String(v)
+                return row ? Number(v) + " / " + Number(row.maxInstances) : String(v)
             }
         },
         { title: "Auto-restart", key: "autoRestart", sortable: false, formatter: function (v) { return v ? "Yes" : "No" } },

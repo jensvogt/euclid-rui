@@ -23,10 +23,13 @@ void EqsClient::fetchQueues(const QString &prefix, const int pageIndex, const in
                  entry["name"] = queue.value("name").toString();
                  entry["ern"] = queue.value("ern").toString();
                  entry["owner"] = queue.value("owner").toString();
-                 entry["available"] = queue.value("available").toInt();
-                 entry["delayed"] = queue.value("delayed").toInt();
-                 entry["invisible"] = queue.value("invisible").toInt();
-                 entry["size"] = queue.value("size").toInt();
+                 // Read as 64-bit for the reason ESM's bucket size is: past 2^31 toInt() returns
+                 // its default instead of the number, which shows an overflowing queue as empty.
+                 // The configured limits below stay int - they are settings, not totals.
+                 entry["available"] = queue.value("available").toInteger();
+                 entry["delayed"] = queue.value("delayed").toInteger();
+                 entry["invisible"] = queue.value("invisible").toInteger();
+                 entry["size"] = queue.value("size").toInteger();
                  entry["delay"] = queue.value("delay").toInt();
                  entry["visibility"] = queue.value("visibility").toInt();
                  entry["maxMessageLength"] = queue.value("maxMessageLength").toInt();

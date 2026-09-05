@@ -23,8 +23,10 @@ void EnsClient::fetchTopics(const QString &prefix, const int pageIndex, const in
                  entry["name"] = topic.value("name").toString();
                  entry["ern"] = topic.value("ern").toString();
                  entry["owner"] = topic.value("owner").toString();
-                 entry["size"] = topic.value("size").toInt();
-                 entry["messages"] = topic.value("messages").toInt();
+                 // 64-bit like the EQS and ESM totals: toInt() answers 0 rather than a truncated
+                 // number once a byte count or a message count passes 2^31.
+                 entry["size"] = topic.value("size").toInteger();
+                 entry["messages"] = topic.value("messages").toInteger();
                  entry["maxMessageLength"] = topic.value("maxMessageLength").toInt();
                  entry["tags"] = topic.value("tags").toObject().toVariantMap();
                  entry["created"] = topic.value("created").toString();
