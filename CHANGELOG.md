@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.33](https://github.com/jensvogt/euclid-rui/compare/1.0.32...v1.0.33) (2026-09-06)
+
+
+### Bug Fixes
+
+* add EAG ([9b2c81d](https://github.com/jensvogt/euclid-rui/commit/9b2c81d26f62723423d1e5941a55ddfe21fcf7b9))
+
 ## [1.0.32](https://github.com/jensvogt/euclid-rui/compare/1.0.31...v1.0.32) (2026-09-06)
 
 
