@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.32](https://github.com/jensvogt/euclid-rui/compare/1.0.31...v1.0.32) (2026-09-06)
+
+
+### Bug Fixes
+
+* ESM internal flag, fix some paging issues ([78363af](https://github.com/jensvogt/euclid-rui/commit/78363afe47ca4a8073edf65ca7974803b64d128a))
+
 ## [1.0.31](https://github.com/jensvogt/euclid-rui/compare/1.0.30...v1.0.31) (2026-09-05)
 
 
