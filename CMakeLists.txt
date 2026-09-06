@@ -57,6 +57,7 @@ qt_add_executable(euclid-rui main.cpp
         client/EsmClient.h client/EsmClient.cpp
         client/EtsClient.h client/EtsClient.cpp
         client/EapClient.h client/EapClient.cpp
+        client/EagClient.h client/EagClient.cpp
         client/EnsClient.h client/EnsClient.cpp
         client/EkmClient.h client/EkmClient.cpp
         client/EmoClient.h client/EmoClient.cpp
@@ -106,6 +107,8 @@ qt_add_qml_module(euclid-rui
         qml/pages/EkmKeysPage.qml
         qml/pages/EmmModulesPage.qml
         qml/pages/EmmModuleDetailsPage.qml
+        qml/pages/EagRoutesPage.qml
+        qml/pages/EagRouteDetailsPage.qml
         qml/pages/EkmKeyDetailsPage.qml
         qml/components/SideNav.qml
         qml/components/NavButton.qml

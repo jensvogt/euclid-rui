@@ -98,6 +98,62 @@ void EqsClient::deleteQueue(const QString &queueErn) {
          });
 }
 
+void EqsClient::redriveDlq(const QString &queueErn, const QString &targetErn) {
+    QJsonObject body;
+    body["ern"] = queueErn;
+    // Left out when empty rather than sent as "": the server reads an absent target as "send each
+    // message back where it came from", which is the ordinary case.
+    if (!targetErn.isEmpty())
+        body["targetErn"] = targetErn;
+
+    m_base->post("eqs", "redrive-dlq", body, true,
+         [this, queueErn](const QJsonObject &response) {
+             QVariantList targets;
+             for (const QJsonArray array = response.value("targets").toArray(); const auto &value: array) {
+                 const QJsonObject target = value.toObject();
+                 targets << QVariantMap{{"queueErn", target.value("queueErn").toString()},
+                                        {"messages", target.value("messages").toInteger()}};
+             }
+             emit dlqRedriven(queueErn, static_cast<int>(response.value("messages").toInteger()),
+                              static_cast<int>(response.value("remaining").toInteger()),
+                              targets, response.value("note").toString());
+             emit queuesReload();
+             // The dead letter queue just emptied and the source queues just filled, so a message
+             // list open on either is now stale.
+             emit messagesReload(queueErn);
+         },
+         [this](const QString &message) {
+             emit dlqRedriveFailed(message);
+         });
+}
+
+void EqsClient::fetchDeadLetterTargets() {
+    QJsonObject body;
+    body["prefix"] = QString();
+    // One query for the relationships rather than one per row: the answer is only the set of ERNs
+    // that somebody points at, and the table's own page is far too small a sample to find them in.
+    body["pageSize"] = 500;
+    body["pageIndex"] = 0;
+    body["sortColumn"] = QStringLiteral("name");
+    body["sortDirection"] = QStringLiteral("asc");
+
+    m_base->post("eqs", "list-queues", body, true,
+         [this](const QJsonObject &response) {
+             QStringList erns;
+             for (const QJsonArray array = response.value("queues").toArray(); const auto &value: array) {
+                 const auto target = value.toObject().value("deadLetterQueueArn").toString();
+                 if (!target.isEmpty() && !erns.contains(target))
+                     erns << target;
+             }
+             emit deadLetterTargetsLoaded(erns);
+         },
+         [this](const QString &message) {
+             // Not reported as a failure of the listing: this only decides whether one menu entry
+             // is offered, and the server refuses a redrive of an ordinary queue anyway.
+             emit deadLetterTargetsLoaded(QStringList());
+         });
+}
+
 void EqsClient::addQueueTag(const QString &queueErn, const QString &key, const QString &value) {
     QJsonObject body;
     body["ern"] = queueErn;

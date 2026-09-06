@@ -208,8 +208,14 @@ Item {
                             label: "Receipt Handle"
                             value: root.detail("receiptHandle", "").length > 0 ? root.detail("receiptHandle", "") : "None"
                         }
-                        DetailField { width: (techCol.width - 24) / 2; label: "MD5 (Body)"; value: root.detail("md5Body", "—"); copyable: true }
-                        DetailField { width: (techCol.width - 24) / 2; label: "MD5 (Attributes)"; value: root.detail("md5Attributes", "—"); copyable: true }
+                        DetailField {
+                            width: (techCol.width - 24) / 2
+                            label: "Priority"
+                            // Where in the queue this message sits: the receive loop weights
+                            // priorities rather than taking them strictly in order, so a HIGH
+                            // message is served sooner but a LOW one is not starved.
+                            value: root.priority.length > 0 ? root.priority : "—"
+                        }
                     }
                 }
             }
