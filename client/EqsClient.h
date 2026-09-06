@@ -15,9 +15,13 @@ public:
     explicit EqsClient(EuclidBaseClient *baseClient, QObject *parent = nullptr);
 
     // Queues
+    // "includeInternal" asks for euclid's own queues as well - the bucket queue behind a listener
+    // and the like. The server honours it for administrators only and silently ignores it for
+    // everyone else, so asking is never an error, it just changes nothing.
     Q_INVOKABLE void fetchQueues(const QString &prefix = QString(), int pageIndex = 0, int pageSize = 10,
                                  const QString &sortColumn = QStringLiteral("available"),
-                                 const QString &sortDirection = QStringLiteral("desc"));
+                                 const QString &sortDirection = QStringLiteral("desc"),
+                                 bool includeInternal = false);
     // The settings default to what "create-queue" itself defaults to, so a caller that only has a
     // name can pass one. A queue created as another queue's dead letter queue is an ordinary queue
     // and usually wants that queue's settings, which is why they are all passable.
@@ -40,7 +44,11 @@ public:
     Q_INVOKABLE void deleteQueueTag(const QString &queueErn, const QString &key);
 
     // Messages
-    Q_INVOKABLE void fetchMessages(const QString &queueErn, int pageIndex = 0, int pageSize = 100);
+    // Paged and sorted by the server, like every other list here: the page the table is showing is
+    // the page that is asked for, rather than a fixed block that the window then slices.
+    Q_INVOKABLE void fetchMessages(const QString &queueErn, int pageIndex = 0, int pageSize = 100,
+                                   const QString &sortColumn = QStringLiteral("created"),
+                                   const QString &sortDirection = QStringLiteral("asc"));
     Q_INVOKABLE void sendMessage(const QString &queueErn, const QString &body, const QString &priority, const QVariantMap &attributes);
     Q_INVOKABLE void deleteSqsMessage(const QString &queueErn, const QString &messageId);
 

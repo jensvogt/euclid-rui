@@ -12,16 +12,27 @@ Item {
 
     property string prefix: ""
     property int pageIndex: 0
-    readonly property int pageSize: 10
+    property int pageSize: 10
     property string sortKey: "created"
     property bool sortAscending: false
 
     property var allMessages: []
+    // What the server says the topic holds, which is not what was fetched - see totalCount on the
+    // table below.
+    property int totalMessages: 0
+    // How much of each topic the merged view takes. It has to bound it somehow: every topic is
+    // fetched in full before anything can be sorted across them.
+    readonly property int mergedFetchLimit: 200
     property var topicLookup: ({})
     property var pendingTopicErns: []
     property bool loading: false
     property string error: ""
     property string lastUpdatedText: "—"
+
+    // One topic is paged by the server: the page on screen is the page that was asked for. The
+    // "all topics" view cannot be - it merges one list per topic, and no single query spans them -
+    // so there the window still fetches a bounded block per topic and slices it itself.
+    readonly property bool singleTopic: root.topicErn.length > 0
 
     readonly property var filteredMessages: prefix.length === 0
         ? allMessages
@@ -39,7 +50,12 @@ Item {
         })
         return arr
     }
-    readonly property var pageRows: sortedMessages.slice(pageIndex * pageSize, (pageIndex + 1) * pageSize)
+    // Already one page's worth when the server did the paging, so it is only sliced in the merged
+    // view. The prefix filter still applies either way, and in the paged view it can only match
+    // what this page holds - "list-messages" takes no prefix, so there is nothing to ask for.
+    readonly property var pageRows: root.singleTopic
+        ? root.filteredMessages
+        : root.sortedMessages.slice(pageIndex * pageSize, (pageIndex + 1) * pageSize)
 
     readonly property var columns: {
         let cols = [
@@ -91,19 +107,25 @@ Item {
             return
         }
         allMessages = []
+        totalMessages = 0
         topicLookup = {}
         pendingTopicErns = []
         error = ""
         loading = true
-        if (root.topicErn.length > 0)
-            ensClient.fetchMessages(root.topicErn, 0, 200)
+        if (root.singleTopic)
+            ensClient.fetchMessages(root.topicErn, root.pageIndex, root.pageSize,
+                                    root.sortKey, root.sortAscending ? "asc" : "desc")
         else
             ensClient.fetchTopics("", 0, 100)
     }
 
     onVisibleChanged: if (visible) refresh()
     onLoggedInChanged: if (loggedIn && visible) refresh()
-    onTopicErnChanged: if (visible) refresh()
+    // Page one of the topic just opened, not whatever page the previous view was on.
+    onTopicErnChanged: {
+        root.pageIndex = 0
+        if (visible) refresh()
+    }
 
     Timer {
         interval: appSettings.autoRefreshSeconds * 1000
@@ -134,7 +156,7 @@ Item {
             root.topicLookup = lookup
             root.pendingTopicErns = erns
             for (let i = 0; i < list.length; i++)
-                ensClient.fetchMessages(list[i].ern, 0, 200)
+                ensClient.fetchMessages(list[i].ern, 0, root.mergedFetchLimit)
         }
         function onTopicsFailed(message) {
             if (!root.loading || root.topicErn.length > 0)
@@ -146,6 +168,8 @@ Item {
             if (!root.loading)
                 return
             root.allMessages = root.allMessages.concat(list)
+            // The topic's own count, summed across topics in the merged view.
+            root.totalMessages += total
             if (root.topicErn.length > 0) {
                 if (ern === root.topicErn) {
                     root.loading = false
@@ -496,13 +520,16 @@ Item {
                 width: parent.width
                 columns: root.columns
                 rows: root.pageRows
-                totalCount: root.filteredMessages.length
+                // What there is to page through: the server's count of the topic when it is doing
+                // the paging, and what was actually merged when this window is.
+                totalCount: root.singleTopic ? root.totalMessages : root.filteredMessages.length
                 pageSize: root.pageSize
                 pageIndex: root.pageIndex
                 loading: root.loading
                 error: root.error
                 lastUpdatedText: root.lastUpdatedText
-                searchPlaceholder: "Filter by message id prefix..."
+                searchPlaceholder: root.singleTopic ? "Filter this page by message id prefix..."
+                                                    : "Filter by message id prefix..."
                 emptyText: "No messages found."
                 rowsClickable: false
                 sortKey: root.sortKey
@@ -513,11 +540,22 @@ Item {
                     root.pageIndex = 0
                 }
                 onRefreshRequested: root.refresh()
-                onPageChanged: (index) => root.pageIndex = index
+                // Each of these re-queries when the server is doing the paging, and only moves the
+                // window when this page is.
+                onPageChanged: (index) => {
+                    root.pageIndex = index
+                    if (root.singleTopic) root.refresh()
+                }
+                onPageSizeRequested: (size) => {
+                    root.pageSize = size
+                    root.pageIndex = 0
+                    if (root.singleTopic) root.refresh()
+                }
                 onSortRequested: (key, ascending) => {
                     root.sortKey = key
                     root.sortAscending = ascending
                     root.pageIndex = 0
+                    if (root.singleTopic) root.refresh()
                 }
 
                 contextMenuActions: [

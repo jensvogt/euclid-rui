@@ -40,7 +40,7 @@ public:
     Q_INVOKABLE void deleteNamespace(const QString &accountId, const QString &name);
 
     // ListUserRequest has no sortDirection field server-side, unlike the other list actions here.
-    Q_INVOKABLE void fetchUsers(const QString &prefix = QString(), int pageIndex = 0, int pageSize = 10, const QString &sortColumn = QStringLiteral("userId"));
+    Q_INVOKABLE void fetchUsers(const QString &prefix = QString(), int pageIndex = 0, int pageSize = 10, const QString &sortColumn = QStringLiteral("userId"), const QString &sortDirection = QStringLiteral("asc"));
     // Wire action is "register", not "create-user" - registering a user IS how one gets created.
     // Admin-only server-side (except the very first user ever registered).
     Q_INVOKABLE void createUser(const QString &userId, const QString &password, const QString &email,

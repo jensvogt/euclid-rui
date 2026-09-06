@@ -32,11 +32,29 @@ Item {
     signal searchChanged(string prefix)
     signal refreshRequested()
     signal pageChanged(int pageIndex)
+    // A page size the user picked. Named "...Requested" like the other asks here, and not
+    // "pageSizeChanged", which QML already generates for the pageSize property below - the owner
+    // of the list decides what to do about it (usually: set pageSize, go back to page one and
+    // re-query) and the table follows once pageSize comes back down.
+    signal pageSizeRequested(int pageSize)
     signal rowClicked(var row)
     signal contextMenuActionTriggered(var action, var row)
     signal sortRequested(string key, bool ascending)
 
+    // Pages are counted from the total the owner supplied, not from the rows in hand: one page's
+    // worth is all that was fetched, and the total is what says how many more there are.
     readonly property int pageCount: totalCount > 0 ? Math.max(1, Math.ceil(totalCount / pageSize)) : 1
+
+    // Tables that are handed everything at once (their query has no paging) set this false: the
+    // page size there is the row count, and offering to change it would do nothing.
+    property bool pageSizeSelectable: true
+    // The current size is always among the choices, even when the owner set one that is not a
+    // round number - otherwise the field would show empty for it.
+    readonly property var pageSizeOptions: {
+        const sizes = [10, 25, 50, 100, 250]
+        return sizes.indexOf(root.pageSize) >= 0
+            ? sizes : sizes.concat([root.pageSize]).sort(function (a, b) { return a - b })
+    }
 
     property var columnWidths: []
 
@@ -327,11 +345,53 @@ Item {
                 anchors.right: parent.right
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: 12
-                visible: root.totalCount > root.pageSize
+                // The size field stays even when everything fits on one page - that is exactly
+                // when someone wants to make the page larger.
+                visible: root.pageSizeSelectable || root.totalCount > root.pageSize
+
+                Row {
+                    spacing: 8
+                    visible: root.pageSizeSelectable
+                    anchors.verticalCenter: parent.verticalCenter
+
+                    Text {
+                        text: "Rows"
+                        color: "#6b7280"
+                        font.pixelSize: 11
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+
+                    ComboBox {
+                        id: pageSizeField
+                        // Editable so a size that is not on the list can simply be typed; the
+                        // validator keeps that from becoming a query for a million rows.
+                        editable: true
+                        width: 96
+                        height: 30
+                        anchors.verticalCenter: parent.verticalCenter
+                        model: root.pageSizeOptions
+                        currentIndex: root.pageSizeOptions.indexOf(root.pageSize)
+                        validator: IntValidator { bottom: 1; top: 1000 }
+                        font.pixelSize: 12
+                        Material.theme: Material.Dark
+                        Material.accent: "#4f8cff"
+
+                        onActivated: (index) => root.pageSizeRequested(Number(root.pageSizeOptions[index]))
+                        // Enter in the text part. Clamped rather than refused, so a typed 5000
+                        // becomes the largest page this offers instead of nothing happening.
+                        onAccepted: {
+                            const wanted = parseInt(pageSizeField.editText, 10)
+                            if (isNaN(wanted)) return
+                            const clamped = Math.max(1, Math.min(1000, wanted))
+                            if (clamped !== root.pageSize) root.pageSizeRequested(clamped)
+                        }
+                    }
+                }
 
                 Button {
                     text: "« First"
                     flat: true
+                    visible: root.totalCount > root.pageSize
                     enabled: root.pageIndex > 0
                     Material.theme: Material.Dark
                     onClicked: root.pageChanged(0)
@@ -339,12 +399,14 @@ Item {
                 Button {
                     text: "‹ Prev"
                     flat: true
+                    visible: root.totalCount > root.pageSize
                     enabled: root.pageIndex > 0
                     Material.theme: Material.Dark
                     onClicked: root.pageChanged(root.pageIndex - 1)
                 }
                 Text {
                     text: "Page " + (root.pageIndex + 1) + " of " + root.pageCount
+                    visible: root.totalCount > root.pageSize
                     color: "#9aa1ac"
                     font.pixelSize: 12
                     anchors.verticalCenter: parent.verticalCenter
@@ -352,6 +414,7 @@ Item {
                 Button {
                     text: "Next ›"
                     flat: true
+                    visible: root.totalCount > root.pageSize
                     enabled: root.pageIndex < root.pageCount - 1
                     Material.theme: Material.Dark
                     onClicked: root.pageChanged(root.pageIndex + 1)
@@ -359,6 +422,7 @@ Item {
                 Button {
                     text: "Last »"
                     flat: true
+                    visible: root.totalCount > root.pageSize
                     enabled: root.pageIndex < root.pageCount - 1
                     Material.theme: Material.Dark
                     onClicked: root.pageChanged(root.pageCount - 1)

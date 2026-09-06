@@ -779,6 +779,8 @@ Item {
             DataTable {
                 width: parent.width
                 columns: root.columns
+                // One page: list-applications returns everything at once, so there is no size to pick.
+                pageSizeSelectable: false
                 rows: root.applications
                 totalCount: root.totalCount
                 // One page: "list-applications" returns every application at once.

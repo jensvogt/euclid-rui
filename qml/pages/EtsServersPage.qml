@@ -332,6 +332,8 @@ Item {
             DataTable {
                 width: parent.width
                 columns: root.columns
+                // One page: list-servers returns everything at once, so there is no size to pick.
+                pageSizeSelectable: false
                 rows: root.servers
                 totalCount: root.totalCount
                 // One page: "list-servers" returns every server at once.
