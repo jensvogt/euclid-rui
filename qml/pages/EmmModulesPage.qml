@@ -500,6 +500,8 @@ Item {
                 width: parent.width
                 visible: root.isAdmin
                 columns: root.columns
+                // One page: list-modules returns everything at once, so there is no size to pick.
+                pageSizeSelectable: false
                 rows: root.modules
                 totalCount: root.totalCount
                 // One page: "list-modules" returns every module at once.

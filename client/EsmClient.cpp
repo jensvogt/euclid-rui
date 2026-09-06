@@ -16,13 +16,14 @@ constexpr qint64 kMultipartThreshold = 5 * 1024 * 1024;
 
 EsmClient::EsmClient(EuclidBaseClient *baseClient, QObject *parent) : QObject(parent), m_base(baseClient) {}
 
-void EsmClient::fetchBuckets(const QString &prefix, const int pageIndex, const int pageSize, const QString &sortColumn, const QString &sortDirection) {
+void EsmClient::fetchBuckets(const QString &prefix, const int pageIndex, const int pageSize, const QString &sortColumn, const QString &sortDirection, const bool includeInternal) {
     QJsonObject body;
     body["prefix"] = prefix;
     body["pageSize"] = pageSize;
     body["pageIndex"] = pageIndex;
     body["sortColumn"] = sortColumn;
     body["sortDirection"] = sortDirection;
+    body["includeInternal"] = includeInternal;
 
     m_base->post("esm", "list-buckets", body, true,
          [this](const QJsonObject &response) {
@@ -41,6 +42,9 @@ void EsmClient::fetchBuckets(const QString &prefix, const int pageIndex, const i
                  entry["objects"] = bucket.value("objects").toInteger();
                  entry["tags"] = bucket.value("tags").toObject().toVariantMap();
                  entry["encrypted"] = bucket.value("encrypted").toBool();
+                 // Only ever true in a listing an administrator asked to include them in, so a row
+                 // can be marked as euclid's own rather than sitting unexplained among the user's.
+                 entry["internal"] = bucket.value("internal").toBool();
                  entry["encryptionKeyErn"] = bucket.value("encryptionKeyErn").toString();
                  entry["created"] = bucket.value("created").toString();
                  entry["modified"] = bucket.value("modified").toString();

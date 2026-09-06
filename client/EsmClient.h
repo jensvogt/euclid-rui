@@ -15,9 +15,13 @@ class EsmClient : public QObject {
 public:
     explicit EsmClient(EuclidBaseClient *baseClient, QObject *parent = nullptr);
 
+    // "includeInternal" asks for euclid's own buckets as well - the one applications are deployed
+    // from and the like. The server honours it for administrators only and silently ignores it for
+    // everyone else, so asking is never an error, it just changes nothing.
     Q_INVOKABLE void fetchBuckets(const QString &prefix = QString(), int pageIndex = 0, int pageSize = 10,
                                   const QString &sortColumn = QStringLiteral("name"),
-                                  const QString &sortDirection = QStringLiteral("asc"));
+                                  const QString &sortDirection = QStringLiteral("asc"),
+                                  bool includeInternal = false);
     Q_INVOKABLE void createBucket(const QString &name);
     // Deletes every object in the bucket. `async` hands the work to the server's background
     // purge, which answers "accepted" and keeps deleting after the reply - the only workable way

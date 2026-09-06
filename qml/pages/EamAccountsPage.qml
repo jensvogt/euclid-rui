@@ -10,7 +10,7 @@ Item {
 
     property string prefix: ""
     property int pageIndex: 0
-    readonly property int pageSize: 10
+    property int pageSize: 10
     property string sortColumn: "name"
     property bool sortAscending: true
 
@@ -285,6 +285,13 @@ Item {
                 onRefreshRequested: root.refresh()
                 onPageChanged: (index) => {
                     root.pageIndex = index
+                    root.refresh()
+                }
+                // Back to the first page: page four of fifty-row pages is not page four of
+                // ten-row pages, and the query has to be made again at the new size anyway.
+                onPageSizeRequested: (size) => {
+                    root.pageSize = size
+                    root.pageIndex = 0
                     root.refresh()
                 }
                 onSortRequested: (key, ascending) => {

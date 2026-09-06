@@ -192,12 +192,13 @@ void EamClient::deleteNamespace(const QString &accountId, const QString &name) {
          });
 }
 
-void EamClient::fetchUsers(const QString &prefix, const int pageIndex, const int pageSize, const QString &sortColumn) {
+void EamClient::fetchUsers(const QString &prefix, const int pageIndex, const int pageSize, const QString &sortColumn, const QString &sortDirection) {
     QJsonObject body;
     body["prefix"] = prefix;
     body["pageSize"] = pageSize;
     body["pageIndex"] = pageIndex;
     body["sortColumn"] = sortColumn;
+    body["sortDirection"] = sortDirection;
 
     m_base->post("eam", "list-users", body, true,
          [this](const QJsonObject &response) {

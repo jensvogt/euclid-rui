@@ -12,17 +12,26 @@ Item {
 
     property string prefix: ""
     property int pageIndex: 0
-    readonly property int pageSize: 10
+    property int pageSize: 10
     property string sortKey: "created"
     property bool sortAscending: true
 
     property var allMessages: []
     property int totalMessages: 0
+    // How much of each queue the merged view takes. It has to bound it somehow - every queue is
+    // fetched in full before anything can be sorted across them - and this is what it has always
+    // taken.
+    readonly property int mergedFetchLimit: 200
     property var queueLookup: ({})
     property var pendingQueueErns: []
     property bool loading: false
     property string error: ""
     property string lastUpdatedText: "—"
+
+    // One queue is paged by the server: the page on screen is the page that was asked for. The
+    // "all queues" view cannot be - it merges one list per queue, and no single query spans them -
+    // so there the window still fetches a bounded block per queue and slices it itself.
+    readonly property bool singleQueue: root.queueErn.length > 0
 
     readonly property var filteredMessages: prefix.length === 0
         ? allMessages
@@ -40,7 +49,19 @@ Item {
         })
         return arr
     }
-    readonly property var pageRows: sortedMessages.slice(pageIndex * pageSize, (pageIndex + 1) * pageSize)
+    // Already one page's worth when the server did the paging, so it is only sliced in the merged
+    // view. The prefix filter still applies either way, and in the paged view it can only match
+    // what this page holds - "list-messages" takes no prefix, so there is nothing to ask for.
+    readonly property var pageRows: root.singleQueue
+        ? root.filteredMessages
+        : root.sortedMessages.slice(pageIndex * pageSize, (pageIndex + 1) * pageSize)
+
+    // Only in the merged view: each queue is asked for a bounded block there, so a busy queue holds
+    // far more than the table can page through, and the header count and the table's own footer
+    // would otherwise look like two answers to the same question. The paged view needs no such
+    // note - it shows one page of a total it states.
+    readonly property string loadedNote: !root.singleQueue && root.totalMessages > root.allMessages.length
+        ? " Loaded " + root.allMessages.length + " of them." : ""
 
     readonly property var columns: {
         let cols = [
@@ -102,19 +123,27 @@ Item {
             return
         }
         allMessages = []
+        // Recounted from the answers below, so a previous visit's number is not still on screen
+        // while this one loads.
+        totalMessages = 0
         queueLookup = {}
         pendingQueueErns = []
         error = ""
         loading = true
-        if (root.queueErn.length > 0)
-            eqsClient.fetchMessages(root.queueErn, 0, 200)
+        if (root.singleQueue)
+            eqsClient.fetchMessages(root.queueErn, root.pageIndex, root.pageSize,
+                                    root.sortKey, root.sortAscending ? "asc" : "desc")
         else
             eqsClient.fetchQueues("", 0, 100)
     }
 
     onVisibleChanged: if (visible) refresh()
     onLoggedInChanged: if (loggedIn && visible) refresh()
-    onQueueErnChanged: if (visible) refresh()
+    // Page one of the queue just opened, not whatever page the previous view was on.
+    onQueueErnChanged: {
+        root.pageIndex = 0
+        if (visible) refresh()
+    }
 
     Timer {
         interval: appSettings.autoRefreshSeconds * 1000
@@ -145,8 +174,7 @@ Item {
             root.queueLookup = lookup
             root.pendingQueueErns = erns
             for (let i = 0; i < list.length; i++)
-                eqsClient.fetchMessages(list[i].ern, 0, 200)
-            root.totalMessages = total;
+                eqsClient.fetchMessages(list[i].ern, 0, root.mergedFetchLimit)
         }
         function onQueuesFailed(message) {
             if (!root.loading || root.queueErn.length > 0)
@@ -158,6 +186,10 @@ Item {
             if (!root.loading)
                 return
             root.allMessages = root.allMessages.concat(list)
+            // What the queue holds, which is not what was loaded: each request asks for the first
+            // 200, while "total" is the server's own count of the whole queue. The header says how
+            // many there are; the table's own footer says how many of them are in hand.
+            root.totalMessages += total
             if (root.queueErn.length > 0) {
                 if (ern === root.queueErn) {
                     root.loading = false
@@ -504,9 +536,10 @@ Item {
                 SectionHeader {
                     id: messagesSectionHeader
                     title: root.queueErn.length > 0 ? "Messages · " + root.queueName + " (" + root.totalMessages + ")" : "Messages (" + root.totalMessages + ")"
-                    subtitle: root.queueErn.length > 0
+                    subtitle: (root.queueErn.length > 0
                         ? "Messages currently in the \"" + root.queueName + "\" queue."
-                        : "Messages across all queues in the " + root.namespaceName + " namespace."
+                        : "Messages across all queues in the " + root.namespaceName + " namespace.")
+                        + root.loadedNote
                 }
 
                 Row {
@@ -538,13 +571,16 @@ Item {
                 width: parent.width
                 columns: root.columns
                 rows: root.pageRows
-                totalCount: root.filteredMessages.length
+                // What there is to page through: the server's count of the queue when it is doing
+                // the paging, and what was actually merged when this window is.
+                totalCount: root.singleQueue ? root.totalMessages : root.filteredMessages.length
                 pageSize: root.pageSize
                 pageIndex: root.pageIndex
                 loading: root.loading
                 error: root.error
                 lastUpdatedText: root.lastUpdatedText
-                searchPlaceholder: "Filter by message id prefix..."
+                searchPlaceholder: root.singleQueue ? "Filter this page by message id prefix..."
+                                                    : "Filter by message id prefix..."
                 emptyText: "No messages found."
                 rowsClickable: false
                 sortKey: root.sortKey
@@ -555,11 +591,22 @@ Item {
                     root.pageIndex = 0
                 }
                 onRefreshRequested: root.refresh()
-                onPageChanged: (index) => root.pageIndex = index
+                // Each of these re-queries when the server is doing the paging, and only moves the
+                // window when this page is.
+                onPageChanged: (index) => {
+                    root.pageIndex = index
+                    if (root.singleQueue) root.refresh()
+                }
+                onPageSizeRequested: (size) => {
+                    root.pageSize = size
+                    root.pageIndex = 0
+                    if (root.singleQueue) root.refresh()
+                }
                 onSortRequested: (key, ascending) => {
                     root.sortKey = key
                     root.sortAscending = ascending
                     root.pageIndex = 0
+                    if (root.singleQueue) root.refresh()
                 }
 
                 contextMenuActions: [

@@ -10,9 +10,16 @@ Item {
 
     property string prefix: ""
     property int pageIndex: 0
-    readonly property int pageSize: 10
+    property int pageSize: 10
     property string sortColumn: "objects"
     property bool sortAscending: false
+
+    // euclid's own buckets - the one applications are deployed from and the like - are left out of
+    // list-buckets for everyone. An administrator can ask for them, because for them the
+    // installation itself is the subject; the switch is not even shown to anyone else, and the
+    // server would ignore the request anyway.
+    readonly property bool isAdmin: euclidClient.isAdmin
+    property bool showInternal: false
 
     property var buckets: []
     property int totalCount: 0
@@ -25,7 +32,16 @@ Item {
 
     readonly property var columns: {
         let cols = [
-            { title: "Name", key: "name", fill: true },
+            // Internal buckets are only ever in this list when an administrator asked for them,
+            // and then they are marked: without it euclid's own plumbing sits among the user's
+            // buckets looking like something somebody created.
+            {
+                title: "Name",
+                key: "name",
+                fill: true,
+                formatter: function (v, row) { return row && row.internal ? v + "  (internal)" : String(v) },
+                colorFor: function (v, row) { return row && row.internal ? "#9aa1ac" : "#c4c9d1" }
+            },
             { title: "Objects", key: "objects" },
             { title: "Size", key: "size", formatter: function (v) { return SizeFormat.format(v) } },
             // Says what happens to the next object written, not that everything in the bucket is
@@ -72,7 +88,8 @@ Item {
         }
         loading = true
         error = ""
-        esmClient.fetchBuckets(root.prefix, root.pageIndex, root.pageSize, root.sortColumn, root.sortAscending ? "asc" : "desc")
+        esmClient.fetchBuckets(root.prefix, root.pageIndex, root.pageSize, root.sortColumn,
+            root.sortAscending ? "asc" : "desc", root.isAdmin && root.showInternal)
     }
 
     onVisibleChanged: if (visible) refresh()
@@ -521,14 +538,44 @@ Item {
                     subtitle: "All buckets in the " + root.namespaceName + " namespace."
                 }
 
-                Button {
-                    text: "+ Add Bucket"
-                    highlighted: true
+                Row {
                     anchors.right: parent.right
                     anchors.verticalCenter: sectionHeader.verticalCenter
-                    Material.theme: Material.Dark
-                    Material.accent: "#4f8cff"
-                    onClicked: createBucketDialog.open()
+                    spacing: 16
+
+                    Row {
+                        spacing: 8
+                        visible: root.isAdmin
+                        anchors.verticalCenter: parent.verticalCenter
+
+                        Text {
+                            text: "Internal buckets"
+                            color: "#9aa1ac"
+                            font.pixelSize: 12
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+
+                        ToggleSwitch {
+                            anchors.verticalCenter: parent.verticalCenter
+                            checked: root.showInternal
+                            // Back to the first page: the listing is a different one now, and page
+                            // three of the old one is not page three of the new one.
+                            onToggled: (checked) => {
+                                root.showInternal = checked
+                                root.pageIndex = 0
+                                root.refresh()
+                            }
+                        }
+                    }
+
+                    Button {
+                        text: "+ Add Bucket"
+                        highlighted: true
+                        anchors.verticalCenter: parent.verticalCenter
+                        Material.theme: Material.Dark
+                        Material.accent: "#4f8cff"
+                        onClicked: createBucketDialog.open()
+                    }
                 }
             }
 
@@ -557,6 +604,13 @@ Item {
                 onRefreshRequested: root.refresh()
                 onPageChanged: (index) => {
                     root.pageIndex = index
+                    root.refresh()
+                }
+                // Back to the first page: page four of fifty-row pages is not page four of
+                // ten-row pages, and the query has to be made again at the new size anyway.
+                onPageSizeRequested: (size) => {
+                    root.pageSize = size
+                    root.pageIndex = 0
                     root.refresh()
                 }
                 onRowClicked: (row) => root.openBucket(row.ern, row.name)

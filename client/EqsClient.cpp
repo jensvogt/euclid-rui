@@ -6,13 +6,14 @@
 
 EqsClient::EqsClient(EuclidBaseClient *baseClient, QObject *parent) : QObject(parent), m_base(baseClient) {}
 
-void EqsClient::fetchQueues(const QString &prefix, const int pageIndex, const int pageSize, const QString &sortColumn, const QString &sortDirection) {
+void EqsClient::fetchQueues(const QString &prefix, const int pageIndex, const int pageSize, const QString &sortColumn, const QString &sortDirection, const bool includeInternal) {
     QJsonObject body;
     body["prefix"] = prefix;
     body["pageSize"] = pageSize;
     body["pageIndex"] = pageIndex;
     body["sortColumn"] = sortColumn;
     body["sortDirection"] = sortDirection;
+    body["includeInternal"] = includeInternal;
 
     m_base->post("eqs", "list-queues", body, true,
          [this](const QJsonObject &response) {
@@ -35,6 +36,9 @@ void EqsClient::fetchQueues(const QString &prefix, const int pageIndex, const in
                  entry["maxMessageLength"] = queue.value("maxMessageLength").toInt();
                  entry["maxReceiveCount"] = queue.value("maxReceiveCount").toInt();
                  entry["deadLetterQueueArn"] = queue.value("deadLetterQueueArn").toString();
+                 // Only ever true in a listing an administrator asked to include them in, so a row
+                 // can be marked as euclid's own rather than sitting unexplained among the user's.
+                 entry["internal"] = queue.value("internal").toBool();
                  entry["tags"] = queue.value("tags").toObject().toVariantMap();
                  entry["created"] = queue.value("created").toString();
                  entry["modified"] = queue.value("modified").toString();
@@ -125,13 +129,13 @@ void EqsClient::deleteQueueTag(const QString &queueErn, const QString &key) {
          });
 }
 
-void EqsClient::fetchMessages(const QString &queueErn, const int pageIndex, const int pageSize) {
+void EqsClient::fetchMessages(const QString &queueErn, const int pageIndex, const int pageSize, const QString &sortColumn, const QString &sortDirection) {
     QJsonObject body;
     body["queueErn"] = queueErn;
     body["pageSize"] = pageSize;
     body["pageIndex"] = pageIndex;
-    body["sortColumn"] = "created";
-    body["sortDirection"] = "asc";
+    body["sortColumn"] = sortColumn;
+    body["sortDirection"] = sortDirection;
 
     m_base->post("eqs", "list-messages", body, true,
          [this, queueErn](const QJsonObject &response) {
