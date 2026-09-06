@@ -475,10 +475,12 @@ Item {
 
         // Everything after the artifact exists in the bucket.
         function submit() {
-            const names = (text) => text.split(",").map(n => n.trim()).filter(n => n.length > 0)
+            // No buckets or queues named here: an application is deployed unrestricted within its
+            // own account, and what it may reach is to become a role on its principal rather than
+            // a list carried by the definition. createApplication() still takes the two lists, so
+            // nothing server-side changed and the CLI can still set them.
             eapClient.createApplication(applicationIdField.text.trim(), runtimeCombo.currentText,
-                bucketCombo.currentText, artifactField.text.trim(), userField.text.trim(),
-                names(bucketsField.text), names(queuesField.text))
+                bucketCombo.currentText, artifactField.text.trim(), userField.text.trim())
         }
 
         background: Rectangle {
@@ -501,8 +503,6 @@ Item {
             createApplicationDialog.uploading = false
             createApplicationDialog.bytesSent = 0
             createApplicationDialog.bytesTotal = 0
-            bucketsField.text = ""
-            queuesField.text = ""
             // Empty on purpose: the default is a dedicated technical principal, not the operator.
             userField.text = ""
             createApplicationDialog.errorText = ""
@@ -594,7 +594,7 @@ Item {
                         placeholderText: "object key, e.g. euclid-inbox-app.jar"
                         Material.accent: "#4f8cff"
                         selectByMouse: true
-                        Keys.onReturnPressed: bucketsField.forceActiveFocus()
+                        Keys.onReturnPressed: userField.forceActiveFocus()
                     }
                     Button {
                         id: uploadButton
@@ -624,36 +624,6 @@ Item {
                           + SizeFormat.format(createApplicationDialog.bytesTotal) + "…"
                     color: "#9aa1ac"
                     font.pixelSize: 11
-                }
-            }
-
-            Column {
-                width: parent.width
-                spacing: 6
-                Text { text: "Allowed buckets and queues"; color: "#9aa1ac"; font.pixelSize: 12 }
-                TextField {
-                    id: bucketsField
-                    width: parent.width
-                    placeholderText: "bucket names, comma separated"
-                    Material.accent: "#4f8cff"
-                    selectByMouse: true
-                    Keys.onReturnPressed: queuesField.forceActiveFocus()
-                }
-                TextField {
-                    id: queuesField
-                    width: parent.width
-                    placeholderText: "queue names, comma separated"
-                    Material.accent: "#4f8cff"
-                    selectByMouse: true
-                    Keys.onReturnPressed: userField.forceActiveFocus()
-                }
-                Text {
-                    text: "Resolved to ERNs and enforced by ESM and EQS. Leave both empty to let it reach "
-                          + "everything in its own account."
-                    color: "#6b7280"
-                    font.pixelSize: 11
-                    wrapMode: Text.WordWrap
-                    width: parent.width
                 }
             }
 

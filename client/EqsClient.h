@@ -37,6 +37,20 @@ public:
                                  int maxMessageLength = 1048576, int delay = 0);
     Q_INVOKABLE void purgeQueue(const QString &queueErn);
     Q_INVOKABLE void deleteQueue(const QString &queueErn);
+
+    // Moves everything in a dead letter queue back to the queue it came from. Nothing on a queue
+    // records that it *is* a dead letter queue - the relationship is only ever written by the
+    // queues naming it - so the server answers "not a dead letter queue" for an ordinary one.
+    //
+    // `targetErn` names one of the queues that feed it, for the case where several do and the
+    // messages that have no recorded origin have to be dealt with deliberately. Empty means: one
+    // source, everything goes there; or several, and each message goes back where it came from.
+    Q_INVOKABLE void redriveDlq(const QString &queueErn, const QString &targetErn = QString());
+
+    // The ERNs every queue names as its dead letter queue, which is the only way to know that a
+    // queue is one. Asked for separately from the table's own page: a dead letter queue and the
+    // queue feeding it are rarely on the same page of ten.
+    Q_INVOKABLE void fetchDeadLetterTargets();
     // Upserts the tag unconditionally (unlike set-queue-tag, this doesn't require the key to
     // already exist), matching an "Add" button's semantics.
     Q_INVOKABLE void addQueueTag(const QString &queueErn, const QString &key, const QString &value);
@@ -55,6 +69,13 @@ public:
 signals:
     // Queues
     void queuesLoaded(const QVariantList &queues, int total);
+    // The ERNs that are somebody's dead letter queue. Its own signal rather than queuesLoaded, so
+    // the listing behind the table is not replaced by the one this asks for.
+    void deadLetterTargetsLoaded(const QStringList &erns);
+    // What the redrive moved: `targets` is [{queueErn, messages}], and `note` is set when messages
+    // stayed behind because no source queue is recorded for them.
+    void dlqRedriven(const QString &queueErn, int messages, int remaining, const QVariantList &targets, const QString &note);
+    void dlqRedriveFailed(const QString &message);
     void queuesFailed(const QString &message);
     void queuesReload();
     void queueCreated(const QString &name);

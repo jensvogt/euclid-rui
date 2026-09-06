@@ -160,6 +160,15 @@ Rectangle {
                         onClicked: root.navigate("modules-ets")
                     }
                     SubNavButton {
+                        // The gateway in front of the EAP application pools. Administrators only,
+                        // and the server agrees: what it publishes is how this installation is
+                        // reached from outside.
+                        label: "EAG (Gateway)"
+                        visible: euclidClient.isAdmin
+                        selected: root.currentRoute.indexOf("modules-eag") === 0
+                        onClicked: root.navigate("modules-eag")
+                    }
+                    SubNavButton {
                         // The registry the other entries above are rows of. Administrators only -
                         // how the installation is put together is an operator's business.
                         label: "EMM (Modules)"

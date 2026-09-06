@@ -531,7 +531,10 @@ Item {
                 searchPlaceholder: root.singleTopic ? "Filter this page by message id prefix..."
                                                     : "Filter by message id prefix..."
                 emptyText: "No messages found."
-                rowsClickable: false
+                // The row drills into the message, like every other table here; the context menu
+                // keeps the same entry for anyone who goes looking for it there.
+                rowsClickable: true
+                onRowClicked: (row) => root.openMessageDetails(row.ern, row.messageId, root.topicNameFor(row), row)
                 sortKey: root.sortKey
                 sortAscending: root.sortAscending
 

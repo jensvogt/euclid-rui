@@ -22,6 +22,13 @@ Item {
     property bool showInternal: false
 
     property var queues: []
+    // The ERNs some queue names as its dead letter queue. Nothing on a queue says that it is one -
+    // the relationship is only ever written by the queues pointing at it - so it is read from the
+    // other side, and asked for across every queue rather than only the page on screen.
+    property var deadLetterErns: []
+    // What the last row action did, kept next to the table: a redrive moves messages between two
+    // queues, and neither the row it was started from nor the one they went to says so by itself.
+    property string actionNote: ""
     property int totalCount: 0
     property bool loading: false
     property string error: ""
@@ -52,6 +59,21 @@ Item {
         return cols
     }
 
+    // Whether something feeds this queue, which is the only sense in which a queue "is" a dead
+    // letter queue - nothing on the queue itself records it.
+    function isDeadLetterQueue(row) {
+        return !!row && root.deadLetterErns.indexOf(row.ern) >= 0
+    }
+
+    // The queue's name if it is on this page, and the tail of the ERN otherwise - which is the
+    // name anyway, since that is what an ERN ends with.
+    function queueNameForErn(ern) {
+        const row = root.queues.find(q => q.ern === ern)
+        if (row) return row.name
+        const parts = String(ern).split(":")
+        return parts.length > 0 ? parts[parts.length - 1] : ern
+    }
+
     signal back()
     signal openQueue(string queueErn, string queueName)
     signal openQueueDetails(string queueErn, string queueName, var details)
@@ -66,6 +88,8 @@ Item {
         eqsClient.fetchQueues(root.prefix, root.pageIndex, root.pageSize,
             root.sortColumn, root.sortAscending ? "asc" : "desc",
             root.isAdmin && root.showInternal)
+        // Which of them are dead letter queues, for the redrive entry in the row menu.
+        eqsClient.fetchDeadLetterTargets()
     }
 
     onVisibleChanged: if (visible) refresh()
@@ -92,6 +116,24 @@ Item {
         }
         function onQueuesFailed(message) {
             root.loading = false
+            root.error = message
+        }
+        function onDeadLetterTargetsLoaded(erns) {
+            root.deadLetterErns = erns
+        }
+        function onDlqRedriven(queueErn, messages, remaining, targets, note) {
+            if (messages === 0) {
+                root.actionNote = "Nothing to redrive: the dead letter queue held no message with a source queue to go back to."
+                    + (remaining > 0 ? " " + remaining + " message(s) remain." : "")
+                return
+            }
+            // Named per target, since a dead letter queue shared by several queues sends each
+            // message back to its own - saying only a total would hide that.
+            const where = targets.map(t => t.messages + " → " + root.queueNameForErn(t.queueErn)).join(", ")
+            root.actionNote = "Redrove " + messages + " message(s): " + where
+                             + (note && note.length > 0 ? " " + note : "")
+        }
+        function onDlqRedriveFailed(message) {
             root.error = message
         }
 
@@ -396,12 +438,118 @@ Item {
                         }
                     },
                     {
+                        // Only for a queue something else feeds: the server refuses a redrive of
+                        // an ordinary queue, and offering it everywhere would make that refusal
+                        // the usual outcome of clicking it.
+                        text: "Redrive…",
+                        enabled: function(row) { return root.isDeadLetterQueue(row) },
+                        action: function(row) { redriveDialog.openFor(row) }
+                    },
+                    {
                         text: "Delete",
                         action: function(row) {
                             eqsClient.deleteQueue(row.ern)
                         }
                     }
                 ]
+            }
+
+            Text {
+                width: parent.width
+                wrapMode: Text.WordWrap
+                color: "#4cd97b"
+                font.pixelSize: 12
+                visible: root.actionNote.length > 0
+                text: root.actionNote
+            }
+        }
+    }
+
+    Dialog {
+        id: redriveDialog
+        modal: true
+        anchors.centerIn: parent
+        width: 460
+        padding: 28
+        standardButtons: Dialog.NoButton
+
+        property var queue: null
+
+        function openFor(row) {
+            redriveDialog.queue = row
+            redriveDialog.open()
+        }
+
+        background: Rectangle {
+            radius: 16
+            color: "#1b1e25"
+            border.color: "#2c313c"
+            border.width: 1
+        }
+
+        contentItem: Column {
+            width: redriveDialog.availableWidth
+            spacing: 16
+
+            Text { text: "Redrive Dead Letter Queue"; color: "white"; font.pixelSize: 18; font.bold: true }
+
+            Text {
+                width: parent.width
+                wrapMode: Text.WordWrap
+                text: redriveDialog.queue
+                      ? "Every message in \"" + redriveDialog.queue.name + "\" goes back to the queue it came from, "
+                        + "with its receive count reset so it gets a full set of attempts again."
+                      : ""
+                color: "#c4c9d1"
+                font.pixelSize: 12
+            }
+
+            Text {
+                width: parent.width
+                wrapMode: Text.WordWrap
+                text: "A message whose source queue was never recorded stays where it is rather than being "
+                      + "guessed at. Whatever put them here will do so again if it still fails."
+                color: "#9aa1ac"
+                font.pixelSize: 11
+            }
+
+            Text {
+                width: parent.width
+                wrapMode: Text.WordWrap
+                visible: !!redriveDialog.queue && Number(redriveDialog.queue.available) > 0
+                text: "⚠ " + (redriveDialog.queue ? redriveDialog.queue.available : 0)
+                      + " message(s) will be delivered again as soon as they arrive."
+                color: "#e0a458"
+                font.pixelSize: 11
+            }
+
+            Item {
+                width: parent.width
+                height: 40
+
+                Row {
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: 8
+
+                    Button {
+                        text: "Cancel"
+                        flat: true
+                        Material.theme: Material.Dark
+                        onClicked: redriveDialog.close()
+                    }
+                    Button {
+                        text: "Redrive"
+                        highlighted: true
+                        Material.theme: Material.Dark
+                        Material.accent: "#4f8cff"
+                        onClicked: {
+                            root.actionNote = ""
+                            eqsClient.redriveDlq(redriveDialog.queue.ern)
+                            redriveDialog.close()
+                        }
+                    }
+                }
             }
         }
     }

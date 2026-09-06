@@ -131,6 +131,15 @@ ApplicationWindow {
     property string selectedTransferServerId: ""
     property var selectedTransferServerDetails: ({})
 
+    // EAG. The gateway's routing table: how many paths are published, and how many of them are
+    // actually being served - a route can be taken out of service without being deleted.
+    property int eagRouteCount: -1
+    property int eagActiveRouteCount: -1
+    property double eagServiceCount: -1
+    property double eagServiceTime: -1
+    property string selectedRouteId: ""
+    property var selectedRouteDetails: ({})
+
     // EMM
     property string selectedModuleName: ""
     property var selectedModuleDetails: ({})
@@ -155,6 +164,9 @@ ApplicationWindow {
     readonly property var moduleRoutes: ({
         "eam": "modules-eam", "eqs": "modules-eqs", "esm": "modules-esm",
         "ekm": "modules-ekm", "ens": "modules-ens", "ets": "modules-ets", "eap": "modules-eap",
+        // Like EMM below, administrators only - but listed all the same, so typing it says so
+        // rather than pretending the module does not exist.
+        "eag": "modules-eag",
         // Listed like the rest: the page tells a non-administrator who reaches it this way that it
         // is not for them, rather than the search box pretending the module does not exist.
         "emm": "modules-emm"
@@ -188,6 +200,17 @@ ApplicationWindow {
         emoClient.fetchAggregatedSeries("eqs-messages-received", 288 * 8, "RAW")
         emoClient.fetchAggregatedSeries("eqs-bytes-sent", 288 * 8, "RAW")
         emoClient.fetchAggregatedSeries("eqs-bytes-received", 288 * 8, "RAW")
+    }
+
+    function refreshEagSummary() {
+        if (!window.loggedIn)
+            return
+        // "list-routes" is administrator-only, so a non-admin gets the module page with dashes
+        // rather than an error they can do nothing about.
+        if (euclidClient.isAdmin)
+            eagClient.fetchRoutes("")
+        emoClient.fetchAverage("eag-service-count")
+        emoClient.fetchAverage("eag-service-time")
     }
 
     function refreshEsmSummary() {
@@ -309,6 +332,20 @@ ApplicationWindow {
     }
 
     Connections {
+        target: eagClient
+        function onRoutesLoaded(list, total) {
+            window.eagRouteCount = total
+            // Counted on `active`: a route that exists but is out of service publishes nothing,
+            // and the two numbers together are the whole state of the gateway's table.
+            window.eagActiveRouteCount = list.filter(r => r.active).length
+        }
+        function onRoutesFailed(message) {
+            window.eagRouteCount = -1
+            window.eagActiveRouteCount = -1
+        }
+    }
+
+    Connections {
         target: etsClient
         function onServersLoaded(list, total) {
             window.etsServerCount = total
@@ -397,6 +434,7 @@ ApplicationWindow {
         if (currentRoute === "modules-ens") refreshEnsSummary()
         if (currentRoute === "modules-ekm") refreshEkmSummary()
         if (currentRoute === "modules-ets") refreshEtsSummary()
+        if (currentRoute === "modules-eag") refreshEagSummary()
         if (currentRoute === "modules-eap") refreshEapSummary()
     }
     onLoggedInChanged: {
@@ -406,6 +444,7 @@ ApplicationWindow {
         if (loggedIn && currentRoute === "modules-ens") refreshEnsSummary()
         if (loggedIn && currentRoute === "modules-ekm") refreshEkmSummary()
         if (loggedIn && currentRoute === "modules-ets") refreshEtsSummary()
+        if (loggedIn && currentRoute === "modules-eag") refreshEagSummary()
         if (loggedIn && currentRoute === "modules-eap") refreshEapSummary()
     }
 
@@ -428,6 +467,13 @@ ApplicationWindow {
         running: appSettings.autoRefreshSeconds > 0 && window.currentRoute === "modules-esm" && window.loggedIn
         repeat: true
         onTriggered: window.refreshEsmSummary()
+    }
+
+    Timer {
+        interval: appSettings.autoRefreshSeconds * 1000
+        running: appSettings.autoRefreshSeconds > 0 && window.currentRoute === "modules-eag" && window.loggedIn
+        repeat: true
+        onTriggered: window.refreshEagSummary()
     }
 
     Timer {
@@ -541,6 +587,10 @@ ApplicationWindow {
                 window.etsServiceCount = value
             else if(name === "ets-service-time")
                 window.etsServiceTime = value
+            else if(name === "eag-service-count")
+                window.eagServiceCount = value
+            else if(name === "eag-service-time")
+                window.eagServiceTime = value
             else if(name === "eap-service-count")
                 window.eapServiceCount = value
             else if(name === "eap-service-time")
@@ -945,6 +995,71 @@ ApplicationWindow {
                     applicationId: window.selectedApplicationId
                     details: window.selectedApplicationDetails
                     onBack: window.currentRoute = "modules-eap-applications"
+                }
+
+                // EAG. Administrator-only like EMM, and for the same reason: what the gateway
+                // publishes is how the installation is reached from outside.
+                ModulePage {
+                    anchors.fill: parent
+                    visible: window.currentRoute === "modules-eag"
+                    moduleName: "EAG"
+                    loggedIn: window.loggedIn
+                    stats: [
+                        {
+                            title: "Routes", value: window.eagRouteCount < 0 ? "—" : String(window.eagRouteCount),
+                            trend: "published paths", trendUp: true, accent: "#4f8cff", route: "modules-eag-routes"
+                        },
+                        {
+                            title: "Served",
+                            value: window.eagActiveRouteCount < 0 ? "—" : String(window.eagActiveRouteCount),
+                            trend: window.eagRouteCount > 0 ? "of " + window.eagRouteCount + " defined" : "none defined",
+                            trendUp: window.eagActiveRouteCount > 0, accent: "#4cd97b", route: "modules-eag-routes"
+                        },
+                        {
+                            title: "Out of service",
+                            value: window.eagRouteCount < 0 ? "—" : String(window.eagRouteCount - window.eagActiveRouteCount),
+                            trend: "defined but not answering", trendUp: false, accent: "#ffb545",
+                            route: "modules-eag-routes"
+                        },
+                        {
+                            title: "Service Count", value: window.eagServiceCount < 0 ? "—" : window.eagServiceCount.toFixed(1),
+                            trend: "per flush period", trendUp: true, accent: "#9aa1ac"
+                        },
+                        {
+                            title: "Service Time", value: window.eagServiceTime < 0 ? "—" : window.eagServiceTime.toFixed(1) + " ms",
+                            trend: "per action", trendUp: true, accent: "#9aa1ac"
+                        }
+                    ]
+                    activity: [
+                        { initials: "AG", avatarColor: "#4f8cff", title: "Paths are matched as prefixes, longest wins", subtitle: "routing · eag", time: "—" },
+                        { initials: "AG", avatarColor: "#4cd97b", title: "Instances resolved per request from the registry", subtitle: "applications · eap", time: "live" },
+                        { initials: "AG", avatarColor: "#ffb545", title: "A route may forward without authentication", subtitle: "access · route setting", time: "—" }
+                    ]
+                    onNavigate: (route) => {
+                        window.selectedRouteId = ""
+                        window.currentRoute = route
+                    }
+                }
+                EagRoutesPage {
+                    anchors.fill: parent
+                    visible: window.currentRoute === "modules-eag-routes"
+                    loggedIn: window.loggedIn
+                    namespaceName: window.currentNamespace
+                    onBack: window.currentRoute = "modules-eag"
+                    onOpenRouteDetails: (routeId, details) => {
+                        window.selectedRouteId = routeId
+                        window.selectedRouteDetails = details
+                        window.currentRoute = "modules-eag-route-details"
+                    }
+                }
+                EagRouteDetailsPage {
+                    anchors.fill: parent
+                    visible: window.currentRoute === "modules-eag-route-details"
+                    loggedIn: window.loggedIn
+                    namespaceName: window.currentNamespace
+                    routeId: window.selectedRouteId
+                    details: window.selectedRouteDetails
+                    onBack: window.currentRoute = "modules-eag-routes"
                 }
 
                 // ETS
