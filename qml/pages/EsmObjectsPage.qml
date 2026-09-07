@@ -25,6 +25,14 @@ Item {
     property string error: ""
     property string lastUpdatedText: "—"
 
+    // Above this many objects a purge is worth handing to the server's background worker: a
+    // synchronous purge removes them one request at a time and a bucket of any real size outlasts
+    // the request's own transfer timeout. Same number the bucket list uses.
+    readonly property int asyncPurgeThreshold: 1000
+    // What the last purge did. Kept on the page because a background purge is still running when
+    // the answer arrives, and nothing else here would say so.
+    property string purgeNote: ""
+
     signal back()
     signal openObjectDetails(string objectErn, string objectKey, string bucketName, var details)
 
@@ -138,6 +146,12 @@ Item {
                 root.loading = false
         }
 
+        function onBucketPurged(bucketErn, async, objects) {
+            if (bucketErn !== root.bucketErn) return
+            root.purgeNote = async
+                ? "Purging " + objects + " object(s) in the background. The bucket empties over the next few refreshes."
+                : "Purged " + objects + " object(s)."
+        }
         function onObjectsReload() {
             refresh()
         }
@@ -182,6 +196,118 @@ Item {
         return idx >= 0 ? path.substring(idx + 1) : path
     }
 
+    // Same conversation the bucket list has before a purge, and for the same reason: a background
+    // purge answers immediately and keeps deleting, so the bucket is not empty when the dialog
+    // closes and its counts fall over the following refreshes.
+    Dialog {
+        id: purgeDialog
+        modal: true
+        anchors.centerIn: parent
+        width: 440
+        padding: 28
+        topPadding: 24
+        bottomPadding: 24
+        standardButtons: Dialog.NoButton
+
+        // What the server says the bucket holds, which is what decides whether waiting for the
+        // purge is a reasonable thing to offer.
+        readonly property int objectCount: root.totalCount
+        readonly property bool large: purgeDialog.objectCount > root.asyncPurgeThreshold
+
+        background: Rectangle {
+            radius: 16
+            color: "#1b1e25"
+            border.color: "#2c313c"
+            border.width: 1
+        }
+
+        contentItem: Column {
+            width: purgeDialog.availableWidth
+            spacing: 18
+
+            Column {
+                width: parent.width
+                spacing: 4
+                Text { text: "Purge Bucket"; color: "white"; font.pixelSize: 18; font.bold: true }
+                Text {
+                    text: root.bucketName + "  ·  " + purgeDialog.objectCount + " objects"
+                    color: "#9aa1ac"
+                    font.pixelSize: 12
+                    elide: Text.ElideRight
+                    width: parent.width
+                }
+            }
+
+            Text {
+                width: parent.width
+                wrapMode: Text.WordWrap
+                color: "#e0a458"
+                font.pixelSize: 12
+                text: "⚠  Every object in this bucket is deleted, and there is no undo."
+                      + (purgeDialog.large ? " Objects are removed one at a time, so "
+                                             + purgeDialog.objectCount + " of them take a while." : "")
+            }
+
+            Text {
+                width: parent.width
+                wrapMode: Text.WordWrap
+                color: "#6b7280"
+                font.pixelSize: 11
+                visible: purgeDialog.large
+                text: "Deleting in the background hands the work to the server and answers straight away: the bucket "
+                      + "is not empty when this dialog closes, and its counts fall over the following refreshes. "
+                      + "Waiting for it keeps this window on the request until every object is gone, which for a "
+                      + "bucket this size can outlast the request's own timeout."
+            }
+
+            Item {
+                width: parent.width
+                height: 40
+
+                Button {
+                    text: "Cancel"
+                    flat: true
+                    anchors.left: parent.left
+                    anchors.verticalCenter: parent.verticalCenter
+                    Material.theme: Material.Dark
+                    onClicked: purgeDialog.close()
+                }
+
+                Row {
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: 8
+
+                    // Only worth choosing between when the bucket is big enough for the wait to
+                    // matter; below that the single button does what "wait for it" would.
+                    Button {
+                        text: purgeDialog.large ? "Wait for it" : "Purge"
+                        flat: purgeDialog.large
+                        highlighted: !purgeDialog.large
+                        Material.theme: Material.Dark
+                        Material.accent: "#ff6b6b"
+                        onClicked: {
+                            root.purgeNote = ""
+                            esmClient.purgeBucket(root.bucketErn, false)
+                            purgeDialog.close()
+                        }
+                    }
+                    Button {
+                        text: "Delete in background"
+                        visible: purgeDialog.large
+                        highlighted: true
+                        Material.theme: Material.Dark
+                        Material.accent: "#4f8cff"
+                        onClicked: {
+                            root.purgeNote = ""
+                            esmClient.purgeBucket(root.bucketErn, true)
+                            purgeDialog.close()
+                        }
+                    }
+                }
+            }
+        }
+    }
     FileDialog {
         id: fileDialog
         title: "Select a file to upload"
@@ -624,7 +750,10 @@ Item {
                         flat: true
                         Material.theme: Material.Dark
                         Material.accent: "#ff6b6b"
-                        onClicked: esmClient.purgeBucket(root.bucketErn)
+                        // Always asked, unlike the bucket list's menu entry: this button sits in
+                        // the header of the bucket being looked at, which is a much easier thing
+                        // to hit by accident than a menu entry on a named row.
+                        onClicked: purgeDialog.open()
                     }
 
                     Button {
@@ -635,6 +764,17 @@ Item {
                         onClicked: fileDialog.open()
                     }
                 }
+            }
+
+            // What the last purge did, said here because a background one is still running when the
+            // answer arrives and the tree below will not look any emptier yet.
+            Text {
+                width: parent.width
+                wrapMode: Text.WordWrap
+                color: "#4cd97b"
+                font.pixelSize: 12
+                visible: root.purgeNote.length > 0
+                text: root.purgeNote
             }
 
             Rectangle {
