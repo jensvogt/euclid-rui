@@ -26,6 +26,34 @@ QVariantMap routeToMap(const QJsonObject &route) {
     return entry;
 }
 
+// Turns one "list-listeners" entry into the map the QML pages read. The certificate fields are
+// only present when the listener speaks HTTPS *and* the certificate is stored, so they are read
+// with defaults rather than assumed - an HTTP listener has no certificate to be missing.
+QVariantMap listenerToMap(const QJsonObject &listener) {
+    QVariantMap entry;
+    entry["namespace"] = listener.value("namespace").toString();
+    entry["port"] = listener.value("port").toInt();
+    entry["protocol"] = listener.value("protocol").toString();
+    entry["https"] = listener.value("protocol").toString() == QStringLiteral("https");
+    entry["serving"] = listener.value("serving").toBool();
+    // The name the listener actually serves: one that named none takes the conventional name for
+    // its namespace, and the server resolves that before answering.
+    entry["certificate"] = listener.value("certificate").toString();
+    entry["certificateConfigured"] = listener.value("certificateConfigured").toString();
+    entry["certificateFound"] = listener.value("certificateFound").toBool();
+    entry["certificateErn"] = listener.value("certificateErn").toString();
+    entry["certificateSubject"] = listener.value("certificateSubject").toString();
+    entry["certificateIssuer"] = listener.value("certificateIssuer").toString();
+    entry["certificateSerialNumber"] = listener.value("certificateSerialNumber").toString();
+    entry["certificateFingerprint"] = listener.value("certificateFingerprint").toString();
+    entry["certificateSubjectAltNames"] = listener.value("certificateSubjectAltNames").toArray().toVariantList();
+    entry["certificateGenerated"] = listener.value("certificateGenerated").toBool();
+    entry["certificateNotBefore"] = listener.value("certificateNotBefore").toString();
+    entry["certificateNotAfter"] = listener.value("certificateNotAfter").toString();
+    entry["certificateExpired"] = listener.value("certificateExpired").toBool();
+    return entry;
+}
+
 QJsonArray toJsonArray(const QStringList &values) {
     QJsonArray array;
     for (const QString &value: values)
@@ -139,5 +167,18 @@ void EagClient::deleteRoute(const QString &routeId) {
          },
          [this](const QString &message) {
              emit routeDeleteFailed(message);
+         });
+}
+
+void EagClient::fetchListeners() {
+    m_base->post("eag", "list-listeners", QJsonObject(), true,
+         [this](const QJsonObject &response) {
+             QVariantList listeners;
+             for (const QJsonArray array = response.value("listeners").toArray(); const auto &value: array)
+                 listeners << listenerToMap(value.toObject());
+             emit listenersLoaded(listeners, static_cast<int>(listeners.size()), response.value("serving").toBool());
+         },
+         [this](const QString &message) {
+             emit listenersFailed(message);
          });
 }

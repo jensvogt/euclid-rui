@@ -139,6 +139,13 @@ ApplicationWindow {
     property double eagServiceTime: -1
     property string selectedRouteId: ""
     property var selectedRouteDetails: ({})
+    // The ports the gateway answers on. Configuration rather than a resource - read from
+    // euclid.json at start-up - so these only change when the module restarts, but they are the
+    // one place that says whether an installation is reachable over HTTPS at all.
+    property int eagListenerCount: -1
+    property int eagHttpsListenerCount: -1
+    // Whether the ports are actually bound, which is not the same as whether any were configured.
+    property bool eagServing: false
 
     // EMM
     property string selectedModuleName: ""
@@ -151,6 +158,13 @@ ApplicationWindow {
     property string selectedKeyErn: ""
     property string selectedKeyName: ""
     property var selectedKeyDetails: ({})
+    // Certificates live with the keys because they are key material, even though the API gateway
+    // is what serves them. "Expiring" counts the ones inside 30 days, which is the number worth
+    // putting on a dashboard: a certificate nobody replaces stops a port working on a known date.
+    property int ekmCertificateCount: -1
+    property int ekmExpiringCertificateCount: -1
+    property string selectedCertificateName: ""
+    property var selectedCertificateDetails: ({})
 
     function initialsFor(name) {
         const parts = name.trim().split(/[\s@.]+/).filter(p => p.length > 0)
@@ -206,9 +220,11 @@ ApplicationWindow {
         if (!window.loggedIn)
             return
         // "list-routes" is administrator-only, so a non-admin gets the module page with dashes
-        // rather than an error they can do nothing about.
-        if (euclidClient.isAdmin)
+        // rather than an error they can do nothing about. "list-listeners" is the same.
+        if (euclidClient.isAdmin) {
             eagClient.fetchRoutes("")
+            eagClient.fetchListeners()
+        }
         emoClient.fetchAverage("eag-service-count")
         emoClient.fetchAverage("eag-service-time")
     }
@@ -239,6 +255,7 @@ ApplicationWindow {
         if (!window.loggedIn)
             return
         ekmClient.fetchKeys("", 0, 100)
+        ekmClient.fetchCertificates("", 0, 100)
         emoClient.fetchAverage("ekm-service-count")
         emoClient.fetchAverage("ekm-service-time")
     }
@@ -342,6 +359,16 @@ ApplicationWindow {
         function onRoutesFailed(message) {
             window.eagRouteCount = -1
             window.eagActiveRouteCount = -1
+        }
+        function onListenersLoaded(list, total, serving) {
+            window.eagListenerCount = total
+            window.eagHttpsListenerCount = list.filter(l => l.https).length
+            window.eagServing = serving
+        }
+        function onListenersFailed(message) {
+            window.eagListenerCount = -1
+            window.eagHttpsListenerCount = -1
+            window.eagServing = false
         }
     }
 
@@ -557,6 +584,20 @@ ApplicationWindow {
         target: ekmClient
         function onKeysLoaded(list, total) {
             window.ekmKeyCount = total
+        }
+        function onCertificatesLoaded(list, total) {
+            window.ekmCertificateCount = total
+            // Thirty days, because that is roughly the window in which somebody can still get a
+            // replacement issued and installed without it becoming an incident.
+            const horizon = Date.now() + 30 * 86400000
+            window.ekmExpiringCertificateCount = list.filter(c => {
+                const notAfter = new Date(c.notAfter)
+                return !isNaN(notAfter.getTime()) && notAfter.getTime() < horizon
+            }).length
+        }
+        function onCertificatesFailed(message) {
+            window.ekmCertificateCount = -1
+            window.ekmExpiringCertificateCount = -1
         }
     }
 
@@ -894,6 +935,22 @@ ApplicationWindow {
                             trend: "live", trendUp: true, accent: "#4f8cff", route: "modules-ekm-keys"
                         },
                         {
+                            title: "Certificates",
+                            value: window.ekmCertificateCount < 0 ? "—" : String(window.ekmCertificateCount),
+                            trend: "served by HTTPS listeners", trendUp: true, accent: "#4cd97b",
+                            route: "modules-ekm-certificates"
+                        },
+                        {
+                            // The number worth a place on a dashboard: a certificate nobody
+                            // replaces stops a port working on a date that is already known.
+                            title: "Expiring soon",
+                            value: window.ekmExpiringCertificateCount < 0 ? "—" : String(window.ekmExpiringCertificateCount),
+                            trend: "within 30 days",
+                            trendUp: window.ekmExpiringCertificateCount === 0,
+                            accent: window.ekmExpiringCertificateCount > 0 ? "#ffb545" : "#9aa1ac",
+                            route: "modules-ekm-certificates"
+                        },
+                        {
                             title: "Service Count", value: window.ekmServiceCount < 0 ? "—" : window.ekmServiceCount.toFixed(1),
                             trend: "-1.2% today", trendUp: false, accent: "#ffb545" },
                         {
@@ -909,6 +966,7 @@ ApplicationWindow {
                     onNavigate: (route) => {
                         window.selectedKeyErn = ""
                         window.selectedKeyName = ""
+                        window.selectedCertificateName = ""
                         window.currentRoute = route
                     }
                 }
@@ -934,6 +992,27 @@ ApplicationWindow {
                     keyName: window.selectedKeyName
                     details: window.selectedKeyDetails
                     onBack: window.currentRoute = "modules-ekm-keys"
+                }
+                EkmCertificatesPage {
+                    anchors.fill: parent
+                    visible: window.currentRoute === "modules-ekm-certificates"
+                    loggedIn: window.loggedIn
+                    namespaceName: window.currentNamespace
+                    onBack: window.currentRoute = "modules-ekm"
+                    onOpenCertificateDetails: (name, details) => {
+                        window.selectedCertificateName = name
+                        window.selectedCertificateDetails = details
+                        window.currentRoute = "modules-ekm-certificate-details"
+                    }
+                }
+                EkmCertificateDetailsPage {
+                    anchors.fill: parent
+                    visible: window.currentRoute === "modules-ekm-certificate-details"
+                    loggedIn: window.loggedIn
+                    namespaceName: window.currentNamespace
+                    certificateName: window.selectedCertificateName
+                    details: window.selectedCertificateDetails
+                    onBack: window.currentRoute = "modules-ekm-certificates"
                 }
 
                 // EAP
@@ -1022,6 +1101,29 @@ ApplicationWindow {
                             route: "modules-eag-routes"
                         },
                         {
+                            // Ports rather than routes: the routing table says what is published,
+                            // and this says what anybody can actually reach it on.
+                            title: "Listeners",
+                            value: window.eagListenerCount < 0 ? "—" : String(window.eagListenerCount),
+                            trend: window.eagListenerCount < 0 ? "ports the gateway answers on"
+                                                               : (window.eagServing ? "bound and answering" : "configured, none bound"),
+                            trendUp: window.eagServing,
+                            accent: window.eagListenerCount > 0 && !window.eagServing ? "#ff4f5e" : "#4f8cff",
+                            route: "modules-eag-listeners"
+                        },
+                        {
+                            title: "HTTPS",
+                            value: window.eagHttpsListenerCount < 0 ? "—" : String(window.eagHttpsListenerCount),
+                            trend: window.eagListenerCount > 0 ? "of " + window.eagListenerCount + " listeners"
+                                                               : "TLS terminated by the gateway",
+                            // A gateway serving nothing over TLS is not wrong - it may sit behind
+                            // something that already terminated it - so this is not coloured as a
+                            // fault, only as the thing worth knowing.
+                            trendUp: window.eagHttpsListenerCount > 0,
+                            accent: window.eagHttpsListenerCount > 0 ? "#4cd97b" : "#ffb545",
+                            route: "modules-eag-listeners"
+                        },
+                        {
                             title: "Service Count", value: window.eagServiceCount < 0 ? "—" : window.eagServiceCount.toFixed(1),
                             trend: "per flush period", trendUp: true, accent: "#9aa1ac"
                         },
@@ -1060,6 +1162,25 @@ ApplicationWindow {
                     routeId: window.selectedRouteId
                     details: window.selectedRouteDetails
                     onBack: window.currentRoute = "modules-eag-routes"
+                }
+                EagListenersPage {
+                    anchors.fill: parent
+                    visible: window.currentRoute === "modules-eag-listeners"
+                    loggedIn: window.loggedIn
+                    namespaceName: window.currentNamespace
+                    onBack: window.currentRoute = "modules-eag"
+                    // Certificates are EKM's, so this crosses modules: with a name it goes
+                    // straight to that certificate, and without one to the list. The details page
+                    // fetches by name, so nothing has to be carried across.
+                    onOpenCertificates: (certificateName) => {
+                        if (certificateName.length > 0) {
+                            window.selectedCertificateName = certificateName
+                            window.selectedCertificateDetails = ({})
+                            window.currentRoute = "modules-ekm-certificate-details"
+                        } else {
+                            window.currentRoute = "modules-ekm-certificates"
+                        }
+                    }
                 }
 
                 // ETS

@@ -60,6 +60,15 @@ public:
 
     Q_INVOKABLE void deleteRoute(const QString &routeId);
 
+    // The ports the gateway answers on, what each speaks, and - for an HTTPS one - the EKM
+    // certificate it terminates TLS with. "list-listeners" takes no arguments and has no paging:
+    // an installation has a handful of ports at most.
+    //
+    // These are read-only here because they are read-only server-side: a listener comes out of
+    // euclid.modules.eag.listeners and is fixed until the module restarts. Changing one is a
+    // configuration change on the host, not something this page can offer.
+    Q_INVOKABLE void fetchListeners();
+
 signals:
     // Each entry: {routeId, ern, accountId, region, namespace, path, applicationId, moduleTarget,
     // moduleAction, methods, authentication, active, created, modified}. `total` is the number of
@@ -76,6 +85,18 @@ signals:
     void routeUpdateFailed(const QString &message);
     void routeDeleted(const QString &routeId);
     void routeDeleteFailed(const QString &message);
+
+    // Each entry: {namespace, port, protocol, serving, certificate, certificateConfigured,
+    // certificateFound, and - when the certificate is stored - certificateErn, certificateSubject,
+    // certificateIssuer, certificateSerialNumber, certificateFingerprint,
+    // certificateSubjectAltNames, certificateGenerated, certificateNotBefore, certificateNotAfter,
+    // certificateExpired}.
+    //
+    // `serving` says whether the ports are actually bound, which is not the same question as
+    // whether they were configured: one whose port was taken, or whose certificate would not
+    // load, is still listed - it is the one somebody is looking for - but answers nothing.
+    void listenersLoaded(const QVariantList &listeners, int total, bool serving);
+    void listenersFailed(const QString &message);
 
 private:
     EuclidBaseClient *m_base;
