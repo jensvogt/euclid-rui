@@ -107,6 +107,10 @@ void EmmClient::fetchModules() {
                      entry["pid"] = instance.value("pid").toInt();
                      entry["state"] = instance.value("state").toString();
                      entry["socketPath"] = instance.value("socketPath").toString();
+                     // The port this instance was given for an HTTP listener of its own, 0 for a
+                     // module that has none. For an application pool it is where that instance is
+                     // actually reachable - the thing the API gateway routes to.
+                     entry["httpPort"] = instance.value("httpPort").toInt();
                      entry["restartCount"] = instance.value("restartCount").toInt();
                      entry["created"] = instance.value("created").toString();
                      entry["modified"] = instance.value("modified").toString();

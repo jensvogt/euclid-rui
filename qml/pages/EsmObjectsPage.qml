@@ -29,9 +29,10 @@ Item {
     // synchronous purge removes them one request at a time and a bucket of any real size outlasts
     // the request's own transfer timeout. Same number the bucket list uses.
     readonly property int asyncPurgeThreshold: 1000
-    // What the last purge did. Kept on the page because a background purge is still running when
-    // the answer arrives, and nothing else here would say so.
-    property string purgeNote: ""
+    // What the last purge or touch did. Kept on the page because neither shows up in the tree
+    // below when the answer arrives: a background purge is still running, and a touch changes
+    // nothing a listing displays at all.
+    property string actionNote: ""
 
     signal back()
     signal openObjectDetails(string objectErn, string objectKey, string bucketName, var details)
@@ -148,10 +149,22 @@ Item {
 
         function onBucketPurged(bucketErn, async, objects) {
             if (bucketErn !== root.bucketErn) return
-            root.purgeNote = async
+            root.actionNote = async
                 ? "Purging " + objects + " object(s) in the background. The bucket empties over the next few refreshes."
                 : "Purged " + objects + " object(s)."
         }
+        function onObjectsTouched(bucketErn, prefix, async, objects) {
+            // Only while this page is on screen: the bucket list can start a touch too, and its
+            // note belongs there rather than waiting here to be found on the next visit.
+            if (!root.visible) return
+            // The key is a prefix even when it is a whole key, so a key another key starts with
+            // selects both. Reporting the count the server actually announced rather than "1" is
+            // what makes that visible instead of surprising.
+            root.actionNote = objects === 1
+                    ? "Announced \"" + prefix + "\". Nothing about it was modified."
+                    : "Announced " + objects + " object(s) under \"" + prefix + "\". Nothing about them was modified."
+        }
+
         function onObjectsReload() {
             refresh()
         }
@@ -287,7 +300,7 @@ Item {
                         Material.theme: Material.Dark
                         Material.accent: "#ff6b6b"
                         onClicked: {
-                            root.purgeNote = ""
+                            root.actionNote = ""
                             esmClient.purgeBucket(root.bucketErn, false)
                             purgeDialog.close()
                         }
@@ -299,7 +312,7 @@ Item {
                         Material.theme: Material.Dark
                         Material.accent: "#4f8cff"
                         onClicked: {
-                            root.purgeNote = ""
+                            root.actionNote = ""
                             esmClient.purgeBucket(root.bucketErn, true)
                             purgeDialog.close()
                         }
@@ -773,8 +786,8 @@ Item {
                 wrapMode: Text.WordWrap
                 color: "#4cd97b"
                 font.pixelSize: 12
-                visible: root.purgeNote.length > 0
-                text: root.purgeNote
+                visible: root.actionNote.length > 0
+                text: root.actionNote
             }
 
             Rectangle {
@@ -869,6 +882,13 @@ Item {
                         onRenameObject: (object) => transferDialog.openFor("rename", object)
                         onCopyObject: (object) => transferDialog.openFor("copy", object)
                         onMoveObject: (object) => transferDialog.openFor("move", object)
+                        // Straight through, no dialog: the key selects the one object, nothing
+                        // about it is modified, and there is no count worth warning about. The
+                        // bucket-wide touch is the one that asks first, on the bucket list.
+                        onTouchObject: (object) => {
+                            root.actionNote = ""
+                            esmClient.touchObjects(object.bucketErn, object.key, false)
+                        }
                     }
 
                     // The listing is capped at 200 objects per bucket; without saying so, a
