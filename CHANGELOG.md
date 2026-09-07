@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.35](https://github.com/jensvogt/euclid-rui/compare/1.0.34...v1.0.35) (2026-09-07)
+
+
+### Bug Fixes
+
+* add ESM touch all dialog ([933daed](https://github.com/jensvogt/euclid-rui/commit/933daed291ec4ca4b5f16a43cd1a065ab9a44211))
+
 ## [1.0.34](https://github.com/jensvogt/euclid-rui/compare/1.0.33...v1.0.34) (2026-09-07)
 
 
