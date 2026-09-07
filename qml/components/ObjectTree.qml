@@ -23,6 +23,7 @@ Item {
     signal renameObject(var object)
     signal copyObject(var object)
     signal moveObject(var object)
+    signal touchObject(var object)
 
     implicitHeight: rows.implicitHeight
 
@@ -287,6 +288,14 @@ Item {
         MenuItem {
             text: "Move…"
             onTriggered: root.moveObject(rowMenu.currentObject)
+        }
+        // No ellipsis and no confirmation: touching one object announces one object, which is
+        // both undoable-by-irrelevance - nothing about it changes - and small enough that a
+        // consumer hearing about it twice is the ordinary case a retry already covers. The whole
+        // bucket is the one that gets asked about, on the bucket list.
+        MenuItem {
+            text: "Touch"
+            onTriggered: root.touchObject(rowMenu.currentObject)
         }
         MenuItem {
             text: "Delete"

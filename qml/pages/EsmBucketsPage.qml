@@ -124,13 +124,19 @@ Item {
             refresh()
         }
 
+        // Both of these answer for whoever started them, and the object list can start a touch
+        // too - so a note is only taken while this page is the one on screen. Otherwise a touch
+        // done from the object tree would leave a message here to be found on the next visit,
+        // describing something that happened somewhere else.
         function onBucketPurged(bucketErn, async, objects) {
+            if (!root.visible) return
             root.actionNote = async
                     ? "Purging " + objects + " object(s) in the background. The bucket's counts fall as it works through them."
                     : "Purged " + objects + " object(s)."
         }
 
-        function onBucketTouched(bucketErn, async, objects) {
+        function onObjectsTouched(bucketErn, prefix, async, objects) {
+            if (!root.visible) return
             // Said out loud because a touch leaves no trace on this page: the objects, their
             // timestamps and the bucket's counts are all exactly as they were, so without this
             // nothing would tell an operator whether anything happened.
@@ -383,7 +389,7 @@ Item {
                             root.actionNote = ""
                             // Whole bucket: no prefix. Narrowing one is what the object list is
                             // for, where there is a key in front of you to narrow it to.
-                            esmClient.touchBucket(touchDialog.bucket.ern, "", false)
+                            esmClient.touchObjects(touchDialog.bucket.ern, "", false)
                             touchDialog.close()
                         }
                     }
@@ -394,7 +400,7 @@ Item {
                         Material.accent: "#4f8cff"
                         onClicked: {
                             root.actionNote = ""
-                            esmClient.touchBucket(touchDialog.bucket.ern, "", true)
+                            esmClient.touchObjects(touchDialog.bucket.ern, "", true)
                             touchDialog.close()
                         }
                     }

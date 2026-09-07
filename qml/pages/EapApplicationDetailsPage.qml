@@ -17,6 +17,16 @@ Item {
     property bool deleting: false
     property bool savingEnvironment: false
 
+    // The processes actually running this application, from EMM rather than EAP: the manager runs
+    // an application as a module pool named after its applicationId, and only that pool knows
+    // which processes exist, what pids they have and which port each was given. EAP's own
+    // "instances" is a count and nothing more.
+    property var instances: []
+    // Kept apart from root.error: a definition that reads fine while its pool cannot be listed is
+    // still worth showing, and putting this in the page's error line would make the whole page
+    // look broken.
+    property string instancesError: ""
+
     signal back()
 
     function detail(key, fallback) {
@@ -43,6 +53,119 @@ Item {
         if (value === "STOPPED") return "#ffb545"
         return "#9aa1ac"
     }
+
+    function instanceStateColor(value) {
+        if (value === "RUNNING") return "#4cd97b"
+        if (value === "STARTING") return "#ffb545"
+        if (value === "STOPPED") return "#9aa1ac"
+        return "#ff6b6b"
+    }
+
+    // How long the process has been up, as a person would say it. The exact start time is in the
+    // column beside it; what an operator reads off a pool is whether an instance is minutes or
+    // days old - a young one among old ones is one that has been restarting.
+    function uptimeText(created) {
+        if (!created) return "—"
+        const started = new Date(created)
+        if (isNaN(started.getTime())) return "—"
+        const seconds = Math.floor((Date.now() - started.getTime()) / 1000)
+        if (seconds < 0) return "—"
+        if (seconds < 60) return seconds + "s"
+        if (seconds < 3600) return Math.floor(seconds / 60) + "m"
+        if (seconds < 86400) return Math.floor(seconds / 3600) + "h " + Math.floor((seconds % 3600) / 60) + "m"
+        return Math.floor(seconds / 86400) + "d " + Math.floor((seconds % 86400) / 3600) + "h"
+    }
+
+    readonly property int runningInstances: root.instances.filter(i => i.state === "RUNNING").length
+    // A slot the manager is holding rather than a process that is running - stopped, restarting,
+    // or one it could not start. Worth counting separately: the pool looks full either way.
+    readonly property int heldSlots: root.instances.length - root.runningInstances
+
+    // Filtered, sorted and paged here rather than by the server: "list-modules" hands over every
+    // module with every instance in one answer and has no paging to ask for, so the table is given
+    // one page's worth out of what is already in hand.
+    property string instanceFilter: ""
+    property int instancePageIndex: 0
+    property int instancePageSize: 10
+    property string instanceSortColumn: "created"
+    property bool instanceSortAscending: true
+
+    readonly property var filteredInstances: {
+        const needle = root.instanceFilter.toLowerCase()
+        const matched = needle.length === 0 ? root.instances.slice() : root.instances.filter(i =>
+            String(i.instanceId).toLowerCase().indexOf(needle) >= 0
+            || String(i.pid).indexOf(needle) >= 0
+            || String(i.httpPort).indexOf(needle) >= 0
+            || String(i.state).toLowerCase().indexOf(needle) >= 0)
+
+        const key = root.instanceSortColumn
+        const direction = root.instanceSortAscending ? 1 : -1
+        return matched.sort((a, b) => {
+            const left = a[key]
+            const right = b[key]
+            // pid, port and restart count are numbers and have to compare as such - as text, port
+            // 9100 sorts before 921. Everything else here is a string or a timestamp, and both of
+            // those order correctly compared as text.
+            if (typeof left === "number" && typeof right === "number") return (left - right) * direction
+            return String(left).localeCompare(String(right)) * direction
+        })
+    }
+
+    // Clamped rather than left where it was: a pool that shrank while the last page was on screen
+    // would otherwise leave the table showing nothing with no way to tell why.
+    readonly property int instancePageCount: Math.max(1, Math.ceil(root.filteredInstances.length / root.instancePageSize))
+    readonly property int clampedInstancePage: Math.min(root.instancePageIndex, root.instancePageCount - 1)
+    readonly property var instancePage: root.filteredInstances.slice(
+        root.clampedInstancePage * root.instancePageSize,
+        root.clampedInstancePage * root.instancePageSize + root.instancePageSize)
+
+    // The clamp above keeps the wrong page from being shown; this keeps the stored index from
+    // staying out of range behind it. Without it a pool that shrank to one page and then grew
+    // again would jump back to page two on its own, because the index was never actually moved.
+    onFilteredInstancesChanged: {
+        if (root.instancePageIndex > root.instancePageCount - 1)
+            root.instancePageIndex = root.instancePageCount - 1
+    }
+
+    readonly property var instanceColumns: [
+        { title: "Instance", key: "instanceId", fill: true },
+        {
+            title: "PID",
+            key: "pid",
+            // -1 is the manager's "no process", not a pid.
+            formatter: function (v) { return Number(v) > 0 ? String(v) : "—" }
+        },
+        {
+            title: "Port",
+            key: "httpPort",
+            // 0 means none was handed out. An instance without one is not reachable through the
+            // gateway, whatever its state says, so it is marked rather than left blank.
+            formatter: function (v) { return Number(v) > 0 ? String(v) : "—" },
+            colorFor: function (v) { return Number(v) > 0 ? "#4f8cff" : "#6b7280" }
+        },
+        {
+            title: "State",
+            key: "state",
+            colorFor: function (v) { return root.instanceStateColor(v) }
+        },
+        {
+            title: "Restarts",
+            key: "restartCount",
+            // A pool that keeps its count only by restarting is one that looks healthy from the
+            // outside, so the number is coloured.
+            colorFor: function (v) { return Number(v) > 0 ? "#ffb545" : "#c4c9d1" }
+        },
+        {
+            // Same underlying value as "Started", read the other way round: this is the one an
+            // operator scans, and a young instance among old ones is one that has been restarting.
+            // Not sortable - it would order identically to "Started", which is.
+            title: "Up",
+            key: "created",
+            sortable: false,
+            formatter: function (v) { return root.uptimeText(v) }
+        },
+        { title: "Started", key: "created", formatter: function (v) { return DateFormat.format(v) } }
+    ]
 
     // "update-application" replaces each field it is given, so adding or removing one variable
     // means sending the resulting map - EAP has no per-variable call.
@@ -76,6 +199,9 @@ Item {
         // The list carries the same fields "get-application" would, and is what keeps every other
         // view in sync, so there is no separate per-application read here.
         eapClient.fetchApplications("")
+        // The pool behind it. "list-modules" has no per-module read, so this asks for all of them
+        // and picks its own out below - the same call the modules page makes.
+        emmClient.fetchModules()
     }
 
     onVisibleChanged: if (visible) refresh()
@@ -100,7 +226,10 @@ Item {
                 root.error = ""
                 return
             }
-            // Gone from the list: deleted, by this page or from somewhere else.
+            // Gone from the list: deleted, by this page or from somewhere else. Its pool goes with
+            // it rather than being left on screen describing processes of an application that no
+            // longer exists.
+            root.instances = []
             if (root.deleting) {
                 root.deleting = false
                 root.back()
@@ -121,6 +250,27 @@ Item {
             environmentDialog.close()
             // Stored already; re-reading is what puts the new map on screen.
             root.refresh()
+        }
+    }
+
+    Connections {
+        target: emmClient
+
+        function onModulesLoaded(list, total) {
+            root.instancesError = ""
+            for (const module of list) {
+                // The pool is named after the application, which is how EAP and the manager refer
+                // to the same thing - see the EAG route comment on applicationId.
+                if (module.name !== root.applicationId) continue
+                root.instances = module.instances || []
+                return
+            }
+            // No pool at all, which is not an error: an application that has never been started,
+            // or one stopped long enough for the manager to have let its slots go, simply has none.
+            root.instances = []
+        }
+        function onModulesFailed(message) {
+            root.instancesError = message
         }
     }
 
@@ -411,6 +561,88 @@ Item {
                                 }
                             }
                         }
+                    }
+                }
+            }
+
+            // The processes, as opposed to the definition above them. Everything on this page so
+            // far is what was asked for; this is what is actually running - which pid, on which
+            // port, since when, and how many times it has had to be restarted to stay that way.
+            //
+            // Laid out as a heading over a DataTable rather than inside a tile of its own: the
+            // table draws its own card, and nesting that in another one puts an identical border
+            // a few pixels inside itself.
+            Column {
+                width: parent.width
+                spacing: 14
+
+                Row {
+                    spacing: 10
+                    Text {
+                        text: "Instances (" + root.runningInstances + ")"
+                        color: "white"
+                        font.pixelSize: 15
+                        font.bold: true
+                    }
+                    Text {
+                        // Only when the two differ: on a healthy pool every slot is a running
+                        // process and saying so twice is noise.
+                        visible: root.heldSlots > 0
+                        text: "+ " + root.heldSlots + " not running"
+                        color: "#ffb545"
+                        font.pixelSize: 12
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+                }
+
+                Text {
+                    width: parent.width
+                    wrapMode: Text.WordWrap
+                    color: "#6b7280"
+                    font.pixelSize: 11
+                    text: "The processes euclid-mgr is running for this application. Each is given a TCP port of "
+                          + "its own at start, which is what the API gateway routes to - a port written into the "
+                          + "application's own configuration would be bound by the first instance and refused to "
+                          + "every other. The ports change as the pool is scaled or restarted."
+                }
+
+                DataTable {
+                    width: parent.width
+                    columns: root.instanceColumns
+                    rows: root.instancePage
+                    totalCount: root.filteredInstances.length
+                    pageSize: root.instancePageSize
+                    pageIndex: root.clampedInstancePage
+                    // Never true: the pool arrives with the application, and a spinner here would
+                    // only report that the page as a whole is reloading, which it already shows.
+                    loading: false
+                    error: root.instancesError
+                    searchPlaceholder: "Filter by instance, pid, port or state..."
+                    emptyText: root.instanceFilter.length > 0
+                               ? "No instance matches that."
+                               : (root.desiredState === "RUNNING"
+                                  ? "No instances yet - the manager has been asked for this application and has not started it."
+                                  : "No instances. The application is not running.")
+                    rowsClickable: false
+                    sortKey: root.instanceSortColumn
+                    sortAscending: root.instanceSortAscending
+
+                    onSearchChanged: (text) => {
+                        root.instanceFilter = text
+                        root.instancePageIndex = 0
+                    }
+                    onRefreshRequested: root.refresh()
+                    onPageChanged: (index) => { root.instancePageIndex = index }
+                    // Back to the first page: page four of fifty-row pages is not page four of
+                    // ten-row pages.
+                    onPageSizeRequested: (size) => {
+                        root.instancePageSize = size
+                        root.instancePageIndex = 0
+                    }
+                    onSortRequested: (key, ascending) => {
+                        root.instanceSortColumn = key
+                        root.instanceSortAscending = ascending
+                        root.instancePageIndex = 0
                     }
                 }
             }
