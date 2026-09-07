@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.34](https://github.com/jensvogt/euclid-rui/compare/1.0.33...v1.0.34) (2026-09-07)
+
+
+### Bug Fixes
+
+* add purge dialog ([57974e0](https://github.com/jensvogt/euclid-rui/commit/57974e0362851e8409b0681b1c9a5ca9744de9c5))
+
 ## [1.0.33](https://github.com/jensvogt/euclid-rui/compare/1.0.32...v1.0.33) (2026-09-06)
 
 
