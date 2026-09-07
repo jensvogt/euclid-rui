@@ -109,7 +109,10 @@ qt_add_qml_module(euclid-rui
         qml/pages/EmmModuleDetailsPage.qml
         qml/pages/EagRoutesPage.qml
         qml/pages/EagRouteDetailsPage.qml
+        qml/pages/EagListenersPage.qml
         qml/pages/EkmKeyDetailsPage.qml
+        qml/pages/EkmCertificatesPage.qml
+        qml/pages/EkmCertificateDetailsPage.qml
         qml/components/SideNav.qml
         qml/components/NavButton.qml
         qml/components/SubNavButton.qml
@@ -126,6 +129,7 @@ qt_add_qml_module(euclid-rui
         qml/components/ObjectTree.qml
         qml/components/FoldableTile.qml
         qml/components/ImportExportDialog.qml
+        qml/components/CertificateImportDialog.qml
         qml/components/ServiceModuleTile.qml
         qml/components/ToggleSwitch.qml
         qml/components/SectionHeader.qml

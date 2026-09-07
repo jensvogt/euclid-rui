@@ -26,9 +26,10 @@ Item {
     property bool loading: false
     property string error: ""
     property string lastUpdatedText: "—"
-    // What the last purge did. Kept next to the table because a background purge is still running
-    // when the answer arrives, and nothing else on screen would say so.
-    property string purgeNote: ""
+    // What the last purge or touch did. Kept next to the table because neither is visible in it
+    // when the answer arrives: a background purge is still running, and a touch never shows up at
+    // all - it changes nothing a listing displays.
+    property string actionNote: ""
 
     readonly property var columns: {
         let cols = [
@@ -124,9 +125,19 @@ Item {
         }
 
         function onBucketPurged(bucketErn, async, objects) {
-            root.purgeNote = async
+            root.actionNote = async
                     ? "Purging " + objects + " object(s) in the background. The bucket's counts fall as it works through them."
                     : "Purged " + objects + " object(s)."
+        }
+
+        function onBucketTouched(bucketErn, async, objects) {
+            // Said out loud because a touch leaves no trace on this page: the objects, their
+            // timestamps and the bucket's counts are all exactly as they were, so without this
+            // nothing would tell an operator whether anything happened.
+            root.actionNote = async
+                    ? "Announcing " + objects + " object(s) in the background. Subscribers receive them over the "
+                      + "next few minutes; nothing in this table changes."
+                    : "Announced " + objects + " object(s). Nothing about them was modified."
         }
 
         function onBucketCreated(name) {
@@ -249,6 +260,142 @@ Item {
                         onClicked: {
                             esmClient.purgeBucket(purgeDialog.bucket.ern, true)
                             purgeDialog.close()
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Always asked, unlike the purge dialog, which only appears once a bucket is big enough to be
+    // worth doing in the background. Size is not what makes a touch worth a second thought: it is
+    // a replay, so every subscriber of the bucket hears about every object again, including the
+    // ones it already processed. A consumer that is not idempotent does its work twice, and on a
+    // whole bucket it does it twice for everything - which is true of three objects as much as of
+    // thirty thousand.
+    Dialog {
+        id: touchDialog
+        modal: true
+        anchors.centerIn: parent
+        width: 460
+        padding: 28
+        topPadding: 24
+        bottomPadding: 24
+        standardButtons: Dialog.NoButton
+
+        property var bucket: null
+        readonly property string bucketName: bucket ? String(bucket.name) : ""
+        readonly property int objectCount: bucket ? Number(bucket.objects) : 0
+        // The same threshold the purge dialog uses, for the same reason: announcing them inline
+        // outlasts the request's own timeout long before the announcing itself finishes.
+        readonly property bool large: touchDialog.objectCount > root.asyncPurgeThreshold
+
+        function openFor(row) {
+            touchDialog.bucket = row
+            touchDialog.open()
+        }
+
+        background: Rectangle {
+            radius: 16
+            color: "#1b1e25"
+            border.color: "#2c313c"
+            border.width: 1
+        }
+
+        contentItem: Column {
+            width: touchDialog.availableWidth
+            spacing: 18
+
+            Column {
+                width: parent.width
+                spacing: 4
+                Text { text: "Touch All Objects"; color: "white"; font.pixelSize: 18; font.bold: true }
+                Text {
+                    text: touchDialog.bucketName + "  ·  " + touchDialog.objectCount + " objects"
+                    color: "#9aa1ac"
+                    font.pixelSize: 12
+                    elide: Text.ElideRight
+                    width: parent.width
+                }
+            }
+
+            Text {
+                width: parent.width
+                wrapMode: Text.WordWrap
+                color: "#c4c9d1"
+                font.pixelSize: 12
+                text: "Every object in this bucket is announced again, as though it had just been uploaded: the "
+                      + "same event and the same subscription deliveries an upload would have produced. Nothing "
+                      + "about the objects changes - not a byte of them, and not their timestamps."
+            }
+
+            Text {
+                width: parent.width
+                wrapMode: Text.WordWrap
+                color: "#e0a458"
+                font.pixelSize: 12
+                text: "⚠  This is a replay, not a repair of one. Every subscriber hears about all "
+                      + touchDialog.objectCount + " object(s), including the ones it already processed - so run it "
+                      + "only where the consumers are idempotent. Touching a narrower prefix from the object list "
+                      + "is usually safer than touching the whole bucket."
+            }
+
+            Text {
+                width: parent.width
+                wrapMode: Text.WordWrap
+                color: "#6b7280"
+                font.pixelSize: 11
+                text: touchDialog.large
+                      ? "Announcing in the background hands the work to the server and answers straight away. "
+                        + "Waiting for it keeps this window on the request until every object has been announced, "
+                        + "which for a bucket this size can outlast the request's own timeout. Neither is "
+                        + "resumable: a run that is interrupted has simply announced fewer objects."
+                      : "Announcing in the background hands the work to the server and answers straight away; "
+                        + "waiting for it keeps this window on the request until it is done. For a bucket this "
+                        + "size either finishes quickly. Neither is resumable: a run that is interrupted has "
+                        + "simply announced fewer objects."
+            }
+
+            Item {
+                width: parent.width
+                height: 40
+
+                Button {
+                    text: "Cancel"
+                    flat: true
+                    anchors.left: parent.left
+                    anchors.verticalCenter: parent.verticalCenter
+                    Material.theme: Material.Dark
+                    onClicked: touchDialog.close()
+                }
+
+                Row {
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: 8
+
+                    Button {
+                        text: "Wait for it"
+                        flat: true
+                        Material.theme: Material.Dark
+                        Material.accent: "#4f8cff"
+                        onClicked: {
+                            root.actionNote = ""
+                            // Whole bucket: no prefix. Narrowing one is what the object list is
+                            // for, where there is a key in front of you to narrow it to.
+                            esmClient.touchBucket(touchDialog.bucket.ern, "", false)
+                            touchDialog.close()
+                        }
+                    }
+                    Button {
+                        text: "Announce in background"
+                        highlighted: true
+                        Material.theme: Material.Dark
+                        Material.accent: "#4f8cff"
+                        onClicked: {
+                            root.actionNote = ""
+                            esmClient.touchBucket(touchDialog.bucket.ern, "", true)
+                            touchDialog.close()
                         }
                     }
                 }
@@ -635,6 +782,17 @@ Item {
                         }
                     },
                     {
+                        text: "Touch all…",
+                        // Nothing to announce in an empty bucket, and the answer would be "0
+                        // objects" - which reads like a failure rather than like an empty bucket.
+                        enabled: function(row) {
+                            return !!row && Number(row.objects) > 0
+                        },
+                        action: function(row) {
+                            touchDialog.openFor(row)
+                        }
+                    },
+                    {
                         text: "Purge",
                         enabled: function(row) {
                             return !!row && Number(row.objects) > 0
@@ -650,6 +808,18 @@ Item {
                         }
                     }
                 ]
+            }
+
+            // What the last purge or touch did. Neither is visible in the table above when the
+            // answer arrives - a background purge is still running, and a touch changes nothing a
+            // listing shows at all - so this is the only thing that says anything happened.
+            Text {
+                width: parent.width
+                wrapMode: Text.WordWrap
+                color: "#4cd97b"
+                font.pixelSize: 12
+                visible: root.actionNote.length > 0
+                text: root.actionNote
             }
         }
     }

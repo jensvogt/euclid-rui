@@ -93,6 +93,26 @@ void EsmClient::purgeBucket(const QString &bucketErn, const bool async) {
          });
 }
 
+void EsmClient::touchBucket(const QString &bucketErn, const QString &prefix, const bool async) {
+    QJsonObject body;
+    body["ern"] = bucketErn;
+    body["prefix"] = prefix;
+    body["async"] = async;
+
+    m_base->post("esm", "touch-object", body, true,
+         [this, bucketErn, async](const QJsonObject &response) {
+             // The same field for both variants, unlike purge-bucket: the synchronous one reports
+             // what it announced, the background one how many there were when it was accepted.
+             emit bucketTouched(bucketErn, async, response.value("objects").toInt());
+             // No reload on purpose. A touch changes nothing a listing shows - not the objects,
+             // not their timestamps, not the bucket's counts - so re-reading would only make the
+             // table flicker for no reason.
+         },
+         [this](const QString &message) {
+             emit bucketsFailed(message);
+         });
+}
+
 void EsmClient::renameBucket(const QString &bucketErn, const QString &newName) {
     QJsonObject body;
     body["ern"] = bucketErn;

@@ -28,6 +28,18 @@ public:
     // for a bucket holding more objects than a request can get through before timing out. The
     // counts catch up on later refreshes rather than being right in the answer.
     Q_INVOKABLE void purgeBucket(const QString &bucketErn, bool async = false);
+
+    // Announces objects already in the bucket, as though each had just been uploaded: the same
+    // esm.object.created event and the same subscription deliveries an upload would have produced.
+    //
+    // Nothing about the objects changes - not a byte, and not their modified times either. "Touch"
+    // means what it does to listeners, not what it does to storage, which is why this issues no
+    // reload: there is nothing new for a listing to show.
+    //
+    // An empty `prefix` announces every object in the bucket. `async` hands the announcing to a
+    // background thread inside ESM and answers at once with the count as it stood, for a bucket
+    // with enough objects that doing it inline outlasts the request's timeout.
+    Q_INVOKABLE void touchBucket(const QString &bucketErn, const QString &prefix = QString(), bool async = false);
     // A bucket's name is part of its ERN and of every object ERN inside it, so a rename rewrites
     // all of them server-side and repoints subscriptions; the counts come back in bucketRenamed().
     // Refused (409) while a transfer server still serves the bucket, since its clients are
@@ -132,6 +144,11 @@ signals:
     // objects are gone, true means the server is working through them and the bucket's counts will
     // fall over the next refreshes. `objects` is how many there were when it started.
     void bucketPurged(const QString &bucketErn, bool async, int objects);
+    // A touch the server accepted. `async` says whether it is still running: false means every
+    // selected object has been announced and `objects` is how many that was, true means a
+    // background thread is working through them and `objects` is how many there were when it
+    // started. Nothing in any listing changes either way.
+    void bucketTouched(const QString &bucketErn, bool async, int objects);
     void bucketTagAdded(const QString &bucketErn, const QString &key, const QString &value);
     void bucketTagAddFailed(const QString &message);
     void bucketTagDeleted(const QString &bucketErn, const QString &key);
