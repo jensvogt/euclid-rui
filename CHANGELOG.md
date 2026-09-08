@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.36](https://github.com/jensvogt/euclid-rui/compare/1.0.35...v1.0.36) (2026-09-08)
+
+
+### Bug Fixes
+
+* add EAP instances table ([8741b49](https://github.com/jensvogt/euclid-rui/commit/8741b49ff1cd30b4d4b0f0f007756512e5fc1540))
+* add ESS module ([f0184cb](https://github.com/jensvogt/euclid-rui/commit/f0184cb6f24b5ec16b7f94dd044094ae303afd57))
+
 ## [1.0.35](https://github.com/jensvogt/euclid-rui/compare/1.0.34...v1.0.35) (2026-09-07)
 
 
