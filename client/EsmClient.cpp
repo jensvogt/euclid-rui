@@ -4,6 +4,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonArray>
+#include <QJsonDocument>
 #include <QJsonObject>
 #include <QVariantMap>
 
@@ -531,6 +532,41 @@ void EsmClient::uploadObject(const QString &bucketErn, const QString &key, const
     }
 
     beginMultipartUpload(bucketErn, key, path, fileSize);
+}
+
+void EsmClient::saveObjectContent(const QString &bucketErn, const QString &key, const QString &text,
+                                  const QVariantMap &attributes) {
+    QVariantMap headers;
+    headers["x-euclid-bucket-ern"] = bucketErn;
+    headers["x-euclid-key"] = key;
+
+    // Sent back with the content, because "put-object" writes a whole object rather than patching
+    // one: an upload that names no attributes stores none, so leaving these out would silently
+    // delete every attribute the object had.
+    //
+    // Re-encoded through variantValue() rather than passed on as they arrived: an attribute's
+    // value comes back from the server as a QVariant that has been through JSON once already, and
+    // the server refuses a value whose JSON type does not match the "type" beside it.
+    if (!attributes.isEmpty()) {
+        QJsonObject encoded;
+        for (auto it = attributes.constBegin(); it != attributes.constEnd(); ++it) {
+            const QVariantMap attribute = it.value().toMap();
+            encoded[it.key()] = variantValue(attribute.value("type").toString(), attribute.value("value"));
+        }
+        headers["x-euclid-attributes"] = QString::fromUtf8(QJsonDocument(encoded).toJson(QJsonDocument::Compact));
+    }
+
+    // Straight to "put-object" rather than through uploadSinglePart(): this needs signals of its
+    // own so a details page can match the answer to the object it is showing, and an edited text
+    // document is nowhere near the multipart threshold anyway.
+    m_base->postRaw("esm", "put-object", headers, text.toUtf8(),
+         [this, bucketErn, key](const QJsonObject &response) {
+             emit objectContentSaved(bucketErn, key, response.toVariantMap());
+             emit objectsReload(bucketErn);
+         },
+         [this, bucketErn, key](const QString &message) {
+             emit objectContentSaveFailed(bucketErn, key, message);
+         });
 }
 
 void EsmClient::uploadSinglePart(const QString &bucketErn, const QString &key, const QByteArray &data) {

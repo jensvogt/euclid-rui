@@ -61,6 +61,11 @@ public:
     // EKM is in the list and worth knowing about: its export carries the key material itself,
     // which is stored base64-encoded rather than encrypted. A file with ekm_key in it is as
     // sensitive as the database, and the dialog says so before writing one.
+    //
+    // ESS is the other one to think about before writing a file. A secret's value is stored
+    // encrypted under an EKM key, so an ess export on its own is ciphertext - but exported
+    // alongside ekm it is the lock and the key in the same file, which is the case the passphrase
+    // is there for.
     Q_INVOKABLE static QStringList exportableModules();
 
     // Dumps each module's collections to one JSON file, in the shape "import" reads back.

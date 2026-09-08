@@ -136,6 +136,23 @@ public:
     // create-upload/upload-part/complete-upload flow instead, matching the CLI's upload-file.
     Q_INVOKABLE void uploadObject(const QString &bucketErn, const QString &key, const QUrl &fileUrl);
 
+    // Replaces an object's content with `text`, encoded UTF-8, through the same "put-object" an
+    // upload uses. This rewrites the object rather than patching it: size, checksum and content
+    // type are all derived again from the new bytes, and the bucket's subscribers hear about it
+    // exactly as they would for an upload.
+    //
+    // No content type is sent, because none is read: the server sniffs it from the bytes. A
+    // document saved as JSON comes back as JSON without the caller naming a type, and one edited
+    // until it is no longer JSON comes back as whatever it now is.
+    //
+    // `attributes` are the object's current user attributes, in the {name: {type, value}} form
+    // list-object-attributes returns, and they have to be passed: an upload that names none stores
+    // none, so a caller that omits them deletes every attribute the object had. Euclid's own
+    // system attributes cannot be preserved this way - nothing reads them back out - so an object
+    // carrying any loses them here.
+    Q_INVOKABLE void saveObjectContent(const QString &bucketErn, const QString &key, const QString &text,
+                                       const QVariantMap &attributes = QVariantMap());
+
 signals:
     void bucketsLoaded(const QVariantList &buckets, int total);
     void bucketsFailed(const QString &message);
@@ -177,6 +194,14 @@ signals:
     void objectsReload(const QString &bucketErn);
     void objectUploaded(const QString &bucketErn, const QString &key);
     void objectUploadFailed(const QString &message);
+    // Carries the object as the server stored it - {ern, bucketErn, key, size, status,
+    // contentType, md5Sum} - so a details page can correct the size and checksum it is showing
+    // without re-reading the listing it was opened from.
+    //
+    // Kept apart from objectUploaded/objectUploadFailed: a details page has to tell its own
+    // editor's save from any other upload, and objectUploadFailed carries no key to match on.
+    void objectContentSaved(const QString &bucketErn, const QString &key, const QVariantMap &object);
+    void objectContentSaveFailed(const QString &bucketErn, const QString &key, const QString &message);
     // The object's bytes as UTF-8 text. Carries the bucket and key it was asked for, since a view
     // can have moved on to another object by the time this arrives.
     void objectContentLoaded(const QString &bucketErn, const QString &key, const QString &content);
