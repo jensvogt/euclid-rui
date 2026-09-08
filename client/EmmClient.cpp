@@ -29,6 +29,7 @@ namespace {
                 {QStringLiteral("esm_bucket"), QStringLiteral("esm")},
                 {QStringLiteral("esm_subscription"), QStringLiteral("esm")},
                 {QStringLiteral("esm_object"), QStringLiteral("esm")},
+                {QStringLiteral("ess_secret"), QStringLiteral("ess")},
                 {QStringLiteral("eam_user"), QStringLiteral("eam")},
                 {QStringLiteral("eam_usergroup"), QStringLiteral("eam")},
                 {QStringLiteral("eam_account"), QStringLiteral("eam")},
@@ -49,7 +50,8 @@ EmmClient::~EmmClient() = default;
 
 QStringList EmmClient::exportableModules() {
     return {QStringLiteral("eam"), QStringLiteral("eap"), QStringLiteral("ekm"), QStringLiteral("emm"),
-            QStringLiteral("ens"), QStringLiteral("eqs"), QStringLiteral("esm"), QStringLiteral("ets")};
+            QStringLiteral("ens"), QStringLiteral("eqs"), QStringLiteral("esm"), QStringLiteral("ess"),
+            QStringLiteral("ets")};
 }
 
 void EmmClient::fetchModuleStatus(const QString &moduleName) {

@@ -85,6 +85,37 @@ Item {
     property string downloadStatus: ""
     property string downloadError: ""
 
+    property bool savingContent: false
+    property string saveStatus: ""
+    property string saveError: ""
+
+    // Writes the editor's text back as the object's content.
+    //
+    // Safe against truncating the object, and only because previewSkipReason refuses to preview at
+    // all once objectSize reaches previewLimit: whenever there is anything in the editor it is the
+    // whole object, never the first however-many bytes of a larger one. Editing a truncated
+    // preview and saving it would silently discard the rest.
+    function saveContent() {
+        if (!contentView.modified)
+            return
+        root.saveStatus = ""
+        root.saveError = ""
+        root.savingContent = true
+        // The attributes go back with the content: put-object writes a whole object, so an upload
+        // that names none stores none - saving without them would delete everything in the
+        // Attributes tile below.
+        esmClient.saveObjectContent(root.bucketErn, root.objectKey, contentView.text, root.attributes)
+    }
+
+    // Not cleared in refreshContent(): a save re-reads the content it just wrote, and doing it
+    // there would wipe the "saved" message in the same frame it was put up. Navigation is what
+    // makes it stale, so navigation is what clears it.
+    function clearSaveState() {
+        root.savingContent = false
+        root.saveStatus = ""
+        root.saveError = ""
+    }
+
     // A key is a path within the bucket, so the last segment is the file name the user expects the
     // save dialog to offer.
     function suggestedFileName() {
@@ -129,10 +160,12 @@ Item {
         Qt.callLater(root.refreshContent)
     }
     onObjectErnChanged: {
+        root.clearSaveState()
         root.refreshAttributes()
         Qt.callLater(root.refreshContent)
     }
     onVisibleChanged: if (visible) {
+        root.clearSaveState()
         root.refreshAttributes()
         Qt.callLater(root.refreshContent)
     }
@@ -233,6 +266,30 @@ Item {
             root.downloading = false
             root.downloadStatus = ""
             root.downloadError = message
+        }
+        function onObjectContentSaved(bucketErn, key, object) {
+            if (key !== root.objectKey || bucketErn !== root.bucketErn) return
+            root.savingContent = false
+            root.saveError = ""
+            root.saveStatus = "Saved " + SizeFormat.format(Number(object.size))
+                              + (object.contentType ? ", stored as " + object.contentType : "") + "."
+
+            // This is a different object now - size, checksum and the sniffed content type all
+            // follow from the bytes just written. Patched in rather than re-listed so the tiles
+            // above stop describing what was there before. Assigning details also re-reads the
+            // content, which is what puts the editor back in step with what is stored.
+            const patched = Object.assign({}, root.details)
+            if (object.size !== undefined) patched.size = object.size
+            if (object.contentType !== undefined) patched.contentType = object.contentType
+            if (object.md5Sum !== undefined) patched.md5Sum = object.md5Sum
+            if (object.status !== undefined) patched.status = object.status
+            root.details = patched
+        }
+        function onObjectContentSaveFailed(bucketErn, key, message) {
+            if (key !== root.objectKey || bucketErn !== root.bucketErn) return
+            root.savingContent = false
+            root.saveStatus = ""
+            root.saveError = message
         }
     }
 
@@ -411,6 +468,20 @@ Item {
                         onClicked: root.refreshContent()
                     },
                     Button {
+                        text: root.savingContent ? "Saving…" : "Save"
+                        flat: true
+                        Material.theme: Material.Dark
+                        Material.accent: "#4cd97b"
+                        // Only where there is an editor to save from: an image cannot be edited
+                        // here, and neither can anything the viewer refused to show.
+                        visible: root.previewIsText && root.previewSkipReason.length === 0
+                        // Nothing to write until something has actually been changed, which also
+                        // keeps a stray click from rewriting an object with its own bytes and
+                        // announcing that to every subscriber of the bucket.
+                        enabled: !root.savingContent && contentView.modified
+                        onClicked: root.saveContent()
+                    },
+                    Button {
                         // The way out for everything the viewer refuses - an archive, an image, or
                         // simply an object past the preview limit - and it works for the rest too.
                         text: "Download…"
@@ -434,8 +505,9 @@ Item {
                         // type is one it can show - which is what previewIsImage/previewIsText read
                         // above. Only one of them is ever handed any bytes.
                         //
-                        // Read-only: this shows what is stored. Writing an edit back would be a
-                        // put-object that replaces the object, which is not what a details page does.
+                        // Editable, and Save above writes it back. Safe only because the editor
+                        // never holds part of an object: previewSkipReason refuses to preview
+                        // anything at or past previewLimit, so what is on screen is the whole thing.
                         EditableText {
                             id: contentView
                             width: parent.width
@@ -444,7 +516,38 @@ Item {
                             contentType: root.contentType
                             content: root.objectContent
                             maxLength: root.maxPreviewBytes
-                            readOnly: true
+                            readOnly: false
+                        }
+
+                        // What saving actually does, said where the editing happens rather than in
+                        // a dialog after the fact: there is no partial write here, and no way to
+                        // change the content without telling the bucket's subscribers about it.
+                        Text {
+                            width: parent.width
+                            wrapMode: Text.WordWrap
+                            color: "#6b7280"
+                            font.pixelSize: 11
+                            visible: root.previewIsText && root.objectContent.length > 0
+                            text: "Saving replaces the whole object: its size, checksum and content type are read "
+                                  + "again from what you write, and the bucket's subscribers are notified exactly "
+                                  + "as they would be for an upload. Its attributes are written back with it. "
+                                  + "There is no version history to go back to."
+                        }
+
+                        // The pretty printer is a view until the moment something is saved, at
+                        // which point it becomes an edit to every line of the document.
+                        Text {
+                            width: parent.width
+                            wrapMode: Text.WordWrap
+                            color: "#e0a458"
+                            font.pixelSize: 11
+                            visible: contentView.modified && contentView.prettyPrinted
+                            // "Untick pretty print" is not the advice: the checkbox is disabled
+                            // while there are edits, because reformatting reloads the editor and
+                            // would throw them away. Reset first is the order that works.
+                            text: "⚠ This is shown pretty printed. Saving stores it as it appears here - reindented "
+                                  + "throughout - not as it was originally written. To keep the stored formatting, "
+                                  + "Reset, untick \"Pretty print\", then edit again."
                         }
 
                         ImageViewer {
@@ -482,6 +585,15 @@ Item {
                             font.pixelSize: 12
                             visible: text.length > 0
                             text: root.downloadError.length > 0 ? root.downloadError : root.downloadStatus
+                        }
+
+                        Text {
+                            width: parent.width
+                            wrapMode: Text.WordWrap
+                            color: root.saveError.length > 0 ? "#ff6b6b" : "#4cd97b"
+                            font.pixelSize: 12
+                            visible: text.length > 0
+                            text: root.saveError.length > 0 ? root.saveError : root.saveStatus
                         }
                     }
                 ]

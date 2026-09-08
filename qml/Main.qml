@@ -82,6 +82,20 @@ ApplicationWindow {
     property string selectedObjectBucketName: ""
     property var selectedObjectDetails: ({})
 
+    // ESS. Counted off the same listing the secrets table reads, so the module page needs no query
+    // of its own. "Stale" is the number worth a place on a page: a secret nobody has rotated is
+    // the one whose value has had the longest time to escape.
+    property int essSecretCount: -1
+    property int essStaleSecretCount: -1
+    // How many distinct EKM keys the namespace's secrets are sealed with - usually one (the
+    // namespace's own), and worth seeing when it is not.
+    property int essKeyCount: -1
+    property double essServiceCount: -1
+    property double essServiceTime: -1
+    property string selectedSecretErn: ""
+    property string selectedSecretName: ""
+    property var selectedSecretDetails: ({})
+
     // ENS
     property int ensTopicCount: -1
     property int ensTotalMessages: -1
@@ -176,7 +190,7 @@ ApplicationWindow {
     }
 
     readonly property var moduleRoutes: ({
-        "eam": "modules-eam", "eqs": "modules-eqs", "esm": "modules-esm",
+        "eam": "modules-eam", "eqs": "modules-eqs", "esm": "modules-esm", "ess": "modules-ess",
         "ekm": "modules-ekm", "ens": "modules-ens", "ets": "modules-ets", "eap": "modules-eap",
         // Like EMM below, administrators only - but listed all the same, so typing it says so
         // rather than pretending the module does not exist.
@@ -235,6 +249,16 @@ ApplicationWindow {
         esmClient.fetchBuckets("", 0, 100)
         emoClient.fetchAverage("esm-service-count")
         emoClient.fetchAverage("esm-service-time")
+    }
+
+    function refreshEssSummary() {
+        if (!window.loggedIn)
+            return
+        // Metadata only - list-secrets carries no values, so counting them costs nothing that a
+        // secrets store should mind.
+        essClient.fetchSecrets("", 0, 100)
+        emoClient.fetchAverage("ess-service-count")
+        emoClient.fetchAverage("ess-service-time")
     }
 
     function refreshEnsSummary() {
@@ -458,6 +482,7 @@ ApplicationWindow {
         if (currentRoute === "modules-eam") refreshEamSummary()
         if (currentRoute === "modules-eqs") refreshEqsSummary()
         if (currentRoute === "modules-esm") refreshEsmSummary()
+        if (currentRoute === "modules-ess") refreshEssSummary()
         if (currentRoute === "modules-ens") refreshEnsSummary()
         if (currentRoute === "modules-ekm") refreshEkmSummary()
         if (currentRoute === "modules-ets") refreshEtsSummary()
@@ -468,6 +493,7 @@ ApplicationWindow {
         if (loggedIn && currentRoute === "modules-eam") refreshEamSummary()
         if (loggedIn && currentRoute === "modules-eqs") refreshEqsSummary()
         if (loggedIn && currentRoute === "modules-esm") refreshEsmSummary()
+        if (loggedIn && currentRoute === "modules-ess") refreshEssSummary()
         if (loggedIn && currentRoute === "modules-ens") refreshEnsSummary()
         if (loggedIn && currentRoute === "modules-ekm") refreshEkmSummary()
         if (loggedIn && currentRoute === "modules-ets") refreshEtsSummary()
@@ -494,6 +520,13 @@ ApplicationWindow {
         running: appSettings.autoRefreshSeconds > 0 && window.currentRoute === "modules-esm" && window.loggedIn
         repeat: true
         onTriggered: window.refreshEsmSummary()
+    }
+
+    Timer {
+        interval: appSettings.autoRefreshSeconds * 1000
+        running: appSettings.autoRefreshSeconds > 0 && window.currentRoute === "modules-ess" && window.loggedIn
+        repeat: true
+        onTriggered: window.refreshEssSummary()
     }
 
     Timer {
@@ -570,6 +603,29 @@ ApplicationWindow {
     }
 
     Connections {
+        target: essClient
+        function onSecretsLoaded(list, total) {
+            window.essSecretCount = total
+            // Ninety days, because that is the interval most rotation policies are written around;
+            // a secret older than that is one nobody has got to yet.
+            const horizon = Date.now() - 90 * 86400000
+            window.essStaleSecretCount = list.filter(s => {
+                const rotated = new Date(s.rotated)
+                return !isNaN(rotated.getTime()) && rotated.getTime() < horizon
+            }).length
+            const keys = {}
+            for (const secret of list)
+                if (secret.encryptionKeyErn.length > 0) keys[secret.encryptionKeyErn] = true
+            window.essKeyCount = Object.keys(keys).length
+        }
+        function onSecretsFailed(message) {
+            window.essSecretCount = -1
+            window.essStaleSecretCount = -1
+            window.essKeyCount = -1
+        }
+    }
+
+    Connections {
         target: ensClient
         function onTopicsLoaded(list, total) {
             window.ensTopicCount = total
@@ -608,6 +664,10 @@ ApplicationWindow {
                 window.esmServiceCount = value
             else if(name === "esm-service-time")
                 window.esmServiceTime = value
+            else if(name === "ess-service-count")
+                window.essServiceCount = value
+            else if(name === "ess-service-time")
+                window.essServiceTime = value
             else if(name === "eqs-service-count")
                 window.eqsServiceCount = value
             else if(name === "eqs-service-time")
@@ -1502,6 +1562,77 @@ ApplicationWindow {
                         window.selectedBucketName = bucketName
                         window.currentRoute = "modules-esm-objects"
                     }
+                }
+
+                ModulePage {
+                    anchors.fill: parent
+                    visible: window.currentRoute === "modules-ess"
+                    moduleName: "ESS"
+                    loggedIn: window.loggedIn
+                    stats: [
+                        {
+                            title: "Secrets", value: window.essSecretCount < 0 ? "—" : String(window.essSecretCount),
+                            trend: "live", trendUp: true, accent: "#4f8cff", route: "modules-ess-secrets"
+                        },
+                        {
+                            // The one number here that is a question rather than a fact: a value
+                            // nobody has changed has had the longest time to have got out.
+                            title: "Not rotated",
+                            value: window.essStaleSecretCount < 0 ? "—" : String(window.essStaleSecretCount),
+                            trend: "in the last 90 days",
+                            trendUp: window.essStaleSecretCount === 0,
+                            accent: window.essStaleSecretCount > 0 ? "#ffb545" : "#4cd97b",
+                            route: "modules-ess-secrets"
+                        },
+                        {
+                            title: "Encryption Keys", value: window.essKeyCount < 0 ? "—" : String(window.essKeyCount),
+                            trend: "EKM keys in use", trendUp: window.essKeyCount > 0, accent: "#c56bff",
+                            route: "modules-ekm-keys"
+                        },
+                        {
+                            title: "Service Count", value: window.essServiceCount < 0 ? "—" : window.essServiceCount.toFixed(1),
+                            trend: "per flush period", trendUp: true, accent: "#9aa1ac"
+                        },
+                        {
+                            title: "Service Time", value: window.essServiceTime < 0 ? "—" : window.essServiceTime.toFixed(1) + " ms",
+                            trend: "per action", trendUp: true, accent: "#9aa1ac"
+                        }
+                    ]
+                    activity: [
+                        { initials: "SS", avatarColor: "#4f8cff", title: "Values are encrypted under an EKM key", subtitle: "keys · ekm", time: "—" },
+                        { initials: "SS", avatarColor: "#4cd97b", title: "A value leaves euclid through get-secret alone", subtitle: "every read is logged", time: "—" },
+                        { initials: "SS", avatarColor: "#ffb545", title: "An application reaches only the secrets it was granted", subtitle: "access · eam", time: "—" }
+                    ]
+                    onNavigate: (route) => {
+                        window.selectedSecretErn = ""
+                        window.selectedSecretName = ""
+                        window.currentRoute = route
+                    }
+                }
+
+                // ESS
+                EssSecretsPage {
+                    anchors.fill: parent
+                    visible: window.currentRoute === "modules-ess-secrets"
+                    loggedIn: window.loggedIn
+                    namespaceName: window.currentNamespace
+                    onBack: window.currentRoute = "modules-ess"
+                    onOpenSecretDetails: (secretErn, secretName, details) => {
+                        window.selectedSecretErn = secretErn
+                        window.selectedSecretName = secretName
+                        window.selectedSecretDetails = details
+                        window.currentRoute = "modules-ess-secret-details"
+                    }
+                }
+                EssSecretDetailsPage {
+                    anchors.fill: parent
+                    visible: window.currentRoute === "modules-ess-secret-details"
+                    loggedIn: window.loggedIn
+                    namespaceName: window.currentNamespace
+                    secretErn: window.selectedSecretErn
+                    secretName: window.selectedSecretName
+                    details: window.selectedSecretDetails
+                    onBack: window.currentRoute = "modules-ess-secrets"
                 }
 
                 ModulePage {

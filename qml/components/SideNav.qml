@@ -155,6 +155,11 @@ Rectangle {
                         onClicked: root.navigate("modules-esm")
                     }
                     SubNavButton {
+                        label: "ESS (Secrets)"
+                        selected: root.currentRoute.indexOf("modules-ess") === 0
+                        onClicked: root.navigate("modules-ess")
+                    }
+                    SubNavButton {
                         label: "ETS (Transfer)"
                         selected: root.currentRoute.indexOf("modules-ets") === 0
                         onClicked: root.navigate("modules-ets")
