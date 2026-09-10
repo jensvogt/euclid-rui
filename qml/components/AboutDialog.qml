@@ -61,8 +61,8 @@ Dialog {
         Text {
             width: parent.width
             text: "Desktop client for the euclid backend - accounts and access (EAM), storage (ESM), queues "
-                  + "(EQS), notifications (ENS), keys (EKM), secrets (ESS), transfer servers (ETS) and "
-                  + "applications (EAP)."
+                  + "(EQS), notifications (ENS), keys (EKM), key/value tables (EKV), secrets (ESS), "
+                  + "transfer servers (ETS) and applications (EAP)."
             color: "#c4c9d1"
             font.pixelSize: 12
             wrapMode: Text.WordWrap

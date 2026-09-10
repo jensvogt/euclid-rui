@@ -61,6 +61,7 @@ qt_add_executable(euclid-rui main.cpp
         client/EagClient.h client/EagClient.cpp
         client/EnsClient.h client/EnsClient.cpp
         client/EkmClient.h client/EkmClient.cpp
+        client/EkvClient.h client/EkvClient.cpp
         client/EmoClient.h client/EmoClient.cpp
 )
 
@@ -98,6 +99,8 @@ qt_add_qml_module(euclid-rui
         qml/pages/EsmObjectsPage.qml
         qml/pages/EssSecretsPage.qml
         qml/pages/EssSecretDetailsPage.qml
+        qml/pages/EkvTablesPage.qml
+        qml/pages/EkvTableDetailsPage.qml
         qml/pages/EapApplicationsPage.qml
         qml/pages/EapApplicationDetailsPage.qml
         qml/pages/EtsServersPage.qml
