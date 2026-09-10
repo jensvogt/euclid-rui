@@ -36,6 +36,10 @@ void EqsClient::fetchQueues(const QString &prefix, const int pageIndex, const in
                  entry["maxMessageLength"] = queue.value("maxMessageLength").toInt();
                  entry["maxReceiveCount"] = queue.value("maxReceiveCount").toInt();
                  entry["deadLetterQueueArn"] = queue.value("deadLetterQueueArn").toString();
+                 // "AVAILABLE" or "STOPPED". A stopped queue looks exactly like a working one from
+                 // its counts - it goes on accepting sends and simply hands nothing out - so this
+                 // is the only field that says why nothing is consuming it.
+                 entry["status"] = queue.value("status").toString();
                  // Only ever true in a listing an administrator asked to include them in, so a row
                  // can be marked as euclid's own rather than sitting unexplained among the user's.
                  entry["internal"] = queue.value("internal").toBool();
@@ -95,6 +99,36 @@ void EqsClient::deleteQueue(const QString &queueErn) {
          },
          [this](const QString &message) {
              emit queuesFailed(message);
+         });
+}
+
+void EqsClient::stopQueue(const QString &queueErn) {
+    QJsonObject body;
+    body["ern"] = queueErn;
+
+    m_base->post("eqs", "stop-queue", body, true,
+         [this, queueErn](const QJsonObject &response) {
+             // The status the server recorded, not the one that was asked for - they are the same
+             // today, and reading it back is what keeps that from being an assumption.
+             emit queueStatusChanged(queueErn, response.value("status").toString());
+             emit queuesReload();
+         },
+         [this](const QString &message) {
+             emit queueStatusFailed(message);
+         });
+}
+
+void EqsClient::startQueue(const QString &queueErn) {
+    QJsonObject body;
+    body["ern"] = queueErn;
+
+    m_base->post("eqs", "start-queue", body, true,
+         [this, queueErn](const QJsonObject &response) {
+             emit queueStatusChanged(queueErn, response.value("status").toString());
+             emit queuesReload();
+         },
+         [this](const QString &message) {
+             emit queueStatusFailed(message);
          });
 }
 
