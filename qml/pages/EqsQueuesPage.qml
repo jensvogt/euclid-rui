@@ -52,11 +52,28 @@ Item {
             { title: "Delayed", key: "delayed" },
             { title: "Invisible", key: "invisible" },
             { title: "Size", key: "size", formatter: function (v) { return SizeFormat.format(v) } },
+            {
+                // A stopped queue is invisible in every other column: it goes on accepting sends
+                // and its counts go on climbing, it just hands nothing out. Without this the row
+                // that nothing is consuming looks exactly like the ones that are working.
+                title: "State",
+                key: "status",
+                formatter: function (v) { return root.isStopped({ status: v }) ? "STOPPED" : "AVAILABLE" },
+                colorFor: function (v) { return root.isStopped({ status: v }) ? "#ffb545" : "#4cd97b" }
+            },
             { title: "Created", key: "created", formatter: function (v) { return DateFormat.format(v) } },
             { title: "Modified", key: "modified", formatter: function (v) { return DateFormat.format(v) } },
             { title: "Ern", key: "ern", hidden: true }
         ]
         return cols
+    }
+
+    // A queue that has been taken out of service. Anything that is not "STOPPED" reads as running,
+    // including a listing from a server old enough not to send the field at all - which is the safe
+    // way round: it offers "Stop", which the server can answer, rather than "Start" on a queue that
+    // was never stopped.
+    function isStopped(row) {
+        return !!row && String(row.status) === "STOPPED"
     }
 
     // Whether something feeds this queue, which is the only sense in which a queue "is" a dead
@@ -134,6 +151,18 @@ Item {
                              + (note && note.length > 0 ? " " + note : "")
         }
         function onDlqRedriveFailed(message) {
+            root.error = message
+        }
+        function onQueueStatusChanged(queueErn, status) {
+            const name = root.queueNameForErn(queueErn)
+            // Said in full because "stopped" is narrower than it reads: what stops is consumption,
+            // and a queue nobody is draining goes on growing.
+            root.actionNote = status === "STOPPED"
+                ? "Queue '" + name + "' stopped: receives are refused from now on. Sends still land, and "
+                  + "messages already in flight are left to their consumers."
+                : "Queue '" + name + "' started: consumers can receive from it again."
+        }
+        function onQueueStatusFailed(message) {
             root.error = message
         }
 
@@ -435,6 +464,25 @@ Item {
                         },
                         action: function(row) {
                             eqsClient.purgeQueue(row.ern)
+                        }
+                    },
+                    {
+                        // Two entries rather than one that changes its meaning with the row under
+                        // the cursor: each is greyed out when the queue is already in that state,
+                        // which also says which state it is in before anything is clicked.
+                        text: "Stop",
+                        enabled: function(row) { return !root.isStopped(row) },
+                        action: function(row) {
+                            root.actionNote = ""
+                            eqsClient.stopQueue(row.ern)
+                        }
+                    },
+                    {
+                        text: "Start",
+                        enabled: function(row) { return root.isStopped(row) },
+                        action: function(row) {
+                            root.actionNote = ""
+                            eqsClient.startQueue(row.ern)
                         }
                     },
                     {

@@ -28,6 +28,10 @@ void EnsClient::fetchTopics(const QString &prefix, const int pageIndex, const in
                  entry["size"] = topic.value("size").toInteger();
                  entry["messages"] = topic.value("messages").toInteger();
                  entry["maxMessageLength"] = topic.value("maxMessageLength").toInt();
+                 // "RUNNING" or "STOPPED". A stopped topic is invisible in every other field - it
+                 // goes on accepting publishes and its message count goes on climbing - so this is
+                 // the only one that says why the subscriptions have gone quiet.
+                 entry["status"] = topic.value("status").toString();
                  entry["tags"] = topic.value("tags").toObject().toVariantMap();
                  entry["created"] = topic.value("created").toString();
                  entry["modified"] = topic.value("modified").toString();
@@ -67,6 +71,46 @@ void EnsClient::purgeTopic(const QString &topicErn) {
          [this](const QString &message) {
              emit topicsFailed(message);
          });
+}
+
+void EnsClient::stopTopic(const QString &topicErn) {
+    QJsonObject body;
+    body["ern"] = topicErn;
+
+    m_base->post("ens", "stop-topic", body, true,
+         [this, topicErn](const QJsonObject &response) {
+             emit topicDeliveryChanged(topicErn, response.value("status").toString(),
+                                       response.value("released").toInt());
+             // What published from here on is held rather than delivered, which is a message state
+             // the messages list shows - so it is worth re-reading even though nothing moved yet.
+             emit messagesReload(topicErn);
+             emit topicsReload();
+         },
+         [this](const QString &message) {
+             emit topicDeliveryFailed(message);
+         });
+}
+
+void EnsClient::startTopic(const QString &topicErn) {
+    QJsonObject body;
+    body["ern"] = topicErn;
+
+    // Two minutes rather than the usual fifteen seconds: the server delivers the held backlog
+    // inside this request, a page of 500 at a time, and a fortnight of traffic through a fan-out
+    // is not something that finishes in fifteen. Timing out here would report a failure for work
+    // that is still running and will finish - and a start that was interrupted has delivered a
+    // prefix of the backlog, so running it again picks up where it stopped rather than resending.
+    m_base->post("ens", "start-topic", body, true,
+         [this, topicErn](const QJsonObject &response) {
+             emit topicDeliveryChanged(topicErn, response.value("status").toString(),
+                                       response.value("released").toInt());
+             emit messagesReload(topicErn);
+             emit topicsReload();
+         },
+         [this](const QString &message) {
+             emit topicDeliveryFailed(message);
+         },
+         120000);
 }
 
 void EnsClient::deleteTopic(const QString &topicErn) {

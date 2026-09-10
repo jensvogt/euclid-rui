@@ -44,6 +44,15 @@ Item {
         root.details = Object.assign({}, root.details, { tags: tags })
     }
 
+    function setStatusLocally(status) {
+        root.details = Object.assign({}, root.details, { status: status })
+    }
+
+    // Anything that is not "STOPPED" reads as running, including a snapshot from a server old
+    // enough not to carry the field: that way round the page offers "Stop", which the server can
+    // answer, rather than "Start" on a queue that was never stopped.
+    readonly property bool stopped: String(root.detail("status", "AVAILABLE")) === "STOPPED"
+
     Connections {
         target: eqsClient
         function onQueueTagAdded(queueErn, key, value) {
@@ -59,6 +68,19 @@ Item {
         function onQueueTagDeleted(queueErn, key) {
             if (queueErn !== root.queueErn) return
             root.removeTagLocally(key)
+        }
+        function onQueueStatusChanged(queueErn, status) {
+            if (queueErn !== root.queueErn) return
+            root.setStatusLocally(status)
+            // Said in full because "stopped" is narrower than it reads: what stops is consumption,
+            // and a queue nobody is draining goes on growing.
+            root.statusNote = status === "STOPPED"
+                ? "Stopped: receives are refused from now on. Sends still land, and messages already "
+                  + "in flight are left to their consumers."
+                : "Started: consumers can receive from this queue again."
+        }
+        function onQueueStatusFailed(message) {
+            root.statusNote = message
         }
         // "create-queue" is the queues page's signal as much as this dialog's, so only a save
         // started here is acted on.
@@ -86,8 +108,14 @@ Item {
     // What the last "+ Dead Letter Queue" did, kept on screen because the created queue is not
     // linked to this one and that is the part worth not forgetting.
     property string dlqNote: ""
+    // What the last Stop or Start did, and why it may not look like it did anything: the counts on
+    // this page do not change when a queue is taken out of service.
+    property string statusNote: ""
 
-    onQueueErnChanged: root.dlqNote = ""
+    onQueueErnChanged: {
+        root.dlqNote = ""
+        root.statusNote = ""
+    }
 
     ScrollView {
         anchors.fill: parent
@@ -120,6 +148,20 @@ Item {
                     anchors.verticalCenter: sectionHeader.verticalCenter
                     spacing: 8
 
+                    // One button rather than the row menu's pair: here there is one queue and its
+                    // state is on the page, so what the button would do is never in question.
+                    Button {
+                        text: root.stopped ? "Start" : "Stop"
+                        flat: true
+                        Material.theme: Material.Dark
+                        Material.accent: root.stopped ? "#4cd97b" : "#ffb545"
+                        onClicked: {
+                            root.statusNote = ""
+                            if (root.stopped) eqsClient.startQueue(root.queueErn)
+                            else eqsClient.stopQueue(root.queueErn)
+                        }
+                    }
+
                     Button {
                         text: "- Purge"
                         flat: true
@@ -150,6 +192,24 @@ Item {
                 StatCard { title: "Delayed"; value: String(root.delayed); trend: "messages (approx.)"; trendUp: root.delayed === 0; accent: "#ffb545" }
                 StatCard { title: "Invisible"; value: String(root.invisible); trend: "messages (approx.)"; trendUp: root.invisible === 0; accent: "#4f8cff" }
                 StatCard { title: "Size"; value: SizeFormat.format(root.detail("size", 0)); trend: "on disk (approx.)"; trendUp: true; accent: "#c56bff" }
+                StatCard {
+                    // Not approximate, and not visible in any of the counts beside it: a stopped
+                    // queue goes on accepting sends and simply hands nothing out.
+                    title: "State"
+                    value: root.stopped ? "STOPPED" : "AVAILABLE"
+                    trend: root.stopped ? "receives refused" : "consumers can receive"
+                    trendUp: !root.stopped
+                    accent: root.stopped ? "#ffb545" : "#4cd97b"
+                }
+            }
+
+            Text {
+                width: parent.width
+                wrapMode: Text.WordWrap
+                color: "#9aa1ac"
+                font.pixelSize: 12
+                visible: root.statusNote.length > 0
+                text: root.statusNote
             }
 
             Rectangle {

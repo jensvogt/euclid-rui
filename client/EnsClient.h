@@ -21,6 +21,14 @@ public:
     Q_INVOKABLE void createTopic(const QString &name, int maxMessageLength = 1048576);
     Q_INVOKABLE void purgeTopic(const QString &topicErn);
     Q_INVOKABLE void deleteTopic(const QString &topicErn);
+
+    // Stops and resumes delivery. Not the same trade EQS's stop-queue makes, and worth being exact
+    // about: a stopped topic still accepts publishes, but each message is kept as "HELD" instead of
+    // being fanned out to the subscriptions. Starting it delivers the whole backlog, oldest first,
+    // and answers with how many went - so a start is a burst of traffic through every subscription,
+    // not a switch being flipped back.
+    Q_INVOKABLE void stopTopic(const QString &topicErn);
+    Q_INVOKABLE void startTopic(const QString &topicErn);
     // Upserts the tag unconditionally (unlike set-topic-tag, this doesn't require the key to
     // already exist), matching an "Add" button's semantics.
     Q_INVOKABLE void addTopicTag(const QString &topicErn, const QString &key, const QString &value);
@@ -45,6 +53,11 @@ signals:
     void topicsReload();
     void topicCreated(const QString &name);
     void topicCreateFailed(const QString &message);
+    // The state the server recorded - "RUNNING" or "STOPPED", the same words the listing uses - and,
+    // for a start, how many held messages it delivered on the way. Always 0 for a stop, which
+    // releases nothing.
+    void topicDeliveryChanged(const QString &topicErn, const QString &status, int released);
+    void topicDeliveryFailed(const QString &message);
     void topicTagAdded(const QString &topicErn, const QString &key, const QString &value);
     void topicTagAddFailed(const QString &message);
     void topicTagDeleted(const QString &topicErn, const QString &key);

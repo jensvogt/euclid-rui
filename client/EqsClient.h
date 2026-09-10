@@ -38,6 +38,14 @@ public:
     Q_INVOKABLE void purgeQueue(const QString &queueErn);
     Q_INVOKABLE void deleteQueue(const QString &queueErn);
 
+    // Takes a queue out of service and puts it back. What "stopped" means is narrower than it
+    // sounds and is worth being exact about: "receive-messages" is refused with a 409, and nothing
+    // else is. Sends still land, so a stopped queue goes on filling up; messages already in flight
+    // are left alone, because a consumer that took one before the stop is still entitled to finish
+    // with it. Nothing is lost either way - the queue keeps everything it holds.
+    Q_INVOKABLE void stopQueue(const QString &queueErn);
+    Q_INVOKABLE void startQueue(const QString &queueErn);
+
     // Moves everything in a dead letter queue back to the queue it came from. Nothing on a queue
     // records that it *is* a dead letter queue - the relationship is only ever written by the
     // queues naming it - so the server answers "not a dead letter queue" for an ordinary one.
@@ -78,6 +86,9 @@ signals:
     void dlqRedriveFailed(const QString &message);
     void queuesFailed(const QString &message);
     void queuesReload();
+    // "AVAILABLE" or "STOPPED", as the server recorded it - not as the caller asked for it.
+    void queueStatusChanged(const QString &queueErn, const QString &status);
+    void queueStatusFailed(const QString &message);
     void queueCreated(const QString &name);
     void queueCreateFailed(const QString &message);
     void queueTagAdded(const QString &queueErn, const QString &key, const QString &value);

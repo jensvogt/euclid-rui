@@ -46,6 +46,22 @@ Item {
 
     readonly property int messages: Number(detail("messages", 0))
 
+    // What the last Stop or Start did. Kept because the state alone does not say it: a start
+    // delivers the whole backlog, and how many messages that was is not something the page can
+    // re-derive afterwards.
+    property string deliveryNote: ""
+
+    // Anything that is not "STOPPED" reads as running, including a snapshot from a server old
+    // enough not to carry the field: that way round the page offers "Stop delivery", which the
+    // server can answer, rather than "Start" on a topic that was never stopped.
+    readonly property bool stopped: String(root.detail("status", "RUNNING")) === "STOPPED"
+
+    // No "get single topic" read is wired up here, so the confirmed change is applied to the local
+    // snapshot instead - the same thing addTagLocally does above, and for the same reason.
+    function setStatusLocally(status) {
+        root.details = Object.assign({}, root.details, { status: status })
+    }
+
     property var subscriptions: []
     property bool subscriptionsLoading: false
     property string subscriptionsError: ""
@@ -64,7 +80,12 @@ Item {
     }
 
     onVisibleChanged: if (visible) refreshSubscriptions()
-    onTopicErnChanged: if (visible) refreshSubscriptions()
+    onTopicErnChanged: {
+        // The note describes the topic that was on screen when it was written, and nothing can
+        // re-derive it for the next one.
+        root.deliveryNote = ""
+        if (visible) refreshSubscriptions()
+    }
 
     Connections {
         target: ensClient
@@ -88,6 +109,22 @@ Item {
         function onSubscriptionCreateFailed(message) {
             addSubscriptionDialog.subscribing = false
             addSubscriptionDialog.errorText = message
+        }
+        function onTopicDeliveryChanged(topicErn, status, released) {
+            if (topicErn !== root.topicErn) return
+            root.setStatusLocally(status)
+            if (status === "STOPPED") {
+                root.deliveryNote = "Delivery stopped. Publishing still works - each message is held until this "
+                                    + "topic is started again, and nothing already delivered comes back."
+                return
+            }
+            root.deliveryNote = released > 0
+                ? "Delivery started: " + released + " held message(s) went out to the subscriptions below, "
+                  + "oldest first."
+                : "Delivery started. Nothing was held, so nothing went out."
+        }
+        function onTopicDeliveryFailed(message) {
+            root.deliveryNote = message
         }
         function onTopicTagAdded(topicErn, key, value) {
             if (topicErn !== root.topicErn) return
@@ -390,6 +427,20 @@ Item {
                     anchors.verticalCenter: sectionHeader.verticalCenter
                     spacing: 8
 
+                    // One button rather than the row menu's pair: here there is one topic and its
+                    // state is on the page, so what the button would do is never in question.
+                    Button {
+                        text: root.stopped ? "Start delivery" : "Stop delivery"
+                        flat: true
+                        Material.theme: Material.Dark
+                        Material.accent: root.stopped ? "#4cd97b" : "#ffb545"
+                        onClicked: {
+                            root.deliveryNote = ""
+                            if (root.stopped) ensClient.startTopic(root.topicErn)
+                            else ensClient.stopTopic(root.topicErn)
+                        }
+                    }
+
                     Button {
                         text: "- Purge"
                         flat: true
@@ -415,6 +466,24 @@ Item {
 
                 StatCard { title: "Messages"; value: String(root.messages); trend: "published"; trendUp: true; accent: "#4cd97b" }
                 StatCard { title: "Size"; value: SizeFormat.format(root.detail("size", 0)); trend: "on disk"; trendUp: true; accent: "#c56bff" }
+                StatCard {
+                    // Not visible in either card beside it: a stopped topic goes on accepting
+                    // publishes, and its message count goes on climbing while nothing is delivered.
+                    title: "State"
+                    value: root.stopped ? "STOPPED" : "RUNNING"
+                    trend: root.stopped ? "publishes are held" : "delivering to subscriptions"
+                    trendUp: !root.stopped
+                    accent: root.stopped ? "#ffb545" : "#4cd97b"
+                }
+            }
+
+            Text {
+                width: parent.width
+                wrapMode: Text.WordWrap
+                color: "#9aa1ac"
+                font.pixelSize: 12
+                visible: root.deliveryNote.length > 0
+                text: root.deliveryNote
             }
 
             Rectangle {

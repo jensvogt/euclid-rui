@@ -20,11 +20,25 @@ Item {
     property string error: ""
     property string lastUpdatedText: "—"
 
+    // What the last Stop or Start did. Kept next to the table because nothing in the table itself
+    // changes: a topic's rows say how many messages it holds, and stopping delivery does not move
+    // one - it only stops them being fanned out.
+    property string actionNote: ""
+
     readonly property var columns: {
         let cols = [
             { title: "Name", key: "name", fill: true },
             { title: "Messages", key: "messages" },
             { title: "Size", key: "size", formatter: function (v) { return SizeFormat.format(v) } },
+            {
+                // A stopped topic is invisible in every other column: it goes on accepting
+                // publishes and its message count goes on climbing, the messages just sit there
+                // held instead of being fanned out.
+                title: "State",
+                key: "status",
+                formatter: function (v) { return root.isStopped({ status: v }) ? "STOPPED" : "RUNNING" },
+                colorFor: function (v) { return root.isStopped({ status: v }) ? "#ffb545" : "#4cd97b" }
+            },
             { title: "Created", key: "created", formatter: function (v) { return DateFormat.format(v) } },
             { title: "Modified", key: "modified", formatter: function (v) { return DateFormat.format(v) } },
             { title: "Ern", key: "ern", hidden: true }
@@ -35,6 +49,23 @@ Item {
     signal back()
     signal openTopic(string topicErn, string topicName)
     signal openTopicDetails(string topicErn, string topicName, var details)
+
+    // A topic that is holding what is published to it instead of delivering it. Anything that is not
+    // "STOPPED" reads as running, including a listing from a server old enough not to send the field
+    // at all - which is the safe way round: it offers "Stop delivery", which the server can answer,
+    // rather than "Start" on a topic that was never stopped.
+    function isStopped(row) {
+        return !!row && String(row.status) === "STOPPED"
+    }
+
+    // The topic's name if it is on this page, and the tail of the ERN otherwise - which is the name
+    // anyway, since that is what an ERN ends with.
+    function topicNameForErn(ern) {
+        const row = root.topics.find(t => t.ern === ern)
+        if (row) return row.name
+        const parts = String(ern).split(":")
+        return parts.length > 0 ? parts[parts.length - 1] : ern
+    }
 
     function refresh() {
         if (!root.loggedIn) {
@@ -85,6 +116,21 @@ Item {
         function onTopicCreateFailed(message) {
             createTopicDialog.creating = false
             createTopicDialog.errorText = message
+        }
+        function onTopicDeliveryChanged(topicErn, status, released) {
+            const name = root.topicNameForErn(topicErn)
+            if (status === "STOPPED") {
+                root.actionNote = "Delivery stopped for '" + name + "'. Publishing still works - each message is "
+                                  + "held until the topic is started again, and nothing already delivered comes back."
+                return
+            }
+            root.actionNote = released > 0
+                ? "Delivery started for '" + name + "': " + released + " held message(s) went out to its "
+                  + "subscriptions, oldest first."
+                : "Delivery started for '" + name + "'. Nothing was held, so nothing went out."
+        }
+        function onTopicDeliveryFailed(message) {
+            root.error = message
         }
     }
 
@@ -291,12 +337,40 @@ Item {
                         }
                     },
                     {
+                        // Two entries rather than one that changes its meaning with the row under
+                        // the cursor: each is greyed out when the topic is already in that state,
+                        // which also says which state it is in before anything is clicked.
+                        text: "Stop delivery",
+                        enabled: function(row) { return !root.isStopped(row) },
+                        action: function(row) {
+                            root.actionNote = ""
+                            ensClient.stopTopic(row.ern)
+                        }
+                    },
+                    {
+                        text: "Start delivery",
+                        enabled: function(row) { return root.isStopped(row) },
+                        action: function(row) {
+                            root.actionNote = ""
+                            ensClient.startTopic(row.ern)
+                        }
+                    },
+                    {
                         text: "Delete",
                         action: function(row) {
                             ensClient.deleteTopic(row.ern)
                         }
                     }
                 ]
+            }
+
+            Text {
+                width: parent.width
+                wrapMode: Text.WordWrap
+                color: "#4cd97b"
+                font.pixelSize: 12
+                visible: root.actionNote.length > 0
+                text: root.actionNote
             }
         }
     }
