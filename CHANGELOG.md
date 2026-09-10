@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.1](https://github.com/jensvogt/euclid-rui/compare/1.1.0...v1.1.1) (2026-09-10)
+
+
+### Bug Fixes
+
+* add ENS topic start/stop, ENS topic retention ([49efb53](https://github.com/jensvogt/euclid-rui/commit/49efb538e4d8c032b5074cb1b7cc6a288a0a12c0))
+
 ## [1.1.0](https://github.com/jensvogt/euclid-rui/compare/1.0.36...v1.1.0) (2026-09-10)
 
 
