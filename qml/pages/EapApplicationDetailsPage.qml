@@ -175,7 +175,9 @@ Item {
         eapClient.updateApplication(root.applicationId, { environment: environment })
     }
 
-    function addEnvironmentVariable(name, value) {
+    // Adding and changing are the same write: the map is sent whole either way, and a name that is
+    // already in it takes the new value.
+    function setEnvironmentVariable(name, value) {
         const environment = Object.assign({}, root.detail("environment", ({})))
         environment[name] = value
         root.setEnvironment(environment)
@@ -497,7 +499,7 @@ Item {
                             Material.theme: Material.Dark
                             Material.accent: "#4f8cff"
                             enabled: !root.savingEnvironment
-                            onClicked: environmentDialog.open()
+                            onClicked: environmentDialog.openFor("", "")
                         }
                     }
 
@@ -541,8 +543,25 @@ Item {
                                 color: "#c4c9d1"
                                 font.pixelSize: 12
                                 elide: Text.ElideRight
-                                width: environmentRow.width - Math.min(260, environmentRow.width * 0.35) - 90
+                                width: environmentRow.width - Math.min(260, environmentRow.width * 0.35) - 140
                                 anchors.verticalCenter: parent.verticalCenter
+                            }
+                            Text {
+                                text: "Edit"
+                                color: editVariableArea.containsMouse ? "#4f8cff" : "#9aa1ac"
+                                font.pixelSize: 11
+                                anchors.verticalCenter: parent.verticalCenter
+
+                                MouseArea {
+                                    id: editVariableArea
+                                    anchors.fill: parent
+                                    anchors.margins: -4
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    enabled: !root.savingEnvironment
+                                    onClicked: environmentDialog.openFor(environmentRow.modelData,
+                                        String(root.detail("environment", ({}))[environmentRow.modelData]))
+                                }
                             }
                             Text {
                                 text: "Remove"
@@ -723,6 +742,9 @@ Item {
         standardButtons: Dialog.NoButton
 
         property string errorText: ""
+        // Non-empty while an existing variable is being changed: its name is then fixed. A rename
+        // is a remove plus an add, which is two different maps and not what "edit" means here.
+        property string editingName: ""
 
         background: Rectangle {
             radius: 16
@@ -731,11 +753,17 @@ Item {
             border.width: 1
         }
 
-        onOpened: {
-            variableNameField.text = ""
-            variableValueField.text = ""
+        // Both ways in, the way the attribute dialog on the object page does it: the fields are
+        // assigned rather than bound, so the page's own refresh cannot overwrite what is being
+        // typed. Adding is the same call with an empty name.
+        function openFor(name, value) {
+            environmentDialog.editingName = name
             environmentDialog.errorText = ""
-            variableNameField.forceActiveFocus()
+            environmentDialog.open()
+            variableNameField.text = name
+            variableValueField.text = value
+            if (name.length === 0) variableNameField.forceActiveFocus()
+            else variableValueField.forceActiveFocus()
         }
 
         contentItem: Column {
@@ -745,7 +773,13 @@ Item {
             Column {
                 width: parent.width
                 spacing: 4
-                Text { text: "Add Environment Variable"; color: "white"; font.pixelSize: 18; font.bold: true }
+                Text {
+                    text: environmentDialog.editingName.length > 0 ? "Edit Environment Variable"
+                                                                   : "Add Environment Variable"
+                    color: "white"
+                    font.pixelSize: 18
+                    font.bold: true
+                }
                 Text {
                     text: "Handed to the process on start. Names beginning with EUCLID_ are set by euclid-mgr "
                           + "itself, so one set here under the same name is the one that loses."
@@ -764,6 +798,7 @@ Item {
                     id: variableNameField
                     width: parent.width
                     placeholderText: "e.g. LOG_LEVEL"
+                    enabled: environmentDialog.editingName.length === 0
                     Material.accent: "#4f8cff"
                     selectByMouse: true
                     Keys.onReturnPressed: variableValueField.forceActiveFocus()
@@ -785,7 +820,9 @@ Item {
                 Text {
                     // The map is replaced wholesale, so re-using a name overwrites rather than
                     // duplicating - worth saying, since that is not obvious from a form called "add".
-                    visible: variableNameField.text.trim().length > 0
+                    // Nothing to warn about when editing: overwriting that one value is the point.
+                    visible: environmentDialog.editingName.length === 0
+                             && variableNameField.text.trim().length > 0
                              && root.environmentNames().indexOf(variableNameField.text.trim()) >= 0
                     text: "\"" + variableNameField.text.trim() + "\" is already set; this replaces its value."
                     color: "#ffb545"
@@ -828,7 +865,7 @@ Item {
 
                 Button {
                     id: addVariableButton
-                    text: "Add"
+                    text: environmentDialog.editingName.length > 0 ? "Save" : "Add"
                     highlighted: true
                     anchors.right: parent.right
                     anchors.verticalCenter: parent.verticalCenter
@@ -837,7 +874,7 @@ Item {
                     enabled: !root.savingEnvironment && variableNameField.text.trim().length > 0
                     onClicked: {
                         environmentDialog.errorText = ""
-                        root.addEnvironmentVariable(variableNameField.text.trim(), variableValueField.text)
+                        root.setEnvironmentVariable(variableNameField.text.trim(), variableValueField.text)
                     }
                 }
             }

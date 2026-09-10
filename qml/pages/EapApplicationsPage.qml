@@ -53,19 +53,23 @@ Item {
     signal back()
     signal openApplicationDetails(string applicationId, var details)
 
-    // {name, ern, ...} for every bucket in the namespace. EAP names the bucket by *name* when
-    // creating an application, but an upload needs its ERN, so both are kept.
-    property var bucketChoices: []
+    // Applications are always deployed out of euclid's own "apps" bucket, which is internal: it is
+    // plumbing, not storage anybody put there, and it is hidden from an ordinary bucket listing.
+    // So the dialog neither asks for it nor names it - it deploys there and says nothing.
+    readonly property string applicationsBucket: "apps"
 
-    function bucketErnFor(name) {
-        const bucket = root.bucketChoices.find(b => b.name === name)
-        return bucket ? bucket.ern : ""
-    }
+    // EAP names the bucket by *name* when creating an application, but an upload needs its ERN.
+    // Only ever set from a listing that actually carries the bucket - other pages list buckets
+    // through the same signal, and an ordinary listing leaves the internal ones out, which must
+    // not read as "the bucket is gone".
+    property string applicationsBucketErn: ""
 
     Connections {
         target: esmClient
         function onBucketsLoaded(list, total) {
-            root.bucketChoices = list
+            const apps = list.find(b => b.name === root.applicationsBucket)
+            if (apps)
+                root.applicationsBucketErn = apps.ern
         }
         // The artifact is uploaded first and the application created (or redeployed) once it is
         // actually in the bucket - EAP refuses an artifact it cannot find, so the order matters.
@@ -480,7 +484,7 @@ Item {
             // a list carried by the definition. createApplication() still takes the two lists, so
             // nothing server-side changed and the CLI can still set them.
             eapClient.createApplication(applicationIdField.text.trim(), runtimeCombo.currentText,
-                bucketCombo.currentText, artifactField.text.trim(), userField.text.trim())
+                root.applicationsBucket, artifactField.text.trim(), userField.text.trim())
         }
 
         background: Rectangle {
@@ -493,11 +497,13 @@ Item {
         // ComboBox's currentIndex is set imperatively on open, same as every other dialog here -
         // its own model-populate logic clobbers a binding.
         onOpened: {
-            // The bucket list is the dialog's own: nothing else on this page needs it.
-            esmClient.fetchBuckets("", 0, 100)
+            // Only the deployment bucket, and only for its ERN - which an upload needs and the
+            // dialog cannot ask the user for. "includeInternal" is what makes it answerable at
+            // all; the server honours it for administrators, who are the only ones who may create
+            // an application anyway.
+            esmClient.fetchBuckets(root.applicationsBucket, 0, 10, "name", "asc", true)
             applicationIdField.text = ""
             runtimeCombo.currentIndex = 0
-            bucketCombo.currentIndex = 0
             artifactField.text = ""
             createApplicationDialog.pendingFile = ""
             createApplicationDialog.uploading = false
@@ -519,8 +525,8 @@ Item {
                 spacing: 4
                 Text { text: "Add Application"; color: "white"; font.pixelSize: 18; font.bold: true }
                 Text {
-                    text: "Admin only. Created stopped - start it afterwards. The artifact is either already in "
-                          + "the bucket or uploaded from here as part of creating the application."
+                    text: "Admin only. Created stopped - start it afterwards. The artifact is either one "
+                          + "deployed before or uploaded from here as part of creating the application."
                     color: "#9aa1ac"
                     font.pixelSize: 12
                     wrapMode: Text.WordWrap
@@ -538,7 +544,7 @@ Item {
                     placeholderText: "e.g. inbox"
                     Material.accent: "#4f8cff"
                     selectByMouse: true
-                    Keys.onReturnPressed: bucketField.forceActiveFocus()
+                    Keys.onReturnPressed: artifactField.forceActiveFocus()
                 }
             }
 
@@ -553,28 +559,6 @@ Item {
                     model: [ "JAVA", "PYTHON", "NODEJS", "BINARY" ]
                     Material.theme: Material.Dark
                     Material.accent: "#4f8cff"
-                }
-            }
-
-            Column {
-                id: bucketColumn
-                width: parent.width
-                spacing: 6
-                Text { text: "Bucket"; color: "#9aa1ac"; font.pixelSize: 12 }
-                ComboBox {
-                    id: bucketCombo
-                    width: bucketColumn.width
-                    model: root.bucketChoices.map(b => b.name)
-                    Material.theme: Material.Dark
-                    Material.accent: "#4f8cff"
-                }
-                Text {
-                    text: root.bucketChoices.length === 0 ? "Loading buckets…"
-                          : "Where the artifact lives; the application is materialised out of it on start."
-                    color: "#6b7280"
-                    font.pixelSize: 11
-                    wrapMode: Text.WordWrap
-                    width: parent.width
                 }
             }
 
@@ -608,11 +592,11 @@ Item {
                 }
 
                 Text {
-                    // Two ways in: name an object already in the bucket, or pick a file and let
-                    // this upload it under that key first.
+                    // Two ways in: name an artifact that was deployed before, or pick a file and
+                    // let this upload it under that key first.
                     text: createApplicationDialog.pendingFile.toString().length > 0
-                          ? "Will be uploaded to \"" + bucketCombo.currentText + "\" as this key when you press Create."
-                          : "An object already in the bucket, or pick a file to upload."
+                          ? "Will be uploaded under this key when you press Create."
+                          : "An artifact deployed here before, or pick a file to upload."
                     color: createApplicationDialog.pendingFile.toString().length > 0 ? "#4f8cff" : "#6b7280"
                     font.pixelSize: 11
                     wrapMode: Text.WordWrap
@@ -692,13 +676,24 @@ Item {
                     Material.theme: Material.Dark
                     Material.accent: "#4f8cff"
                     enabled: !createApplicationDialog.creating && applicationIdField.text.trim().length > 0
-                             && bucketCombo.currentText.length > 0 && artifactField.text.trim().length > 0
+                             && artifactField.text.trim().length > 0
                     onClicked: {
                         createApplicationDialog.errorText = ""
                         createApplicationDialog.creating = true
                         if (createApplicationDialog.pendingFile.toString().length > 0) {
+                            // Naming an artifact that is already there needs no ERN, so this is the
+                            // only path that can be held up by not knowing it - say which bucket in
+                            // that one case, because it is the one time an operator has to go and
+                            // look at the installation itself.
+                            if (root.applicationsBucketErn.length === 0) {
+                                createApplicationDialog.creating = false
+                                createApplicationDialog.errorText = "Cannot upload: euclid's \"" + root.applicationsBucket
+                                        + "\" bucket was not found. Create the application from an artifact already "
+                                        + "deployed, or have an administrator check the installation."
+                                return
+                            }
                             createApplicationDialog.uploading = true
-                            esmClient.uploadObject(root.bucketErnFor(bucketCombo.currentText),
+                            esmClient.uploadObject(root.applicationsBucketErn,
                                                    artifactField.text.trim(), createApplicationDialog.pendingFile)
                         } else {
                             createApplicationDialog.submit()

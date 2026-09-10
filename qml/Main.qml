@@ -96,6 +96,16 @@ ApplicationWindow {
     property string selectedSecretName: ""
     property var selectedSecretDetails: ({})
 
+    // EKV. Both counts come off the same listing the tables page reads: a table's item count is
+    // counted server-side when it is asked for, so the module page needs no query of its own - and
+    // the total across the tables is the number that says whether anything is in there at all.
+    property int ekvTableCount: -1
+    property int ekvItemCount: -1
+    property double ekvServiceCount: -1
+    property double ekvServiceTime: -1
+    property string selectedTableName: ""
+    property var selectedTableDetails: ({})
+
     // ENS
     property int ensTopicCount: -1
     property int ensTotalMessages: -1
@@ -191,7 +201,8 @@ ApplicationWindow {
 
     readonly property var moduleRoutes: ({
         "eam": "modules-eam", "eqs": "modules-eqs", "esm": "modules-esm", "ess": "modules-ess",
-        "ekm": "modules-ekm", "ens": "modules-ens", "ets": "modules-ets", "eap": "modules-eap",
+        "ekm": "modules-ekm", "ekv": "modules-ekv", "ens": "modules-ens", "ets": "modules-ets",
+        "eap": "modules-eap",
         // Like EMM below, administrators only - but listed all the same, so typing it says so
         // rather than pretending the module does not exist.
         "eag": "modules-eag",
@@ -259,6 +270,16 @@ ApplicationWindow {
         essClient.fetchSecrets("", 0, 100)
         emoClient.fetchAverage("ess-service-count")
         emoClient.fetchAverage("ess-service-time")
+    }
+
+    function refreshEkvSummary() {
+        if (!window.loggedIn)
+            return
+        // One page of tables, which is where both counts come from: every entry carries its own
+        // item count, so there is nothing else to ask.
+        ekvClient.fetchTables("", 0, 100)
+        emoClient.fetchAverage("ekv-service-count")
+        emoClient.fetchAverage("ekv-service-time")
     }
 
     function refreshEnsSummary() {
@@ -483,6 +504,7 @@ ApplicationWindow {
         if (currentRoute === "modules-eqs") refreshEqsSummary()
         if (currentRoute === "modules-esm") refreshEsmSummary()
         if (currentRoute === "modules-ess") refreshEssSummary()
+        if (currentRoute === "modules-ekv") refreshEkvSummary()
         if (currentRoute === "modules-ens") refreshEnsSummary()
         if (currentRoute === "modules-ekm") refreshEkmSummary()
         if (currentRoute === "modules-ets") refreshEtsSummary()
@@ -494,6 +516,7 @@ ApplicationWindow {
         if (loggedIn && currentRoute === "modules-eqs") refreshEqsSummary()
         if (loggedIn && currentRoute === "modules-esm") refreshEsmSummary()
         if (loggedIn && currentRoute === "modules-ess") refreshEssSummary()
+        if (loggedIn && currentRoute === "modules-ekv") refreshEkvSummary()
         if (loggedIn && currentRoute === "modules-ens") refreshEnsSummary()
         if (loggedIn && currentRoute === "modules-ekm") refreshEkmSummary()
         if (loggedIn && currentRoute === "modules-ets") refreshEtsSummary()
@@ -527,6 +550,13 @@ ApplicationWindow {
         running: appSettings.autoRefreshSeconds > 0 && window.currentRoute === "modules-ess" && window.loggedIn
         repeat: true
         onTriggered: window.refreshEssSummary()
+    }
+
+    Timer {
+        interval: appSettings.autoRefreshSeconds * 1000
+        running: appSettings.autoRefreshSeconds > 0 && window.currentRoute === "modules-ekv" && window.loggedIn
+        repeat: true
+        onTriggered: window.refreshEkvSummary()
     }
 
     Timer {
@@ -626,6 +656,21 @@ ApplicationWindow {
     }
 
     Connections {
+        target: ekvClient
+        function onTablesLoaded(list, total) {
+            window.ekvTableCount = total
+            let sum = 0
+            for (let i = 0; i < list.length; i++)
+                sum += list[i].itemCount
+            window.ekvItemCount = sum
+        }
+        function onTablesFailed(message) {
+            window.ekvTableCount = -1
+            window.ekvItemCount = -1
+        }
+    }
+
+    Connections {
         target: ensClient
         function onTopicsLoaded(list, total) {
             window.ensTopicCount = total
@@ -668,6 +713,10 @@ ApplicationWindow {
                 window.essServiceCount = value
             else if(name === "ess-service-time")
                 window.essServiceTime = value
+            else if(name === "ekv-service-count")
+                window.ekvServiceCount = value
+            else if(name === "ekv-service-time")
+                window.ekvServiceTime = value
             else if(name === "eqs-service-count")
                 window.eqsServiceCount = value
             else if(name === "eqs-service-time")
@@ -1633,6 +1682,65 @@ ApplicationWindow {
                     secretName: window.selectedSecretName
                     details: window.selectedSecretDetails
                     onBack: window.currentRoute = "modules-ess-secrets"
+                }
+
+                ModulePage {
+                    anchors.fill: parent
+                    visible: window.currentRoute === "modules-ekv"
+                    moduleName: "EKV"
+                    loggedIn: window.loggedIn
+                    stats: [
+                        {
+                            title: "Tables", value: window.ekvTableCount < 0 ? "—" : String(window.ekvTableCount),
+                            trend: "live", trendUp: true, accent: "#4f8cff", route: "modules-ekv-tables"
+                        },
+                        {
+                            title: "Items", value: window.ekvItemCount < 0 ? "—" : String(window.ekvItemCount),
+                            trend: "across every table", trendUp: true, accent: "#4cd97b",
+                            route: "modules-ekv-tables"
+                        },
+                        {
+                            title: "Service Count", value: window.ekvServiceCount < 0 ? "—" : window.ekvServiceCount.toFixed(1),
+                            trend: "per flush period", trendUp: true, accent: "#9aa1ac"
+                        },
+                        {
+                            title: "Service Time", value: window.ekvServiceTime < 0 ? "—" : window.ekvServiceTime.toFixed(1) + " ms",
+                            trend: "per action", trendUp: true, accent: "#9aa1ac"
+                        }
+                    ]
+                    activity: [
+                        { initials: "KV", avatarColor: "#4f8cff", title: "An item is found by its partition key", subtitle: "and ordered by a sort key", time: "—" },
+                        { initials: "KV", avatarColor: "#4cd97b", title: "A query reads one partition, a scan reads the table", subtitle: "the first is the cheap one", time: "—" },
+                        { initials: "KV", avatarColor: "#ffb545", title: "Items are JSON, with the types kept", subtitle: "no annotations to write", time: "—" }
+                    ]
+                    onNavigate: (route) => {
+                        window.selectedTableName = ""
+                        window.selectedTableDetails = ({})
+                        window.currentRoute = route
+                    }
+                }
+
+                // EKV
+                EkvTablesPage {
+                    anchors.fill: parent
+                    visible: window.currentRoute === "modules-ekv-tables"
+                    loggedIn: window.loggedIn
+                    namespaceName: window.currentNamespace
+                    onBack: window.currentRoute = "modules-ekv"
+                    onOpenTableDetails: (tableName, details) => {
+                        window.selectedTableName = tableName
+                        window.selectedTableDetails = details
+                        window.currentRoute = "modules-ekv-table-details"
+                    }
+                }
+                EkvTableDetailsPage {
+                    anchors.fill: parent
+                    visible: window.currentRoute === "modules-ekv-table-details"
+                    loggedIn: window.loggedIn
+                    namespaceName: window.currentNamespace
+                    tableName: window.selectedTableName
+                    details: window.selectedTableDetails
+                    onBack: window.currentRoute = "modules-ekv-tables"
                 }
 
                 ModulePage {

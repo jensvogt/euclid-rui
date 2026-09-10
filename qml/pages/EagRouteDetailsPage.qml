@@ -41,10 +41,34 @@ Item {
     property string actionNote: ""
     property string error: ""
 
+    // A route has no port or protocol of its own: those belong to the gateway's listeners, and what
+    // this route is reachable on is whichever of them carry it. Kept apart from root.error - the
+    // route reads fine whether or not the listeners can be asked for.
+    property var listeners: []
+    property string listenersError: ""
+
+    // The rule RouteTable::matchIn applies: a listener bound to a namespace carries that namespace's
+    // routes and those that name none, and one bound to nothing carries every route there is.
+    readonly property var routeListeners: {
+        const routeNamespace = String(root.detail("namespace", ""))
+        return root.listeners.filter(function (listener) {
+            const listenerNamespace = String(listener["namespace"] || "")
+            return listenerNamespace.length === 0 || routeNamespace.length === 0
+                   || listenerNamespace === routeNamespace
+        }).sort((a, b) => Number(a.port) - Number(b.port))
+    }
+
+    readonly property string servedOnText: root.routeListeners.length === 0 ? "—"
+        : root.routeListeners.map(l => String(l.port) + " · " + String(l.protocol).toUpperCase()).join(", ")
+
+    // Configured but not bound: the port was taken, or an HTTPS one's certificate would not load.
+    readonly property bool servedOnBoundPort: root.routeListeners.some(l => l.serving)
+
     function refresh() {
         if (!root.loggedIn || root.routeId.length === 0)
             return
         eagClient.fetchRoute(root.routeId)
+        eagClient.fetchListeners()
     }
 
     onVisibleChanged: if (visible) refresh()
@@ -74,6 +98,14 @@ Item {
         function onRouteDeleted(routeId) {
             // Nothing left to show; the list is where a deleted route's absence makes sense.
             if (routeId === root.routeId) root.back()
+        }
+        function onListenersLoaded(list, total, serving) {
+            root.listenersError = ""
+            root.listeners = list
+        }
+        function onListenersFailed(message) {
+            root.listeners = []
+            root.listenersError = message
         }
     }
 
@@ -144,13 +176,9 @@ Item {
                     trendUp: true
                     accent: root.moduleRoute ? "#c56bff" : "#4f8cff"
                 }
-                StatCard {
-                    title: "Methods"
-                    value: root.methodsText
-                    trend: !root.methods || root.methods.length === 0 ? "every method, now and later" : "only these"
-                    trendUp: true
-                    accent: "#4f8cff"
-                }
+                // No card for the methods: a route naming most of the seven runs the list past the
+                // width of a card, and it is already in the routing tile below, where it has the
+                // room. The cards are for what a route is, not for everything it holds.
                 StatCard {
                     title: "Authentication"
                     value: root.authentication
@@ -243,6 +271,43 @@ Item {
                         }
                         DetailField { width: (routingCol.width - 48) / 3; label: "Methods"; value: root.methodsText }
                         DetailField { width: (routingCol.width - 48) / 3; label: "Authentication"; value: root.authentication }
+                        DetailField {
+                            width: (routingCol.width - 48) / 3
+                            // Port and protocol together: on their own neither says where this path
+                            // is answered, and a gateway with both an HTTP and an HTTPS port answers
+                            // it on both.
+                            label: "Served on"
+                            value: root.servedOnText
+                        }
+                    }
+
+                    Text {
+                        width: parent.width
+                        wrapMode: Text.WordWrap
+                        visible: root.listenersError.length === 0 && root.routeListeners.length === 0
+                        text: "No listener carries this route: the gateway serves no port for its namespace, so the "
+                              + "path is published and nothing can reach it."
+                        color: "#e0a458"
+                        font.pixelSize: 11
+                    }
+
+                    Text {
+                        width: parent.width
+                        wrapMode: Text.WordWrap
+                        visible: root.routeListeners.length > 0 && !root.servedOnBoundPort
+                        text: "⚠ The port this route is served on is configured but not bound - it was taken, or an "
+                              + "HTTPS one's certificate would not load. The listeners page says which."
+                        color: "#e0a458"
+                        font.pixelSize: 11
+                    }
+
+                    Text {
+                        width: parent.width
+                        wrapMode: Text.WordWrap
+                        visible: root.listenersError.length > 0
+                        text: "The gateway's listeners could not be read, so \"Served on\" is empty: " + root.listenersError
+                        color: "#ffb545"
+                        font.pixelSize: 11
                     }
 
                     Text {

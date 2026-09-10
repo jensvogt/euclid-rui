@@ -17,6 +17,10 @@ Item {
     property bool loading: false
     property string error: ""
     property string searchPlaceholder: "Filter by prefix..."
+    // Tables whose query takes no text set this false - EKV's items are one example: a scan takes
+    // a page and a query takes a partition, and neither takes a substring. Refresh stays either
+    // way; it is the box that goes, not the row.
+    property bool searchable: true
     property string lastUpdatedText: "—"
     property bool rowsClickable: false
     property string emptyText: "No results found."
@@ -136,14 +140,18 @@ Item {
             width: parent.width
             spacing: 10
 
-            Row {
+            // Anchored rather than laid out in a row: hiding the search box has to leave the
+            // refresh button where it was, and an invisible item drops out of a Row entirely.
+            Item {
                 width: parent.width
                 height: 40
-                spacing: 10
 
                 TextField {
                     id: searchField
-                    width: parent.width - refreshButton.width - 10
+                    visible: root.searchable
+                    anchors.left: parent.left
+                    anchors.right: refreshButton.left
+                    anchors.rightMargin: 10
                     height: parent.height
                     anchors.verticalCenter: parent.verticalCenter
                     placeholderText: root.searchPlaceholder
@@ -164,6 +172,7 @@ Item {
                     flat: true
                     width: parent.height
                     height: parent.height
+                    anchors.right: parent.right
                     anchors.verticalCenter: parent.verticalCenter
                     Material.theme: Material.Dark
                     onClicked: root.refreshRequested()

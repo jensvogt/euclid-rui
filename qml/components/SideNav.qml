@@ -140,6 +140,11 @@ Rectangle {
                         onClicked: root.navigate("modules-ekm")
                     }
                     SubNavButton {
+                        label: "EKV (Key/Value)"
+                        selected: root.currentRoute.indexOf("modules-ekv") === 0
+                        onClicked: root.navigate("modules-ekv")
+                    }
+                    SubNavButton {
                         label: "ENS (Topics)"
                         selected: root.currentRoute.indexOf("modules-ens") === 0
                         onClicked: root.navigate("modules-ens")

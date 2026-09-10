@@ -43,6 +43,48 @@ Item {
     // exist, so the dialogs offer the list rather than a free-text field that fails on save.
     property var applicationChoices: []
 
+    // The gateway's listeners, which is where a route's port and protocol come from: a route has
+    // neither of its own. EAG binds one listener per euclid.modules.eag.listeners entry and every
+    // listener serves out of the same routing table, so what a route is reachable on is whichever
+    // listeners carry it.
+    property var listeners: []
+    // Kept apart from root.error, the way the instances list is on the application details page: a
+    // routing table that reads fine while the listeners cannot be asked for is still worth showing,
+    // and putting this in the page's error line would make the whole page look broken.
+    property string listenersError: ""
+
+    // Which listeners carry a route, following RouteTable::matchIn: one bound to a namespace serves
+    // that namespace's routes and those that name none, and one bound to nothing serves every route
+    // there is. Port order, because that is how somebody has them in front of them.
+    function listenersFor(row) {
+        if (!row) return []
+        const routeNamespace = String(row["namespace"] || "")
+        return root.listeners.filter(function (listener) {
+            const listenerNamespace = String(listener["namespace"] || "")
+            return listenerNamespace.length === 0 || routeNamespace.length === 0
+                   || listenerNamespace === routeNamespace
+        }).sort((a, b) => Number(a.port) - Number(b.port))
+    }
+
+    function portText(row) {
+        const matched = root.listenersFor(row)
+        return matched.length === 0 ? "—" : matched.map(l => l.port).join(", ")
+    }
+
+    // One entry per distinct protocol rather than one per listener: two HTTP ports carrying the
+    // same route say "HTTP" once, and a route on both an HTTP and an HTTPS port is the case worth
+    // seeing spelled out.
+    function protocolText(row) {
+        const matched = root.listenersFor(row)
+        if (matched.length === 0) return "—"
+        const distinct = []
+        for (const listener of matched) {
+            const protocol = String(listener.protocol).toUpperCase()
+            if (distinct.indexOf(protocol) < 0) distinct.push(protocol)
+        }
+        return distinct.join(", ")
+    }
+
     // Every method the dialogs offer. Empty selection means "all", which is what the server
     // stores - see Entity::EAG::Route::methods.
     readonly property var httpMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]
@@ -71,9 +113,40 @@ Item {
         return row && row.active ? "#4cd97b" : "#9aa1ac"
     }
 
-    readonly property var columns: [
+    readonly property var columns: {
+        // Read so this rebuilds when the listeners arrive. DataTable measures its columns from what
+        // the formatters return at the moment "columns" or "rows" changes, and the two below are
+        // computed from the listeners rather than from the row - without this they would keep the
+        // width of the "—" they were first sized from.
+        root.listeners
+
+        return [
         { title: "Route", key: "routeId", fill: true },
         { title: "Path", key: "path" },
+        {
+            // Derived from the listeners, so there is no field on the row to sort on - and ordering
+            // routes by a port most of them share would say nothing anyway.
+            title: "Port",
+            formatter: function (v, row) { return root.portText(row) },
+            colorFor: function (v, row) {
+                const matched = root.listenersFor(row)
+                if (matched.length === 0) return "#9aa1ac"
+                // Configured but not bound - the port was taken, or its certificate would not load.
+                // The route is published and still unreachable, which is worth the same red the
+                // listeners page gives it.
+                return matched.some(l => l.serving) ? "#c4c9d1" : "#ff4f5e"
+            }
+        },
+        {
+            title: "Protocol",
+            formatter: function (v, row) { return root.protocolText(row) },
+            // Same reading as the listeners page: the plain-text port is the one worth noticing.
+            colorFor: function (v, row) {
+                const matched = root.listenersFor(row)
+                if (matched.length === 0) return "#9aa1ac"
+                return matched.every(l => l.https) ? "#4cd97b" : "#ffb545"
+            }
+        },
         {
             // One column for both kinds: an application pool, or "EAM · login" for a route into
             // euclid itself. Which it is matters more than which field it came from.
@@ -107,7 +180,8 @@ Item {
         { title: "Created", key: "created", formatter: function (v) { return DateFormat.format(v) } },
         { title: "Modified", key: "modified", formatter: function (v) { return DateFormat.format(v) } },
         { title: "Ern", key: "ern", hidden: true }
-    ]
+        ]
+    }
 
     function refresh() {
         if (!root.loggedIn) {
@@ -121,6 +195,10 @@ Item {
         root.loading = true
         root.error = ""
         eagClient.fetchRoutes(root.prefix)
+        // Where the Port and Protocol columns come from. A handful of ports at most, and they only
+        // change when the module restarts, but they are read with the routes rather than once: this
+        // page is open exactly when somebody is asking what is reachable.
+        eagClient.fetchListeners()
         // For the dialogs' application picker; harmless while nothing is open, and it means the
         // list is already there when one is.
         eapClient.fetchApplications("")
@@ -155,6 +233,16 @@ Item {
         }
         function onRoutesReload() {
             root.refresh()
+        }
+        function onListenersLoaded(list, total, serving) {
+            root.listenersError = ""
+            root.listeners = list
+        }
+        function onListenersFailed(message) {
+            // The routing table is still on screen and still correct; only the two columns computed
+            // from the listeners are empty, which is said under the table rather than over it.
+            root.listeners = []
+            root.listenersError = message
         }
         function onRouteCreated(routeId) {
             routeDialog.saving = false
@@ -765,6 +853,16 @@ Item {
                 font.pixelSize: 12
                 visible: root.isAdmin && root.actionNote.length > 0
                 text: root.actionNote
+            }
+
+            Text {
+                width: parent.width
+                wrapMode: Text.WordWrap
+                color: "#ffb545"
+                font.pixelSize: 12
+                visible: root.isAdmin && root.listenersError.length > 0
+                text: "The gateway's listeners could not be read, so Port and Protocol are empty: "
+                      + root.listenersError
             }
         }
     }

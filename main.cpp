@@ -12,6 +12,7 @@
 #include "client/EagClient.h"
 #include "client/EapClient.h"
 #include "client/EkmClient.h"
+#include "client/EkvClient.h"
 #include "client/EmmClient.h"
 #include "client/EmoClient.h"
 #include "client/EnsClient.h"
@@ -59,6 +60,7 @@ int main(int argc, char *argv[]) {
     EssClient essClient(&euclidClient);
     EnsClient ensClient(&euclidClient);
     EkmClient ekmClient(&euclidClient);
+    EkvClient ekvClient(&euclidClient);
     EapClient eapClient(&euclidClient);
     EtsClient etsClient(&euclidClient);
     EagClient eagClient(&euclidClient);
@@ -90,6 +92,7 @@ int main(int argc, char *argv[]) {
     engine.rootContext()->setContextProperty("essClient", &essClient);
     engine.rootContext()->setContextProperty("ensClient", &ensClient);
     engine.rootContext()->setContextProperty("ekmClient", &ekmClient);
+    engine.rootContext()->setContextProperty("ekvClient", &ekvClient);
     engine.rootContext()->setContextProperty("eapClient", &eapClient);
     engine.rootContext()->setContextProperty("etsClient", &etsClient);
     engine.rootContext()->setContextProperty("eagClient", &eagClient);
