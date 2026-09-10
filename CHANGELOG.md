@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.0](https://github.com/jensvogt/euclid-rui/compare/1.0.36...v1.1.0) (2026-09-10)
+
+
+### Features
+
+* add EKV module ([bcc8acb](https://github.com/jensvogt/euclid-rui/commit/bcc8acb742cda1563265e8036f4c1b73e94ea337))
+
 ## [1.0.36](https://github.com/jensvogt/euclid-rui/compare/1.0.35...v1.0.36) (2026-09-08)
 
 
