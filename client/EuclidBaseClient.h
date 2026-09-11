@@ -106,6 +106,10 @@ signals:
     void sessionCleared();
     void loginSucceeded();
     void loginFailed(const QString &message);
+    // The access key the gateway handed back on login, which is the one this session signs with
+    // from here on. Emitted so whoever owns the stored credentials can keep them in step: the key
+    // belongs to the installation just signed into, and the stored one may belong to another.
+    void accessKeyIssued(const QString &accessKeyId, const QString &secretAccessKey);
     void namespacesLoaded(const QStringList &namespaces);
     void namespacesFailed(const QString &message);
 
