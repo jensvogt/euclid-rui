@@ -6,8 +6,23 @@ namespace {
 QVariantMap applicationToMap(const QJsonObject &application) {
     QVariantMap entry;
     entry["applicationId"] = application.value("applicationId").toString();
+    // The name the manager actually runs this application under, which is not the one it is defined
+    // under. An applicationId is unique within (account, namespace); a process pool, an EMM module
+    // row, a data directory, a unix socket, a log channel and the technical principal named after
+    // it are none of them scoped that way, so EAP issues a separate name - the id plus a random
+    // suffix - once, and holds it for the application's whole life. Anything that has to find this
+    // application outside its own definition looks for this, not for applicationId.
+    //
+    // Equal to applicationId on an application deployed before the field existed, which is what
+    // those are still running as.
+    entry["runtimeName"] = application.value("runtimeName").toString();
     entry["ern"] = application.value("ern").toString();
     entry["accountId"] = application.value("accountId").toString();
+    // The other half of what identifies it. Every EAP action resolves an applicationId in the
+    // namespace the request was made in, so this is the current one for anything in a listing -
+    // but it is the definition's own, and it is what says where an application ended up after a
+    // move.
+    entry["namespace"] = application.value("namespace").toString();
     entry["region"] = application.value("region").toString();
     entry["runtime"] = application.value("runtime").toString();
     entry["bucketErn"] = application.value("bucketErn").toString();

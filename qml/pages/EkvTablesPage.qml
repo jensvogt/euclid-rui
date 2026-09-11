@@ -3,7 +3,7 @@ import QtQuick.Controls
 import QtQuick.Controls.Material
 import "../components"
 
-// EKV: the account's tables, and what each of them keys its items on.
+// EKV: the namespace's tables, and what each of them keys its items on.
 //
 // A table is its key schema and nothing else - there are no columns to declare, because an item is
 // arbitrary JSON and two items in the same table need not look alike. What is fixed is how an item
@@ -471,7 +471,8 @@ Item {
                 error: root.error
                 lastUpdatedText: root.lastUpdatedText
                 searchPlaceholder: "Filter by table name prefix..."
-                emptyText: root.prefix.length > 0 ? "No table matches that name." : "No tables in this account."
+                emptyText: root.prefix.length > 0 ? "No table matches that name."
+                                                  : "No tables in the " + root.namespaceName + " namespace."
                 rowsClickable: true
                 sortKey: root.sortColumn
                 sortAscending: root.sortAscending

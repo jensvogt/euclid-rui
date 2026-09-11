@@ -18,7 +18,7 @@ Item {
     property bool savingEnvironment: false
 
     // The processes actually running this application, from EMM rather than EAP: the manager runs
-    // an application as a module pool named after its applicationId, and only that pool knows
+    // an application as a module pool named after its *runtime* name, and only that pool knows
     // which processes exist, what pids they have and which port each was given. EAP's own
     // "instances" is a count and nothing more.
     property var instances: []
@@ -41,8 +41,20 @@ Item {
     readonly property string applicationState: detail("state", "")
     readonly property string desiredState: detail("desiredState", "")
 
-    // An application left unnamed at creation gets a principal of its own, called after it.
-    readonly property bool ownPrincipal: root.detail("userId", "") === "app-" + root.applicationId
+    // What the manager knows this application as, and what everything outside the definition is
+    // named after: the process pool and its EMM module row, the data directory, the socket, the log
+    // channel and the technical principal. Issued once by EAP and held from then on, so it is not
+    // derivable from anything on this page - it has to come off the definition.
+    //
+    // The applicationId is the fallback for an application deployed before the field existed, which
+    // is exactly what those are still running as.
+    readonly property string runtimeName: String(detail("runtimeName", "")).length > 0
+        ? String(detail("runtimeName", "")) : root.applicationId
+
+    // An application left unnamed at creation gets a principal of its own, called after the name it
+    // runs under - EAM user ids are installation-wide, so two namespaces each deploying a "billing"
+    // cannot both be "app-billing".
+    readonly property bool ownPrincipal: root.detail("userId", "") === "app-" + root.runtimeName
 
     function resourceList() {
         return root.detail("resources", [])
@@ -261,9 +273,12 @@ Item {
         function onModulesLoaded(list, total) {
             root.instancesError = ""
             for (const module of list) {
-                // The pool is named after the application, which is how EAP and the manager refer
-                // to the same thing - see the EAG route comment on applicationId.
-                if (module.name !== root.applicationId) continue
+                // By the runtime name, which is what the manager registers the pool as. Module
+                // names are installation-wide and an applicationId is not, so matching on the
+                // applicationId would find nothing for any application deployed since EAP started
+                // issuing runtime names - and would find the *wrong* namespace's pool for one
+                // deployed before, if two namespaces have since come to share an id.
+                if (module.name !== root.runtimeName) continue
                 root.instances = module.instances || []
                 return
             }
@@ -422,6 +437,25 @@ Item {
                         rowSpacing: 16
 
                         DetailField { width: (identityCol.width - 48) / 3; label: "Application ID"; value: root.applicationId }
+                        DetailField {
+                            width: (identityCol.width - 48) / 3
+                            // The one field on this page that an operator takes to a host: the
+                            // module row, the data directory, the socket, the log channel and the
+                            // principal are all called this, and none of them is called the
+                            // applicationId. Copyable for exactly that reason.
+                            label: "Runs as"
+                            value: root.runtimeName
+                            copyable: true
+                        }
+                        DetailField {
+                            width: (identityCol.width - 48) / 3
+                            // Part of what identifies the application, not just where it works: an
+                            // applicationId is unique within a namespace, so the id alone does not
+                            // say which application this is.
+                            label: "Namespace"
+                            value: String(root.detail("namespace", "")).length > 0
+                                   ? root.detail("namespace", "") : "— (account root)"
+                        }
                         DetailField { width: (identityCol.width - 48) / 3; label: "Runtime"; value: root.detail("runtime", "—") }
                         DetailField { width: (identityCol.width - 48) / 3; label: "Artifact"; value: root.detail("artifactKey", "—") }
                         DetailField { width: (identityCol.width - 48) / 3; label: "Version"; value: root.detail("version", "—") }
