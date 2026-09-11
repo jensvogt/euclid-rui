@@ -83,6 +83,19 @@ int main(int argc, char *argv[]) {
     applyCredentials();
     QObject::connect(&appSettings, &AppSettings::credentialsChanged, &euclidClient, applyCredentials);
 
+    // And the other direction, for the one value the gateway issues rather than the operator: the
+    // access key that comes back on login. Stored so the settings page shows the key that is
+    // actually in use, and so the next start signs with it before anyone has logged in - without
+    // this, a RUI pointed at a second installation goes on holding the first one's key, and every
+    // request after a successful login is refused for a signature that cannot match.
+    QObject::connect(&euclidClient, &EuclidBaseClient::accessKeyIssued, &appSettings,
+                     [&appSettings](const QString &accessKeyId, const QString &secretAccessKey) {
+                         if (appSettings.accessKeyId() == accessKeyId && appSettings.secretAccessKey() == secretAccessKey)
+                             return;
+                         appSettings.setAccessKeyId(accessKeyId);
+                         appSettings.setSecretAccessKey(secretAccessKey);
+                     });
+
     QQmlApplicationEngine engine;
     engine.rootContext()->setContextProperty("euclidClient", &euclidClient);
     engine.rootContext()->setContextProperty("eamClient", &eamClient);

@@ -270,6 +270,25 @@ void EuclidBaseClient::login(const QString &userId, const QString &password) {
              m_region = metadata.value("region").toString();
              m_isAdmin = response.value("isAdmin").toBool();
 
+             // The access key the server just handed back for this user, adopted rather than
+             // ignored. Every authorized request is signed with a key; login is the one call that
+             // is not - so a key belonging to some other installation costs nothing until the
+             // moment login succeeds, and then fails every request that follows it. Pointing the
+             // RUI at a second gateway is exactly that case: the key in the settings was typed for
+             // the first one, and the second has never heard of it.
+             //
+             // Stable across logins, so this is not key churn: EAM reuses the user's existing
+             // active key and mints one only when there is none (see EamServer's issueSession).
+             if (const auto accessKeyId = response.value("accessKeyId").toString(),
+                 secretAccessKey = response.value("secretAccessKey").toString();
+                 !accessKeyId.isEmpty() && !secretAccessKey.isEmpty()) {
+                 setAccessKey(accessKeyId, secretAccessKey);
+                 // Said rather than stored here: what is on disk is AppSettings' business, and it
+                 // is the settings page's value that would otherwise go on showing a key this
+                 // session has stopped using.
+                 emit accessKeyIssued(accessKeyId, secretAccessKey);
+             }
+
              emit isAdminChanged();
              emit accountIdChanged();
              emit regionChanged();
