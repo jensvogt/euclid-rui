@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.2](https://github.com/jensvogt/euclid-rui/compare/1.1.1...v1.1.2) (2026-09-11)
+
+
+### Bug Fixes
+
+* full account/namespace scope ([45eb848](https://github.com/jensvogt/euclid-rui/commit/45eb848ce329b8faeca5bb20d91065f0bc7548a6))
+
 ## [1.1.1](https://github.com/jensvogt/euclid-rui/compare/1.1.0...v1.1.1) (2026-09-10)
 
 
