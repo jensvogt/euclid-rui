@@ -27,8 +27,21 @@ Item {
 
     readonly property var columns: [
         { title: "Application ID", key: "applicationId", fill: true },
+        {
+            // What the manager runs each of these as, and the name to look for anywhere outside
+            // EAP: the module row in the EMM list, the data directory, the socket, the log channel
+            // and the technical principal are all called this. An applicationId is unique only
+            // within a namespace and none of those are, so EAP issues this once - the id plus a
+            // random suffix - and holds it for the application's life.
+            title: "Runtime name",
+            key: "runtimeName",
+            // Dimmed where it adds nothing: an application deployed before runtime names existed
+            // runs under its bare id, and this column simply repeats the first one for it.
+            colorFor: function (v, row) {
+                return row && String(v) === String(row.applicationId) ? "#6b7280" : "#c4c9d1"
+            }
+        },
         { title: "Runtime", key: "runtime" },
-        { title: "Artifact", key: "artifactKey" },
         { title: "Version", key: "version" },
         { title: "Runs as", key: "userId" },
         { title: "State", key: "state", colorFor: function (v) { return root.stateColor(v) } },
@@ -624,10 +637,13 @@ Item {
                     Keys.onReturnPressed: if (createApplicationButton.enabled) createApplicationButton.clicked()
                 }
                 Text {
+                    // Not spelled out any more: the principal is named after the name EAP issues
+                    // the application to run under, which is the id plus a random suffix and is
+                    // not known until the application exists. The details page shows both
+                    // afterwards.
                     text: userField.text.trim().length === 0
-                          ? "EAP creates \"app-" + (applicationIdField.text.trim().length > 0 ? applicationIdField.text.trim() : "<id>")
-                            + "\" with its own access key and deletes it with the application, so no person's "
-                            + "credentials are involved."
+                          ? "EAP creates a principal of its own for this application, with its own access key, and "
+                            + "deletes it with the application - so no person's credentials are involved."
                           : "The application acts as this user, who must already exist and already have an access key."
                     color: "#6b7280"
                     font.pixelSize: 11
