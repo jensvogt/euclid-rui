@@ -46,6 +46,21 @@ public:
     Q_INVOKABLE void stopQueue(const QString &queueErn);
     Q_INVOKABLE void startQueue(const QString &queueErn);
 
+    // The three settings a queue carries that can be changed after it exists. All three govern
+    // what happens to messages sent or received from here on, and none of them reaches back:
+    //
+    // - visibility: how long a received message stays invisible, 0 to 43200 seconds. A message
+    //   already in flight keeps the window it was given, so shortening this cannot expire a lease
+    //   under a consumer that is still working.
+    // - delay: how long a sent message is held back before it can be received, 0 to 900 seconds.
+    //   A message already waiting had its delay turned into a timestamp when it arrived.
+    // - maxMessageLength: the largest message the queue accepts, in bytes. Zero is not "accept
+    //   nothing" - it is the queue carrying no limit of its own, and sends are then measured
+    //   against the installation's default of 1 MiB.
+    Q_INVOKABLE void setQueueVisibility(const QString &queueErn, qint64 visibility);
+    Q_INVOKABLE void setQueueDelay(const QString &queueErn, qint64 delay);
+    Q_INVOKABLE void setQueueMaxMessageLength(const QString &queueErn, qint64 maxMessageLength);
+
     // Moves everything in a dead letter queue back to the queue it came from. Nothing on a queue
     // records that it *is* a dead letter queue - the relationship is only ever written by the
     // queues naming it - so the server answers "not a dead letter queue" for an ordinary one.
@@ -89,6 +104,14 @@ signals:
     // "AVAILABLE" or "STOPPED", as the server recorded it - not as the caller asked for it.
     void queueStatusChanged(const QString &queueErn, const QString &status);
     void queueStatusFailed(const QString &message);
+    // The values the server recorded, read back from its answer rather than echoed from the ask.
+    void queueVisibilityChanged(const QString &queueErn, qint64 visibility);
+    void queueDelayChanged(const QString &queueErn, qint64 delay);
+    // "effective" is what a send is measured against, which is the installation's default when the
+    // queue carries no limit of its own.
+    void queueMaxMessageLengthChanged(const QString &queueErn, qint64 maxMessageLength, qint64 effective);
+    // Shared by the three: they are set from one dialog, which has one place to put an error.
+    void queueConfigurationFailed(const QString &message);
     void queueCreated(const QString &name);
     void queueCreateFailed(const QString &message);
     void queueTagAdded(const QString &queueErn, const QString &key, const QString &value);

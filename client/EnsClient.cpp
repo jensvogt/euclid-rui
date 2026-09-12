@@ -27,7 +27,11 @@ void EnsClient::fetchTopics(const QString &prefix, const int pageIndex, const in
                  // number once a byte count or a message count passes 2^31.
                  entry["size"] = topic.value("size").toInteger();
                  entry["messages"] = topic.value("messages").toInteger();
-                 entry["maxMessageLength"] = topic.value("maxMessageLength").toInt();
+                 entry["maxMessageLength"] = topic.value("maxMessageLength").toInteger();
+                 // How long a published message is kept, in seconds. Two values are not durations:
+                 // 0 means the topic follows euclid.modules.ens.retention-period rather than
+                 // carrying a period of its own, and -1 means it keeps everything forever.
+                 entry["retentionPeriod"] = topic.value("retentionPeriod").toInteger();
                  // "RUNNING" or "STOPPED". A stopped topic is invisible in every other field - it
                  // goes on accepting publishes and its message count goes on climbing - so this is
                  // the only one that says why the subscriptions have gone quiet.
@@ -111,6 +115,38 @@ void EnsClient::startTopic(const QString &topicErn) {
              emit topicDeliveryFailed(message);
          },
          120000);
+}
+
+void EnsClient::setTopicRetention(const QString &topicErn, const qint64 retentionPeriod) {
+    QJsonObject body;
+    body["ern"] = topicErn;
+    body["retentionPeriod"] = retentionPeriod;
+
+    m_base->post("ens", "set-topic-retention", body, true,
+         [this, topicErn](const QJsonObject &response) {
+             // The period the server recorded, read back rather than assumed - it is the value the
+             // page then shows, and the two should not be able to disagree.
+             emit topicRetentionChanged(topicErn, response.value("retentionPeriod").toInteger());
+             emit topicsReload();
+         },
+         [this](const QString &message) {
+             emit topicConfigurationFailed(message);
+         });
+}
+
+void EnsClient::setTopicMaxMessageLength(const QString &topicErn, const qint64 maxMessageLength) {
+    QJsonObject body;
+    body["ern"] = topicErn;
+    body["maxMessageLength"] = maxMessageLength;
+
+    m_base->post("ens", "set-topic-max-message-length", body, true,
+         [this, topicErn](const QJsonObject &response) {
+             emit topicMaxMessageLengthChanged(topicErn, response.value("maxMessageLength").toInteger());
+             emit topicsReload();
+         },
+         [this](const QString &message) {
+             emit topicConfigurationFailed(message);
+         });
 }
 
 void EnsClient::deleteTopic(const QString &topicErn) {

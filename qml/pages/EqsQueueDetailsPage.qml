@@ -48,6 +48,21 @@ Item {
         root.details = Object.assign({}, root.details, { status: status })
     }
 
+    function setDetailLocally(key, value) {
+        const patch = ({})
+        patch[key] = value
+        root.details = Object.assign({}, root.details, patch)
+    }
+
+    // ── Configuration ────────────────────────────────────────────────────────
+
+    readonly property int visibility: Number(detail("visibility", 30))
+    readonly property int delay: Number(detail("delay", 0))
+    readonly property int maxMessageLength: Number(detail("maxMessageLength", 0))
+    // Entity::EQS::kDefaultMaxMessageLength: what a send is measured against when the queue carries
+    // no limit of its own, which is what a zero here means.
+    readonly property int defaultMaxMessageLength: 1024 * 1024
+
     // Anything that is not "STOPPED" reads as running, including a snapshot from a server old
     // enough not to carry the field: that way round the page offers "Stop", which the server can
     // answer, rather than "Start" on a queue that was never stopped.
@@ -81,6 +96,27 @@ Item {
         }
         function onQueueStatusFailed(message) {
             root.statusNote = message
+        }
+        function onQueueVisibilityChanged(queueErn, visibility) {
+            if (queueErn !== root.queueErn) return
+            root.setDetailLocally("visibility", visibility)
+            settingsDialog.settled()
+        }
+        function onQueueDelayChanged(queueErn, delay) {
+            if (queueErn !== root.queueErn) return
+            root.setDetailLocally("delay", delay)
+            settingsDialog.settled()
+        }
+        function onQueueMaxMessageLengthChanged(queueErn, maxMessageLength, effective) {
+            if (queueErn !== root.queueErn) return
+            root.setDetailLocally("maxMessageLength", maxMessageLength)
+            settingsDialog.settled()
+        }
+        function onQueueConfigurationFailed(message) {
+            // Left open with the message on it: one or two of the three may have gone through, and
+            // the dialog is where the ones that did not can be tried again.
+            settingsDialog.pending = 0
+            settingsDialog.errorText = message
         }
         // "create-queue" is the queues page's signal as much as this dialog's, so only a save
         // started here is acted on.
@@ -276,14 +312,26 @@ Item {
                             Text { text: "Configuration"; color: "white"; font.pixelSize: 15; font.bold: true }
                         }
 
-                        Button {
-                            text: "+ Dead Letter Queue"
-                            highlighted: true
+                        Row {
                             anchors.right: parent.right
                             anchors.verticalCenter: configHeaderRow.verticalCenter
-                            Material.theme: Material.Dark
-                            Material.accent: "#4f8cff"
-                            onClicked: dlqDialog.open()
+                            spacing: 8
+
+                            Button {
+                                text: "Edit…"
+                                flat: true
+                                Material.theme: Material.Dark
+                                Material.accent: "#4f8cff"
+                                onClicked: settingsDialog.open()
+                            }
+
+                            Button {
+                                text: "+ Dead Letter Queue"
+                                highlighted: true
+                                Material.theme: Material.Dark
+                                Material.accent: "#4f8cff"
+                                onClicked: dlqDialog.open()
+                            }
                         }
                     }
 
@@ -293,10 +341,25 @@ Item {
                         columnSpacing: 24
                         rowSpacing: 16
 
-                        DetailField { width: (configCol.width - 48) / 3; label: "Delay"; value: root.detail("delay", 0) + " s" }
-                        DetailField { width: (configCol.width - 48) / 3; label: "Visibility Timeout"; value: root.detail("visibility", 0) + " s" }
+                        DetailField {
+                            width: (configCol.width - 48) / 3
+                            label: "Delay"
+                            // Zero is "none", which reads better than "0 s" for a queue that holds
+                            // nothing back.
+                            value: root.delay > 0 ? root.delay + " s" : "none"
+                        }
+                        DetailField { width: (configCol.width - 48) / 3; label: "Visibility Timeout"; value: root.visibility + " s" }
                         DetailField { width: (configCol.width - 48) / 3; label: "Max Receive Count"; value: String(root.detail("maxReceiveCount", 0)) }
-                        DetailField { width: (configCol.width - 48) / 3; label: "Max Message Length"; value: SizeFormat.format(root.detail("maxMessageLength", 0)) }
+                        DetailField {
+                            width: (configCol.width - 48) / 3
+                            label: "Max Message Length"
+                            // A queue carrying no limit of its own is measured against the
+                            // installation's default, so that is the figure worth showing - said as
+                            // the default rather than as a limit somebody chose.
+                            value: root.maxMessageLength > 0
+                                   ? SizeFormat.format(root.maxMessageLength)
+                                   : SizeFormat.format(root.defaultMaxMessageLength) + " (default)"
+                        }
                         DetailField {
                             width: (configCol.width * 2 / 3)
                             label: "Dead Letter Queue"
@@ -402,6 +465,279 @@ Item {
                                 }
                             }
                         }
+                    }
+                }
+            }
+        }
+    }
+
+    // The three settings a queue can be given after it exists. One dialog, because they are one
+    // decision about how this queue behaves - and three calls, because that is what the server
+    // offers; only what changed is sent.
+    Dialog {
+        id: settingsDialog
+        modal: true
+        anchors.centerIn: parent
+        width: 460
+        padding: 28
+        topPadding: 24
+        bottomPadding: 24
+        standardButtons: Dialog.NoButton
+
+        property string errorText: ""
+        // How many of the three calls are outstanding: 0 to 3, and the dialog closes on the last.
+        property int pending: 0
+        readonly property bool saving: settingsDialog.pending > 0
+
+        readonly property var lengthUnits: [
+            { label: "bytes", bytes: 1 },
+            { label: "KB", bytes: 1024 },
+            { label: "MB", bytes: 1024 * 1024 }
+        ]
+
+        function number(field, fallback) {
+            const value = parseInt(field.text, 10)
+            return isNaN(value) ? fallback : value
+        }
+
+        function maxLengthBytes() {
+            if (defaultLengthSwitch.checked) return 0
+            const unit = settingsDialog.lengthUnits[lengthUnitCombo.currentIndex]
+            return Math.round(Number(lengthValueField.text) * unit.bytes)
+        }
+
+        // The server's own bounds, checked here so a value it would refuse cannot be sent: 0-43200
+        // for a visibility timeout and 0-900 for a delay, which are the figures AWS SQS holds both
+        // to and which handleSetQueueVisibility/handleSetQueueDelay enforce.
+        readonly property bool visibilityValid: settingsDialog.number(visibilityField, -1) >= 0
+                                                && settingsDialog.number(visibilityField, -1) <= 43200
+        readonly property bool delayValid: settingsDialog.number(delayField, -1) >= 0
+                                           && settingsDialog.number(delayField, -1) <= 900
+        readonly property bool lengthValid: defaultLengthSwitch.checked || settingsDialog.maxLengthBytes() > 0
+        readonly property bool valid: settingsDialog.visibilityValid && settingsDialog.delayValid && settingsDialog.lengthValid
+
+        function settled() {
+            if (settingsDialog.pending > 0) settingsDialog.pending--
+            if (settingsDialog.pending === 0 && settingsDialog.errorText.length === 0)
+                settingsDialog.close()
+        }
+
+        background: Rectangle {
+            radius: 16
+            color: "#1b1e25"
+            border.color: "#2c313c"
+            border.width: 1
+        }
+
+        // Opened on the values as they are, with the length in the largest unit it divides into
+        // evenly - somebody who set one megabyte should be shown one megabyte.
+        onOpened: {
+            settingsDialog.errorText = ""
+            settingsDialog.pending = 0
+
+            visibilityField.text = String(root.visibility)
+            delayField.text = String(root.delay)
+
+            defaultLengthSwitch.checked = root.maxMessageLength <= 0
+
+            let unit = 0
+            let value = root.maxMessageLength > 0 ? root.maxMessageLength : root.defaultMaxMessageLength
+            if (value % (1024 * 1024) === 0) {
+                unit = 2
+                value = value / (1024 * 1024)
+            } else if (value % 1024 === 0) {
+                unit = 1
+                value = value / 1024
+            }
+            lengthUnitCombo.currentIndex = unit
+            lengthValueField.text = String(value)
+            visibilityField.forceActiveFocus()
+        }
+
+        contentItem: Column {
+            width: settingsDialog.availableWidth
+            spacing: 16
+
+            Column {
+                width: parent.width
+                spacing: 4
+                Text { text: "Queue Settings"; color: "white"; font.pixelSize: 18; font.bold: true }
+                Text {
+                    text: "All three apply from here on. Messages already in the queue keep what they were given "
+                          + "when they arrived - a lease in flight, a delay already counted, a size already accepted."
+                    color: "#9aa1ac"
+                    font.pixelSize: 12
+                    wrapMode: Text.WordWrap
+                    width: parent.width
+                }
+            }
+
+            Column {
+                width: parent.width
+                spacing: 6
+                Text { text: "Visibility timeout (seconds)"; color: "#9aa1ac"; font.pixelSize: 12 }
+                TextField {
+                    id: visibilityField
+                    width: parent.width
+                    validator: IntValidator { bottom: 0; top: 43200 }
+                    Material.accent: "#4f8cff"
+                    selectByMouse: true
+                }
+                Text {
+                    text: settingsDialog.visibilityValid
+                          ? "How long a received message stays invisible to other consumers. 0 to 43200 seconds."
+                          : "Has to be between 0 and 43200 seconds."
+                    color: settingsDialog.visibilityValid ? "#6b7280" : "#ffb545"
+                    font.pixelSize: 11
+                    wrapMode: Text.WordWrap
+                    width: parent.width
+                }
+            }
+
+            Column {
+                width: parent.width
+                spacing: 6
+                Text { text: "Delay (seconds)"; color: "#9aa1ac"; font.pixelSize: 12 }
+                TextField {
+                    id: delayField
+                    width: parent.width
+                    validator: IntValidator { bottom: 0; top: 900 }
+                    Material.accent: "#4f8cff"
+                    selectByMouse: true
+                }
+                Text {
+                    text: settingsDialog.delayValid
+                          ? "How long a sent message is held back before it can be received. 0 for none, up to 900 seconds."
+                          : "Has to be between 0 and 900 seconds."
+                    color: settingsDialog.delayValid ? "#6b7280" : "#ffb545"
+                    font.pixelSize: 11
+                    wrapMode: Text.WordWrap
+                    width: parent.width
+                }
+            }
+
+            Column {
+                id: lengthColumn
+                width: parent.width
+                spacing: 6
+                Text { text: "Max message length"; color: "#9aa1ac"; font.pixelSize: 12 }
+
+                CheckBox {
+                    id: defaultLengthSwitch
+                    text: "Follow the installation default"
+                    Material.theme: Material.Dark
+                    Material.accent: "#4f8cff"
+                }
+
+                Text {
+                    visible: defaultLengthSwitch.checked
+                    width: parent.width
+                    wrapMode: Text.WordWrap
+                    color: "#6b7280"
+                    font.pixelSize: 11
+                    text: "The queue carries no limit of its own, and a send is measured against "
+                          + SizeFormat.format(root.defaultMaxMessageLength) + " - which is also what a queue "
+                          + "created before the limit meant anything is measured against."
+                }
+
+                Row {
+                    width: parent.width
+                    spacing: 8
+                    visible: !defaultLengthSwitch.checked
+
+                    TextField {
+                        id: lengthValueField
+                        width: lengthColumn.width - 132
+                        validator: DoubleValidator { bottom: 0; decimals: 3; notation: DoubleValidator.StandardNotation }
+                        Material.accent: "#4f8cff"
+                        selectByMouse: true
+                    }
+                    ComboBox {
+                        id: lengthUnitCombo
+                        width: 124
+                        model: settingsDialog.lengthUnits.map(u => u.label)
+                        Material.theme: Material.Dark
+                        Material.accent: "#4f8cff"
+                    }
+                }
+
+                Text {
+                    visible: !defaultLengthSwitch.checked
+                    text: settingsDialog.lengthValid
+                          ? "A send larger than " + SizeFormat.format(settingsDialog.maxLengthBytes()) + " is refused."
+                          : "Has to be more than nothing. Switch the default back on to carry no limit of your own."
+                    color: settingsDialog.lengthValid ? "#6b7280" : "#ffb545"
+                    font.pixelSize: 11
+                    wrapMode: Text.WordWrap
+                    width: parent.width
+                }
+            }
+
+            Text {
+                text: settingsDialog.errorText
+                color: "#ff6b6b"
+                font.pixelSize: 12
+                wrapMode: Text.WordWrap
+                width: parent.width
+                visible: text.length > 0
+            }
+
+            Item {
+                width: parent.width
+                height: 40
+
+                Button {
+                    text: "Cancel"
+                    flat: true
+                    anchors.left: parent.left
+                    anchors.verticalCenter: parent.verticalCenter
+                    Material.theme: Material.Dark
+                    onClicked: settingsDialog.close()
+                }
+
+                BusyIndicator {
+                    running: settingsDialog.saving
+                    visible: settingsDialog.saving
+                    width: 22
+                    height: 22
+                    anchors.right: saveSettingsButton.left
+                    anchors.rightMargin: 12
+                    anchors.verticalCenter: parent.verticalCenter
+                }
+
+                Button {
+                    id: saveSettingsButton
+                    text: "Save"
+                    highlighted: true
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    Material.theme: Material.Dark
+                    Material.accent: "#4f8cff"
+                    enabled: !settingsDialog.saving && settingsDialog.valid
+                    onClicked: {
+                        settingsDialog.errorText = ""
+
+                        // Only what moved: each is an action of its own server-side, and sending one
+                        // that changes nothing would stamp a modification date for a change nobody
+                        // made.
+                        const wantedVisibility = settingsDialog.number(visibilityField, root.visibility)
+                        const wantedDelay = settingsDialog.number(delayField, root.delay)
+                        const wantedLength = settingsDialog.maxLengthBytes()
+
+                        const visibilityChanged = wantedVisibility !== root.visibility
+                        const delayChanged = wantedDelay !== root.delay
+                        const lengthChanged = wantedLength !== root.maxMessageLength
+
+                        if (!visibilityChanged && !delayChanged && !lengthChanged) {
+                            settingsDialog.close()
+                            return
+                        }
+
+                        settingsDialog.pending = (visibilityChanged ? 1 : 0) + (delayChanged ? 1 : 0)
+                                                 + (lengthChanged ? 1 : 0)
+                        if (visibilityChanged) eqsClient.setQueueVisibility(root.queueErn, wantedVisibility)
+                        if (delayChanged) eqsClient.setQueueDelay(root.queueErn, wantedDelay)
+                        if (lengthChanged) eqsClient.setQueueMaxMessageLength(root.queueErn, wantedLength)
                     }
                 }
             }

@@ -132,6 +132,52 @@ void EqsClient::startQueue(const QString &queueErn) {
          });
 }
 
+void EqsClient::setQueueVisibility(const QString &queueErn, const qint64 visibility) {
+    QJsonObject body;
+    body["ern"] = queueErn;
+    body["visibility"] = visibility;
+
+    m_base->post("eqs", "set-queue-visibility", body, true,
+         [this, queueErn](const QJsonObject &response) {
+             emit queueVisibilityChanged(queueErn, response.value("visibility").toInteger());
+             emit queuesReload();
+         },
+         [this](const QString &message) {
+             emit queueConfigurationFailed(message);
+         });
+}
+
+void EqsClient::setQueueDelay(const QString &queueErn, const qint64 delay) {
+    QJsonObject body;
+    body["ern"] = queueErn;
+    body["delay"] = delay;
+
+    m_base->post("eqs", "set-queue-delay", body, true,
+         [this, queueErn](const QJsonObject &response) {
+             emit queueDelayChanged(queueErn, response.value("delay").toInteger());
+             emit queuesReload();
+         },
+         [this](const QString &message) {
+             emit queueConfigurationFailed(message);
+         });
+}
+
+void EqsClient::setQueueMaxMessageLength(const QString &queueErn, const qint64 maxMessageLength) {
+    QJsonObject body;
+    body["ern"] = queueErn;
+    body["maxMessageLength"] = maxMessageLength;
+
+    m_base->post("eqs", "set-queue-max-message-length", body, true,
+         [this, queueErn](const QJsonObject &response) {
+             emit queueMaxMessageLengthChanged(queueErn, response.value("maxMessageLength").toInteger(),
+                                               response.value("effectiveMaxMessageLength").toInteger());
+             emit queuesReload();
+         },
+         [this](const QString &message) {
+             emit queueConfigurationFailed(message);
+         });
+}
+
 void EqsClient::redriveDlq(const QString &queueErn, const QString &targetErn) {
     QJsonObject body;
     body["ern"] = queueErn;
