@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.4](https://github.com/jensvogt/euclid-rui/compare/1.1.3...v1.1.4) (2026-09-12)
+
+
+### Bug Fixes
+
+* EQS/ENS retention, delay visibility editable ([b358e97](https://github.com/jensvogt/euclid-rui/commit/b358e973eafcd3a98700851dbbd56de0fc17b442))
+
 ## [1.1.3](https://github.com/jensvogt/euclid-rui/compare/1.1.2...v1.1.3) (2026-09-11)
 
 
