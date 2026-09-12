@@ -29,6 +29,21 @@ public:
     // not a switch being flipped back.
     Q_INVOKABLE void stopTopic(const QString &topicErn);
     Q_INVOKABLE void startTopic(const QString &topicErn);
+
+    // How long a message published to this topic is kept, in seconds. Two of the values are not
+    // durations: 0 gives the topic no period of its own, so it follows
+    // euclid.modules.ens.retention-period as that changes, and -1 keeps everything forever by
+    // storing messages with no expiry at all. Anything below -1 is refused.
+    //
+    // Applies to what is published afterwards and to what is already stored: retention is a stamp
+    // on each message, so shortening it does not reach back and re-stamp what is already there.
+    Q_INVOKABLE void setTopicRetention(const QString &topicErn, qint64 retentionPeriod);
+
+    // The largest message the topic accepts, in bytes. Has to be positive - zero would be a topic
+    // that takes nothing, which is what stopping it says, reversibly. Applies to what is published
+    // from here on; a message already in the topic was accepted under the rule in force when it
+    // arrived and is not re-checked.
+    Q_INVOKABLE void setTopicMaxMessageLength(const QString &topicErn, qint64 maxMessageLength);
     // Upserts the tag unconditionally (unlike set-topic-tag, this doesn't require the key to
     // already exist), matching an "Add" button's semantics.
     Q_INVOKABLE void addTopicTag(const QString &topicErn, const QString &key, const QString &value);
@@ -58,6 +73,11 @@ signals:
     // releases nothing.
     void topicDeliveryChanged(const QString &topicErn, const QString &status, int released);
     void topicDeliveryFailed(const QString &message);
+    // The values the server recorded, read back from its answer rather than echoed from the ask.
+    void topicRetentionChanged(const QString &topicErn, qint64 retentionPeriod);
+    void topicMaxMessageLengthChanged(const QString &topicErn, qint64 maxMessageLength);
+    // Shared by both: they are set from one dialog, and it has one place to put an error.
+    void topicConfigurationFailed(const QString &message);
     void topicTagAdded(const QString &topicErn, const QString &key, const QString &value);
     void topicTagAddFailed(const QString &message);
     void topicTagDeleted(const QString &topicErn, const QString &key);

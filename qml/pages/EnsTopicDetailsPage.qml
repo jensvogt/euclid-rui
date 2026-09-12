@@ -62,6 +62,41 @@ Item {
         root.details = Object.assign({}, root.details, { status: status })
     }
 
+    function setDetailLocally(key, value) {
+        const patch = ({})
+        patch[key] = value
+        root.details = Object.assign({}, root.details, patch)
+    }
+
+    // ── Configuration ────────────────────────────────────────────────────────
+
+    readonly property int maxMessageLength: Number(detail("maxMessageLength", 0))
+    readonly property int retentionPeriod: Number(detail("retentionPeriod", 0))
+
+    // The two values that are not durations. Zero is the absence of a period rather than a period
+    // of none: the topic follows euclid.modules.ens.retention-period, and moves with it whenever
+    // the installation's is changed.
+    readonly property bool retentionForever: root.retentionPeriod === -1
+    readonly property bool retentionDefault: root.retentionPeriod === 0
+
+    // Seconds as somebody would say them, largest whole unit first. Not a precise breakdown: a
+    // retention of "7 d" is what an operator set and what they want to read back, and "7 d 0 h" is
+    // the same thing said worse.
+    function durationText(seconds) {
+        const value = Number(seconds)
+        if (!isFinite(value) || value <= 0) return "—"
+        if (value % 86400 === 0) return (value / 86400) + " d"
+        if (value % 3600 === 0) return (value / 3600) + " h"
+        if (value % 60 === 0) return (value / 60) + " min"
+        return value + " s"
+    }
+
+    function retentionText() {
+        if (root.retentionForever) return "Forever"
+        if (root.retentionDefault) return "Installation default"
+        return root.durationText(root.retentionPeriod)
+    }
+
     property var subscriptions: []
     property bool subscriptionsLoading: false
     property string subscriptionsError: ""
@@ -125,6 +160,22 @@ Item {
         }
         function onTopicDeliveryFailed(message) {
             root.deliveryNote = message
+        }
+        function onTopicRetentionChanged(topicErn, retentionPeriod) {
+            if (topicErn !== root.topicErn) return
+            root.setDetailLocally("retentionPeriod", retentionPeriod)
+            configurationDialog.settled()
+        }
+        function onTopicMaxMessageLengthChanged(topicErn, maxMessageLength) {
+            if (topicErn !== root.topicErn) return
+            root.setDetailLocally("maxMessageLength", maxMessageLength)
+            configurationDialog.settled()
+        }
+        function onTopicConfigurationFailed(message) {
+            // Left open with the message on it: one of the two may have gone through, and the
+            // dialog is where the values that did not can be tried again.
+            configurationDialog.pending = 0
+            configurationDialog.errorText = message
         }
         function onTopicTagAdded(topicErn, key, value) {
             if (topicErn !== root.topicErn) return
@@ -396,6 +447,280 @@ Item {
         }
     }
 
+    // Both settings in one dialog, because they are one decision about what this topic accepts and
+    // how long it holds it - and because each is a call of its own, which the user should not have
+    // to make twice.
+    Dialog {
+        id: configurationDialog
+        modal: true
+        anchors.centerIn: parent
+        width: 460
+        padding: 28
+        topPadding: 24
+        bottomPadding: 24
+        standardButtons: Dialog.NoButton
+
+        property string errorText: ""
+        // How many of the two calls are still outstanding. Only what actually changed is sent, so
+        // this is 0, 1 or 2, and the dialog closes when the last one has answered.
+        property int pending: 0
+        readonly property bool saving: configurationDialog.pending > 0
+
+        // Seconds per unit, in the order the combo lists them.
+        readonly property var retentionUnits: [
+            { label: "seconds", seconds: 1 },
+            { label: "minutes", seconds: 60 },
+            { label: "hours", seconds: 3600 },
+            { label: "days", seconds: 86400 }
+        ]
+        readonly property var lengthUnits: [
+            { label: "bytes", bytes: 1 },
+            { label: "KB", bytes: 1024 },
+            { label: "MB", bytes: 1024 * 1024 }
+        ]
+
+        readonly property int retentionMode: retentionModeCombo.currentIndex
+        readonly property bool retentionIsCustom: configurationDialog.retentionMode === 2
+
+        function retentionSeconds() {
+            if (configurationDialog.retentionMode === 0) return 0
+            if (configurationDialog.retentionMode === 1) return -1
+            const unit = configurationDialog.retentionUnits[retentionUnitCombo.currentIndex]
+            return Math.round(Number(retentionValueField.text) * unit.seconds)
+        }
+
+        function maxLengthBytes() {
+            const unit = configurationDialog.lengthUnits[lengthUnitCombo.currentIndex]
+            return Math.round(Number(lengthValueField.text) * unit.bytes)
+        }
+
+        // One of the outstanding calls has answered. The dialog closes on the last of them, so a
+        // save that changed both settings does not disappear while half of it is still in flight.
+        function settled() {
+            if (configurationDialog.pending > 0) configurationDialog.pending--
+            if (configurationDialog.pending === 0 && configurationDialog.errorText.length === 0)
+                configurationDialog.close()
+        }
+
+        readonly property bool valid: {
+            if (Number(lengthValueField.text) <= 0) return false
+            if (!configurationDialog.retentionIsCustom) return true
+            return Number(retentionValueField.text) > 0
+        }
+
+        background: Rectangle {
+            radius: 16
+            color: "#1b1e25"
+            border.color: "#2c313c"
+            border.width: 1
+        }
+
+        // Opened on the values as they are, in the largest unit they divide into evenly - somebody
+        // who set seven days should be shown seven days, not 604800 seconds.
+        onOpened: {
+            configurationDialog.errorText = ""
+            configurationDialog.pending = 0
+
+            let lengthUnit = 0
+            let lengthValue = root.maxMessageLength
+            if (lengthValue > 0 && lengthValue % (1024 * 1024) === 0) {
+                lengthUnit = 2
+                lengthValue = lengthValue / (1024 * 1024)
+            } else if (lengthValue > 0 && lengthValue % 1024 === 0) {
+                lengthUnit = 1
+                lengthValue = lengthValue / 1024
+            }
+            lengthUnitCombo.currentIndex = lengthUnit
+            lengthValueField.text = String(lengthValue)
+
+            retentionModeCombo.currentIndex = root.retentionDefault ? 0 : (root.retentionForever ? 1 : 2)
+
+            let retentionUnit = 0
+            let retentionValue = root.retentionPeriod > 0 ? root.retentionPeriod : 0
+            if (retentionValue > 0 && retentionValue % 86400 === 0) {
+                retentionUnit = 3
+                retentionValue = retentionValue / 86400
+            } else if (retentionValue > 0 && retentionValue % 3600 === 0) {
+                retentionUnit = 2
+                retentionValue = retentionValue / 3600
+            } else if (retentionValue > 0 && retentionValue % 60 === 0) {
+                retentionUnit = 1
+                retentionValue = retentionValue / 60
+            }
+            retentionUnitCombo.currentIndex = retentionUnit
+            retentionValueField.text = retentionValue > 0 ? String(retentionValue) : ""
+        }
+
+        contentItem: Column {
+            width: configurationDialog.availableWidth
+            spacing: 16
+
+            Column {
+                width: parent.width
+                spacing: 4
+                Text { text: "Topic Configuration"; color: "white"; font.pixelSize: 18; font.bold: true }
+                Text {
+                    text: "What this topic accepts, and how long it keeps it. Both apply to messages published "
+                          + "from now on - nothing already stored is re-checked or re-stamped."
+                    color: "#9aa1ac"
+                    font.pixelSize: 12
+                    wrapMode: Text.WordWrap
+                    width: parent.width
+                }
+            }
+
+            Column {
+                id: lengthColumn
+                width: parent.width
+                spacing: 6
+                Text { text: "Max message length"; color: "#9aa1ac"; font.pixelSize: 12 }
+
+                Row {
+                    width: parent.width
+                    spacing: 8
+
+                    TextField {
+                        id: lengthValueField
+                        width: lengthColumn.width - 132
+                        validator: DoubleValidator { bottom: 0; decimals: 3; notation: DoubleValidator.StandardNotation }
+                        Material.accent: "#4f8cff"
+                        selectByMouse: true
+                    }
+                    ComboBox {
+                        id: lengthUnitCombo
+                        width: 124
+                        model: configurationDialog.lengthUnits.map(u => u.label)
+                        Material.theme: Material.Dark
+                        Material.accent: "#4f8cff"
+                    }
+                }
+
+                Text {
+                    text: configurationDialog.maxLengthBytes() > 0
+                          ? "A publish larger than " + SizeFormat.format(configurationDialog.maxLengthBytes()) + " is refused."
+                          : "Has to be more than nothing: a topic that accepts no message is what stopping it says, "
+                            + "and stopping is reversible."
+                    color: configurationDialog.maxLengthBytes() > 0 ? "#6b7280" : "#ffb545"
+                    font.pixelSize: 11
+                    wrapMode: Text.WordWrap
+                    width: parent.width
+                }
+            }
+
+            Column {
+                id: retentionColumn
+                width: parent.width
+                spacing: 6
+                Text { text: "Retention"; color: "#9aa1ac"; font.pixelSize: 12 }
+
+                ComboBox {
+                    id: retentionModeCombo
+                    width: retentionColumn.width
+                    model: ["Follow the installation default", "Keep forever", "Keep for"]
+                    Material.theme: Material.Dark
+                    Material.accent: "#4f8cff"
+                }
+
+                Row {
+                    width: parent.width
+                    spacing: 8
+                    visible: configurationDialog.retentionIsCustom
+
+                    TextField {
+                        id: retentionValueField
+                        width: retentionColumn.width - 132
+                        validator: DoubleValidator { bottom: 0; decimals: 3; notation: DoubleValidator.StandardNotation }
+                        Material.accent: "#4f8cff"
+                        selectByMouse: true
+                    }
+                    ComboBox {
+                        id: retentionUnitCombo
+                        width: 124
+                        model: configurationDialog.retentionUnits.map(u => u.label)
+                        Material.theme: Material.Dark
+                        Material.accent: "#4f8cff"
+                    }
+                }
+
+                Text {
+                    width: parent.width
+                    wrapMode: Text.WordWrap
+                    color: "#6b7280"
+                    font.pixelSize: 11
+                    text: configurationDialog.retentionMode === 0
+                          ? "The topic carries no period of its own and follows euclid.modules.ens.retention-period, "
+                            + "moving with it whenever the installation's setting changes."
+                          : (configurationDialog.retentionMode === 1
+                             ? "Messages are stored with no expiry at all, so nothing ever comes along to remove them."
+                             : "Each message is stamped with this as it arrives and removed once it is reached.")
+                }
+            }
+
+            Text {
+                text: configurationDialog.errorText
+                color: "#ff6b6b"
+                font.pixelSize: 12
+                wrapMode: Text.WordWrap
+                width: parent.width
+                visible: text.length > 0
+            }
+
+            Item {
+                width: parent.width
+                height: 40
+
+                Button {
+                    text: "Cancel"
+                    flat: true
+                    anchors.left: parent.left
+                    anchors.verticalCenter: parent.verticalCenter
+                    Material.theme: Material.Dark
+                    onClicked: configurationDialog.close()
+                }
+
+                BusyIndicator {
+                    running: configurationDialog.saving
+                    visible: configurationDialog.saving
+                    width: 22
+                    height: 22
+                    anchors.right: saveConfigurationButton.left
+                    anchors.rightMargin: 12
+                    anchors.verticalCenter: parent.verticalCenter
+                }
+
+                Button {
+                    id: saveConfigurationButton
+                    text: "Save"
+                    highlighted: true
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    Material.theme: Material.Dark
+                    Material.accent: "#4f8cff"
+                    enabled: !configurationDialog.saving && configurationDialog.valid
+                    onClicked: {
+                        configurationDialog.errorText = ""
+
+                        // Only what moved. They are two actions server-side, and sending one that
+                        // changes nothing would write a modification date for a change nobody made.
+                        const wantedLength = configurationDialog.maxLengthBytes()
+                        const wantedRetention = configurationDialog.retentionSeconds()
+                        const lengthChanged = wantedLength !== root.maxMessageLength
+                        const retentionChanged = wantedRetention !== root.retentionPeriod
+
+                        if (!lengthChanged && !retentionChanged) {
+                            configurationDialog.close()
+                            return
+                        }
+
+                        configurationDialog.pending = (lengthChanged ? 1 : 0) + (retentionChanged ? 1 : 0)
+                        if (lengthChanged) ensClient.setTopicMaxMessageLength(root.topicErn, wantedLength)
+                        if (retentionChanged) ensClient.setTopicRetention(root.topicErn, wantedRetention)
+                    }
+                }
+            }
+        }
+    }
+
     ScrollView {
         anchors.fill: parent
         anchors.margins: 28
@@ -538,7 +863,28 @@ Item {
                     anchors.margins: 20
                     spacing: 14
 
-                    Text { text: "Configuration"; color: "white"; font.pixelSize: 15; font.bold: true }
+                    Item {
+                        width: parent.width
+                        height: configHeader.implicitHeight
+
+                        Text {
+                            id: configHeader
+                            text: "Configuration"
+                            color: "white"
+                            font.pixelSize: 15
+                            font.bold: true
+                        }
+
+                        Button {
+                            text: "Edit…"
+                            flat: true
+                            anchors.right: parent.right
+                            anchors.verticalCenter: configHeader.verticalCenter
+                            Material.theme: Material.Dark
+                            Material.accent: "#4f8cff"
+                            onClicked: configurationDialog.open()
+                        }
+                    }
 
                     Grid {
                         width: parent.width
@@ -546,7 +892,32 @@ Item {
                         columnSpacing: 24
                         rowSpacing: 16
 
-                        DetailField { width: (configCol.width - 48) / 3; label: "Max Message Length"; value: SizeFormat.format(root.detail("maxMessageLength", 0)) }
+                        DetailField {
+                            width: (configCol.width - 48) / 3
+                            label: "Max Message Length"
+                            value: SizeFormat.format(root.maxMessageLength)
+                        }
+                        DetailField {
+                            width: (configCol.width - 48) / 3
+                            label: "Retention"
+                            value: root.retentionText()
+                        }
+                    }
+
+                    Text {
+                        width: parent.width
+                        wrapMode: Text.WordWrap
+                        color: "#6b7280"
+                        font.pixelSize: 11
+                        // Said here because neither value's effect is visible on this page: nothing
+                        // about the topic changes when they do, and what they govern happens to
+                        // messages that have not been published yet.
+                        text: root.retentionDefault
+                              ? "This topic has no retention of its own and follows the installation's setting, "
+                                + "moving with it whenever that changes. Both settings apply to messages published "
+                                + "from now on."
+                              : "Both settings apply to messages published from now on. Retention is stamped on each "
+                                + "message as it arrives, so changing it does not reach back to what is already stored."
                     }
                 }
             }
