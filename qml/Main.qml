@@ -30,11 +30,16 @@ ApplicationWindow {
     property int eamNamespaceCount: -1
     property int eamUserCount: -1
     property int eamGroupCount: -1
+    // Roles are not per namespace and change rarely, so this is counted off the same listing the
+    // roles table reads rather than by a query of its own.
+    property int eamRoleCount: -1
     property double eamServiceCount: -1
     property double eamServiceTime: -1
     property string selectedUserErn: ""
     property string selectedUserId: ""
     property var selectedUserDetails: ({})
+    property string selectedRoleName: ""
+    property var selectedRoleDetails: ({})
     property string selectedGroupErn: ""
     property string selectedGroupName: ""
     property var selectedGroupDetails: ({})
@@ -200,7 +205,7 @@ ApplicationWindow {
     }
 
     readonly property var moduleRoutes: ({
-        "eam": "modules-eam", "eqs": "modules-eqs", "esm": "modules-esm", "ess": "modules-ess",
+        "eam": "modules-eam", "roles": "modules-eam-roles", "eqs": "modules-eqs", "esm": "modules-esm", "ess": "modules-ess",
         "ekm": "modules-ekm", "ekv": "modules-ekv", "ens": "modules-ens", "ets": "modules-ets",
         "eap": "modules-eap",
         // Like EMM below, administrators only - but listed all the same, so typing it says so
@@ -222,6 +227,8 @@ ApplicationWindow {
         eamClient.fetchAccounts("", 0, 100)
         eamClient.fetchNamespaces(euclidClient.accountId, "", 0, 100)
         eamClient.fetchUsers("", 0, 100)
+        // Refused for a non-administrator, which the handler above turns back into "—".
+        eamClient.fetchRoles()
         eamClient.fetchUserGroups("", 0, 100)
         emoClient.fetchAverage("eam-service-count")
         emoClient.fetchAverage("eam-service-time")
@@ -608,6 +615,14 @@ ApplicationWindow {
         function onUserGroupsLoaded(list, total) {
             window.eamGroupCount = total
         }
+        function onRolesLoaded(list) {
+            window.eamRoleCount = list.length
+        }
+        function onRolesFailed(message) {
+            // Administrators only, so a non-administrator's dashboard says "—" rather than zero -
+            // which would read as an installation with no roles at all.
+            window.eamRoleCount = -1
+        }
     }
 
     Connections {
@@ -919,6 +934,11 @@ ApplicationWindow {
                             trend: "live", trendUp: true, accent: "#ffb545", route: "modules-eam-user-groups"
                         },
                         {
+                            title: "Roles", value: window.eamRoleCount < 0 ? "—" : String(window.eamRoleCount),
+                            trend: "what grants hand out", trendUp: true, accent: "#c56bff",
+                            route: "modules-eam-roles"
+                        },
+                        {
                             title: "Service Count", value: window.eamServiceCount < 0 ? "—" : window.eamServiceCount.toFixed(1),
                             trend: "-1.2% today", trendUp: false, accent: "#ffb545" },
                         {
@@ -1031,6 +1051,32 @@ ApplicationWindow {
                     groupName: window.selectedGroupName
                     details: window.selectedGroupDetails
                     onBack: window.currentRoute = "modules-eam-user-groups"
+                }
+                EamRolesPage {
+                    anchors.fill: parent
+                    visible: window.currentRoute === "modules-eam-roles"
+                    loggedIn: window.loggedIn
+                    namespaceName: window.currentNamespace
+                    onBack: window.currentRoute = "modules-eam"
+                    onOpenRoleDetails: (roleName, details) => {
+                        window.selectedRoleName = roleName
+                        window.selectedRoleDetails = details
+                        window.currentRoute = "modules-eam-role-details"
+                    }
+                }
+                EamRoleDetailsPage {
+                    anchors.fill: parent
+                    visible: window.currentRoute === "modules-eam-role-details"
+                    loggedIn: window.loggedIn
+                    namespaceName: window.currentNamespace
+                    roleName: window.selectedRoleName
+                    details: window.selectedRoleDetails
+                    onBack: window.currentRoute = "modules-eam-roles"
+                    // Copying a built-in lands on the copy: same route, different role.
+                    onOpenRole: (roleName, details) => {
+                        window.selectedRoleName = roleName
+                        window.selectedRoleDetails = details
+                    }
                 }
 
                 ModulePage {

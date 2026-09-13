@@ -187,6 +187,16 @@ Item {
                 }
             }
 
+            // A group is a principal in its own right, and usually the better one to grant to: a
+            // grant written once for the people who do a job outlives whoever currently does it.
+            // Every member is checked against these as well as against their own grants.
+            RoleGrants {
+                width: parent.width
+                loggedIn: root.loggedIn
+                principalErn: root.groupErn
+                principalLabel: root.groupName
+            }
+
             Rectangle {
                 width: parent.width
                 height: membersCol.implicitHeight + 40
