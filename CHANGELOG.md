@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.6](https://github.com/jensvogt/euclid-rui/compare/1.1.5...v1.1.6) (2026-09-13)
+
+
+### Bug Fixes
+
+* FTP/SFTP default directories ([678edcd](https://github.com/jensvogt/euclid-rui/commit/678edcdeaa88eb13db1594ea7098b1e81a83dbd8))
+
 ## [1.1.5](https://github.com/jensvogt/euclid-rui/compare/1.1.4...v1.1.5) (2026-09-13)
 
 
