@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.7](https://github.com/jensvogt/euclid-rui/compare/1.1.6...v1.1.7) (2026-09-13)
+
+
+### Bug Fixes
+
+* breadcrumbs as first row of every page ([9df1bcb](https://github.com/jensvogt/euclid-rui/commit/9df1bcbbecaa8d988e1a4c9c7584abf5846dcc15))
+
 ## [1.1.6](https://github.com/jensvogt/euclid-rui/compare/1.1.5...v1.1.6) (2026-09-13)
 
 
