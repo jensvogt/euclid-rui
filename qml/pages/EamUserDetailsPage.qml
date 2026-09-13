@@ -91,10 +91,12 @@ Item {
             width: parent.width
             spacing: 20
 
-            Button {
-                text: "‹ Back to Users"
-                flat: true
-                onClicked: root.back()
+            Breadcrumb {
+                width: parent.width
+                segments: [
+                    { label: "Users", action: () => root.back() },
+                    { label: root.userId }
+                ]
             }
 
             Item {

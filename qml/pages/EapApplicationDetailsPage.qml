@@ -301,10 +301,12 @@ Item {
             width: parent.width
             spacing: 20
 
-            Button {
-                text: "‹ Back to Applications"
-                flat: true
-                onClicked: root.back()
+            Breadcrumb {
+                width: parent.width
+                segments: [
+                    { label: "Applications", action: () => root.back() },
+                    { label: root.applicationId }
+                ]
             }
 
             Item {

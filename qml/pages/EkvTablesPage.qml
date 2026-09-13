@@ -433,10 +433,12 @@ Item {
             width: parent.width
             spacing: 20
 
-            Button {
-                text: "‹ Back to EKV Dashboard"
-                flat: true
-                onClicked: root.back()
+            Breadcrumb {
+                width: parent.width
+                segments: [
+                    { label: "EKV", action: () => root.back() },
+                    { label: "Tables" }
+                ]
             }
 
             Item {

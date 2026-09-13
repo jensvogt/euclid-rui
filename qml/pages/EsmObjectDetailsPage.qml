@@ -320,10 +320,12 @@ Item {
             width: parent.width
             spacing: 20
 
-            Button {
-                text: "‹ Back to Objects"
-                flat: true
-                onClicked: root.back()
+            Breadcrumb {
+                width: parent.width
+                segments: [
+                    { label: "Objects", action: () => root.back() },
+                    { label: root.objectKey }
+                ]
             }
 
             Item {

@@ -26,6 +26,9 @@ Item {
     property var pendingQueueErns: []
     property bool loading: false
     property string error: ""
+    // What the last purge did. Kept on the page because a background purge is not finished when it
+    // is acknowledged: the list below goes on shrinking for as long as it takes.
+    property string actionNote: ""
     property string lastUpdatedText: "—"
 
     // One queue is paged by the server: the page on screen is the page that was asked for. The
@@ -181,6 +184,13 @@ Item {
                 return
             root.loading = false
             root.error = message
+        }
+        function onQueuePurged(queueErn, async, messages) {
+            if (queueErn !== root.queueErn) return
+            root.actionNote = async
+                ? "Purging " + messages + " message(s) in the background. The queue empties as it goes, and "
+                  + "anything sent meanwhile stays."
+                : "Queue purged."
         }
         function onMessagesLoaded(ern, list, total) {
             if (!root.loading)
@@ -523,10 +533,12 @@ Item {
             width: parent.width
             spacing: 20
 
-            Button {
-                text: "‹ Back"
-                flat: true
-                onClicked: root.back()
+            Breadcrumb {
+                width: parent.width
+                segments: [
+                    { label: "EQS", action: () => root.back() },
+                    { label: root.queueErn.length > 0 ? "Messages · " + root.queueName : "Messages" }
+                ]
             }
 
             Item {
@@ -554,7 +566,14 @@ Item {
                         flat: true
                         Material.theme: Material.Dark
                         Material.accent: "#ff6b6b"
-                        onClicked: eqsClient.purgeQueue(root.queueErn)
+                        // Asked for in the background: a queue with a real backlog takes longer to
+                        // empty than the gateway waits, so doing it inline would report a failure
+                        // for a purge that is running perfectly well. The note below says what was
+                        // accepted, and the table catches up as the count falls.
+                        onClicked: {
+                            root.actionNote = ""
+                            eqsClient.purgeQueue(root.queueErn, true)
+                        }
                     }
 
                     Button {
@@ -626,6 +645,15 @@ Item {
                         }
                     }
                 ]
+            }
+
+            Text {
+                width: parent.width
+                wrapMode: Text.WordWrap
+                color: "#4cd97b"
+                font.pixelSize: 12
+                visible: root.actionNote.length > 0
+                text: root.actionNote
             }
         }
     }

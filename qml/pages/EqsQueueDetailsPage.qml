@@ -163,10 +163,12 @@ Item {
             width: parent.width
             spacing: 20
 
-            Button {
-                text: "‹ Back to Queues"
-                flat: true
-                onClicked: root.back()
+            Breadcrumb {
+                width: parent.width
+                segments: [
+                    { label: "Queues", action: () => root.back() },
+                    { label: root.queueName }
+                ]
             }
 
             Item {

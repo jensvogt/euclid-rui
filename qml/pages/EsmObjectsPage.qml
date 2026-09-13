@@ -733,10 +733,12 @@ Item {
             width: parent.width
             spacing: 20
 
-            Button {
-                text: "‹ Back"
-                flat: true
-                onClicked: root.back()
+            Breadcrumb {
+                width: parent.width
+                segments: [
+                    { label: "ESM", action: () => root.back() },
+                    { label: root.bucketErn.length > 0 ? "Objects · " + root.bucketName : "Objects" }
+                ]
             }
 
             Item {

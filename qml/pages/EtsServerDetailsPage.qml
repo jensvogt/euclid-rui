@@ -243,10 +243,12 @@ Item {
             width: parent.width
             spacing: 20
 
-            Button {
-                text: "‹ Back to Transfer Servers"
-                flat: true
-                onClicked: root.back()
+            Breadcrumb {
+                width: parent.width
+                segments: [
+                    { label: "Transfer Servers", action: () => root.back() },
+                    { label: root.serverId }
+                ]
             }
 
             Item {

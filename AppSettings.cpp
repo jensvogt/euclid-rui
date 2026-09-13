@@ -27,7 +27,12 @@ constexpr auto kHostKey = "host";
 constexpr auto kPortKey = "port";
 constexpr auto kUseTlsKey = "useTls";
 
-constexpr auto kDefaultAuthMode = "bearer";
+// RFC 9421 rather than the bearer token. Both authenticate the same caller; what differs is how
+// long they last. A token is minted for an hour and cannot be presented after that, so a window
+// left open over lunch comes back refused - whereas an access key does not expire, and login hands
+// one back precisely so a client can sign with it. The token remains the fallback for a session
+// that has no key yet, which is every session up to the moment login answers.
+constexpr auto kDefaultAuthMode = "rfc9421";
 constexpr auto kAuthModeKey = "authMode";
 constexpr auto kAccessKeyIdKey = "accessKeyId";
 constexpr auto kSecretAccessKeyKey = "secretAccessKey";

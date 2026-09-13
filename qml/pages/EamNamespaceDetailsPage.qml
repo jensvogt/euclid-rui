@@ -92,10 +92,12 @@ Item {
             width: parent.width
             spacing: 20
 
-            Button {
-                text: "‹ Back"
-                flat: true
-                onClicked: root.back()
+            Breadcrumb {
+                width: parent.width
+                segments: [
+                    { label: "Namespaces", action: () => root.back() },
+                    { label: root.namespaceName }
+                ]
             }
 
             Item {

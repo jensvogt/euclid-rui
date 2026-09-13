@@ -180,10 +180,12 @@ Item {
             width: parent.width
             spacing: 20
 
-            Button {
-                text: "‹ Back to Secrets"
-                flat: true
-                onClicked: root.back()
+            Breadcrumb {
+                width: parent.width
+                segments: [
+                    { label: "Secrets", action: () => root.back() },
+                    { label: root.secretName }
+                ]
             }
 
             Item {

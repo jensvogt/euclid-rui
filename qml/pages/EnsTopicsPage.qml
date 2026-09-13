@@ -252,10 +252,12 @@ Item {
             width: parent.width
             spacing: 20
 
-            Button {
-                text: "‹ Back to ENS Dashboard"
-                flat: true
-                onClicked: root.back()
+            Breadcrumb {
+                width: parent.width
+                segments: [
+                    { label: "ENS", action: () => root.back() },
+                    { label: "Topics" }
+                ]
             }
 
             Item {

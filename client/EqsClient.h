@@ -35,7 +35,11 @@ public:
     Q_INVOKABLE void createQueue(const QString &name, const QString &dlqName = QString(),
                                  int visibility = 30, int maxRetries = 3,
                                  int maxMessageLength = 1048576, int delay = 0);
-    Q_INVOKABLE void purgeQueue(const QString &queueErn);
+    // Empties the queue. `async` hands the work to the server's background purge, which answers
+    // "accepted" and keeps deleting after the reply - the only workable way to empty a queue with
+    // a large backlog, since doing it inline outlasts the gateway's timeout and the caller is
+    // handed a failure for work that is running anyway. The same trade ESM's purgeBucket makes.
+    Q_INVOKABLE void purgeQueue(const QString &queueErn, bool async = false);
     Q_INVOKABLE void deleteQueue(const QString &queueErn);
 
     // Takes a queue out of service and puts it back. What "stopped" means is narrower than it
@@ -101,6 +105,9 @@ signals:
     void dlqRedriveFailed(const QString &message);
     void queuesFailed(const QString &message);
     void queuesReload();
+    // What the purge did, or accepted: `messages` is how many were in the queue when a background
+    // purge was accepted, and 0 for a synchronous one, which has already finished.
+    void queuePurged(const QString &queueErn, bool async, int messages);
     // "AVAILABLE" or "STOPPED", as the server recorded it - not as the caller asked for it.
     void queueStatusChanged(const QString &queueErn, const QString &status);
     void queueStatusFailed(const QString &message);

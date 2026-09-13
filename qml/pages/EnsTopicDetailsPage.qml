@@ -731,10 +731,12 @@ Item {
             width: parent.width
             spacing: 20
 
-            Button {
-                text: "‹ Back to Topics"
-                flat: true
-                onClicked: root.back()
+            Breadcrumb {
+                width: parent.width
+                segments: [
+                    { label: "Topics", action: () => root.back() },
+                    { label: root.topicName }
+                ]
             }
 
             Item {

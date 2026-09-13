@@ -518,10 +518,12 @@ Item {
             width: parent.width
             spacing: 20
 
-            Button {
-                text: "‹ Back to EKM Dashboard"
-                flat: true
-                onClicked: root.back()
+            Breadcrumb {
+                width: parent.width
+                segments: [
+                    { label: "EKM", action: () => root.back() },
+                    { label: "Certificates" }
+                ]
             }
 
             Item {

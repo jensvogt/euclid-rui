@@ -4,6 +4,7 @@
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <QObject>
+#include <QTimer>
 #include <QString>
 #include <QStringList>
 #include <QVariantMap>
@@ -105,6 +106,12 @@ signals:
     // address changed under it (see setBaseUrl()).
     void sessionCleared();
     void loginSucceeded();
+    // The session was renewed in the background. Carries the seconds it is now good for, which is
+    // what a status line would show; nothing has to act on it.
+    void sessionRefreshed(qint64 secondsRemaining);
+    // Renewal failed and the session is on its way out - the next request will be refused. Its own
+    // signal rather than loginFailed, which belongs to somebody typing a password.
+    void sessionRefreshFailed(const QString &message);
     void loginFailed(const QString &message);
     // The access key the gateway handed back on login, which is the one this session signs with
     // from here on. Emitted so whoever owns the stored credentials can keep them in step: the key
@@ -120,6 +127,24 @@ private:
     // and `action` are already on the request; the body is passed separately because the
     // signature covers it and QNetworkRequest cannot be asked for it afterwards.
     void authorize(QNetworkRequest &request, const QByteArray &body) const;
+
+    // Renews the session before the token on it expires, rather than after. A token is good for an
+    // hour and the server has no way to accept an expired one - refresh-session authenticates like
+    // every other action - so a client that waits to be refused has already lost the session and can
+    // only ask for the password again.
+    //
+    // Scheduled from the token's own "exp" claim rather than from a hardcoded hour: the lifetime is
+    // the server's to choose, and reading it back is what keeps the two from drifting apart.
+    void scheduleSessionRefresh();
+    void refreshSession();
+    // Seconds until the token expires, from its own payload, or -1 when there is no usable one. The
+    // claim is read, not verified - this decides when to ask, and the server decides whether to
+    // answer.
+    static qint64 secondsUntilExpiry(const QString &token);
+
+    QTimer m_sessionRefreshTimer;
+    // Set while a refresh is in flight, so a tick that lands on a slow one does not stack a second.
+    bool m_refreshingSession = false;
 
     QNetworkAccessManager m_networkManager;
     QString m_baseUrl;

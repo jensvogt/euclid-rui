@@ -473,10 +473,12 @@ Item {
             width: parent.width
             spacing: 20
 
-            Button {
-                text: "‹ Back"
-                flat: true
-                onClicked: root.back()
+            Breadcrumb {
+                width: parent.width
+                segments: [
+                    { label: "ENS", action: () => root.back() },
+                    { label: root.topicErn.length > 0 ? "Messages · " + root.topicName : "Messages" }
+                ]
             }
 
             Item {

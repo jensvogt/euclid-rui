@@ -352,10 +352,12 @@ Item {
             width: parent.width
             spacing: 20
 
-            Button {
-                text: "‹ Back to EQS Dashboard"
-                flat: true
-                onClicked: root.back()
+            Breadcrumb {
+                width: parent.width
+                segments: [
+                    { label: "EQS", action: () => root.back() },
+                    { label: "Queues" }
+                ]
             }
 
             Item {

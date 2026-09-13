@@ -302,10 +302,12 @@ Item {
             width: parent.width
             spacing: 20
 
-            Button {
-                text: "‹ Back to ETS Dashboard"
-                flat: true
-                onClicked: root.back()
+            Breadcrumb {
+                width: parent.width
+                segments: [
+                    { label: "ETS", action: () => root.back() },
+                    { label: "Transfer Servers" }
+                ]
             }
 
             Item {
