@@ -16,6 +16,12 @@ QVariantMap serverToMap(const QJsonObject &server) {
     entry["bucketErn"] = server.value("bucketErn").toString();
     entry["userIds"] = server.value("userIds").toArray().toVariantList();
     entry["userGroups"] = server.value("userGroups").toArray().toVariantList();
+    // Where each session is rooted, as a template: "{user}" becomes the client's own user id, and
+    // an empty one puts every session at the bucket root.
+    entry["homeDirectory"] = server.value("homeDirectory").toString();
+    // Directories every session finds under that home, created at login - intermediate levels and
+    // all. Relative to the home prefix, so one entry is a different key per client.
+    entry["directories"] = server.value("directories").toArray().toVariantList();
     entry["state"] = server.value("state").toString();
     entry["desiredState"] = server.value("desiredState").toString();
     entry["hostKey"] = server.value("hostKey").toString();
