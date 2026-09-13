@@ -95,6 +95,67 @@ Item {
                                { userGroups: root.detail("userGroups", []).filter(g => String(g) !== name) })
     }
 
+    // ── Default directories ──────────────────────────────────────────────────
+
+    // The same normalisation TransferPaths::HomePrefix applies before a key is built: empty, "."
+    // and ".." segments are dropped and the slashes collapsed, so "/incoming//mix/" and
+    // "incoming/mix" are one directory and no ".." can survive into a key. Mirrored here so the
+    // page can show what will actually be stored rather than refuse what would have been fine.
+    function normalisePath(path) {
+        const segments = String(path).split("/").filter(s => s.length > 0 && s !== "." && s !== "..")
+        return segments.length > 0 ? segments.join("/") : ""
+    }
+
+    // What a directory becomes for one client: the home template with {user} substituted, then the
+    // directory under it. The example user is a real one off this server where there is one,
+    // because "jvo/incoming/mix/" says more than "{user}/incoming/mix/".
+    readonly property string exampleUser: {
+        const users = root.detail("userIds", [])
+        if (users.length > 0) return String(users[0])
+        const groups = root.detail("userGroups", [])
+        for (const group of groups) {
+            const members = root.groupMembers(String(group))
+            if (members.length > 0) return members[0]
+        }
+        return "{user}"
+    }
+
+    function resolvedPath(directory) {
+        const home = root.normalisePath(String(root.detail("homeDirectory", "")).replace(/\{user\}/g, root.exampleUser))
+        const under = root.normalisePath(directory)
+        if (under.length === 0) return ""
+        return (home.length > 0 ? home + "/" : "") + under + "/"
+    }
+
+    function addDirectory(path) {
+        const normalised = root.normalisePath(path)
+        if (normalised.length === 0) {
+            root.error = "That is not a directory: it normalises to nothing."
+            return
+        }
+        const directories = root.detail("directories", []).map(d => String(d))
+        if (directories.indexOf(normalised) >= 0) {
+            root.error = "\"" + normalised + "\" is already created at login."
+            return
+        }
+        directories.push(normalised)
+        root.error = ""
+        root.savingDirectories = true
+        etsClient.updateServer(root.serverId, { directories: directories })
+    }
+
+    function removeDirectory(path) {
+        root.error = ""
+        root.savingDirectories = true
+        // Only the definition. What is already in the bucket stays: these are ordinary objects by
+        // the time they exist, and forgetting to create one again is not a reason to delete what
+        // clients have since put in it.
+        etsClient.updateServer(root.serverId,
+                               { directories: root.detail("directories", []).filter(d => String(d) !== path) })
+    }
+
+    property bool savingDirectories: false
+
     function serverStateColor(value) {
         if (value === "RUNNING") return "#4cd97b"
         if (value === "STOPPED") return "#ffb545"
@@ -154,15 +215,19 @@ Item {
         function onServerStateFailed(message) {
             root.deleting = false
             root.savingAccess = false
-            if (addUserDialog.opened) addUserDialog.errorText = message
+            root.savingDirectories = false
+            if (addDirectoryDialog.opened) addDirectoryDialog.errorText = message
+            else if (addUserDialog.opened) addUserDialog.errorText = message
             else if (addGroupDialog.opened) addGroupDialog.errorText = message
             else root.error = message
         }
         function onServerStateChanged(serverId, desiredState) {
             if (serverId !== root.serverId) return
             root.savingAccess = false
+            root.savingDirectories = false
             addUserDialog.close()
             addGroupDialog.close()
+            addDirectoryDialog.close()
             // The change is already stored; re-reading is what puts the new list on screen.
             root.refresh()
         }
@@ -496,6 +561,286 @@ Item {
                                 }
                             }
                         }
+                    }
+                }
+            }
+
+            // ── Default directories ──────────────────────────────────────────
+            Rectangle {
+                width: parent.width
+                height: directoriesCol.implicitHeight + 40
+                radius: 14
+                color: "#20242e"
+                border.color: "#2c313c"
+                border.width: 1
+
+                Column {
+                    id: directoriesCol
+                    anchors.top: parent.top
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.margins: 20
+                    spacing: 14
+
+                    Item {
+                        width: parent.width
+                        height: directoriesHeaderRow.implicitHeight
+
+                        Row {
+                            id: directoriesHeaderRow
+                            spacing: 10
+                            Text { text: "Default Directories"; color: "white"; font.pixelSize: 15; font.bold: true }
+                            BusyIndicator {
+                                running: root.savingDirectories
+                                visible: root.savingDirectories
+                                width: 18
+                                height: 18
+                                anchors.verticalCenter: parent.verticalCenter
+                            }
+                        }
+
+                        Button {
+                            text: "+ Add directory"
+                            highlighted: true
+                            anchors.right: parent.right
+                            anchors.verticalCenter: directoriesHeaderRow.verticalCenter
+                            Material.theme: Material.Dark
+                            Material.accent: "#4f8cff"
+                            enabled: !root.savingDirectories
+                            onClicked: addDirectoryDialog.open()
+                        }
+                    }
+
+                    Text {
+                        width: parent.width
+                        wrapMode: Text.WordWrap
+                        color: "#6b7280"
+                        font.pixelSize: 11
+                        text: "Created under each session's home when a client logs in, intermediate levels and all - "
+                              + "a client that has to deliver into a folder cannot be asked to create it first. "
+                              + "Relative to the home below, so one entry is a different key for every client."
+                    }
+
+                    DetailField {
+                        width: directoriesCol.width
+                        label: "Home directory"
+                        // The template, not a path: "{user}" is substituted per session, and an
+                        // empty one roots every client at the bucket root.
+                        value: String(root.detail("homeDirectory", "")).length > 0
+                               ? root.detail("homeDirectory", "") : "— (the bucket root)"
+                    }
+
+                    Text {
+                        visible: root.detail("directories", []).length === 0
+                        text: "None. A session finds whatever is already in the bucket and nothing is created for it."
+                        color: "#6b7280"
+                        font.pixelSize: 12
+                    }
+
+                    Repeater {
+                        model: root.detail("directories", [])
+
+                        delegate: Rectangle {
+                            id: directoryRow
+                            required property string modelData
+
+                            width: directoriesCol.width
+                            height: 34
+                            radius: 8
+                            color: "#1b1e25"
+                            border.color: "#2c313c"
+                            border.width: 1
+
+                            Text {
+                                anchors.left: parent.left
+                                anchors.leftMargin: 10
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: directoryRow.modelData
+                                color: "#c4c9d1"
+                                font.pixelSize: 12
+                                font.family: "monospace"
+                            }
+
+                            Text {
+                                anchors.right: removeDirectoryText.left
+                                anchors.rightMargin: 14
+                                anchors.verticalCenter: parent.verticalCenter
+                                // What it actually becomes for one client, which is the thing worth
+                                // checking: a home template and a relative path are easy to get
+                                // right separately and wrong together.
+                                text: "→ " + root.resolvedPath(directoryRow.modelData)
+                                color: "#6b7280"
+                                font.pixelSize: 11
+                                font.family: "monospace"
+                                elide: Text.ElideLeft
+                                width: Math.min(implicitWidth, directoryRow.width / 2)
+                            }
+
+                            Text {
+                                id: removeDirectoryText
+                                anchors.right: parent.right
+                                anchors.rightMargin: 10
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: "Remove"
+                                color: removeDirectoryArea.containsMouse ? "#ff6b6b" : "#9aa1ac"
+                                font.pixelSize: 11
+
+                                MouseArea {
+                                    id: removeDirectoryArea
+                                    anchors.fill: parent
+                                    anchors.margins: -4
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    enabled: !root.savingDirectories
+                                    onClicked: root.removeDirectory(directoryRow.modelData)
+                                }
+                            }
+                        }
+                    }
+
+                    Text {
+                        width: parent.width
+                        wrapMode: Text.WordWrap
+                        visible: root.detail("directories", []).length > 0
+                        color: "#6b7280"
+                        font.pixelSize: 11
+                        text: "Removing one stops it being created for new sessions. What is already in the bucket "
+                              + "stays - by then it is an ordinary object, and clients may have put things in it."
+                    }
+                }
+            }
+        }
+    }
+
+    Dialog {
+        id: addDirectoryDialog
+        modal: true
+        anchors.centerIn: parent
+        width: 460
+        padding: 28
+        topPadding: 24
+        bottomPadding: 24
+        standardButtons: Dialog.NoButton
+
+        property string errorText: ""
+
+        readonly property string normalised: root.normalisePath(directoryField.text)
+        readonly property bool valid: addDirectoryDialog.normalised.length > 0
+                                      && root.detail("directories", []).map(d => String(d))
+                                             .indexOf(addDirectoryDialog.normalised) < 0
+
+        background: Rectangle {
+            radius: 16
+            color: "#1b1e25"
+            border.color: "#2c313c"
+            border.width: 1
+        }
+
+        onOpened: {
+            directoryField.text = ""
+            addDirectoryDialog.errorText = ""
+            directoryField.forceActiveFocus()
+        }
+
+        contentItem: Column {
+            width: addDirectoryDialog.availableWidth
+            spacing: 16
+
+            Column {
+                width: parent.width
+                spacing: 4
+                Text { text: "Add Default Directory"; color: "white"; font.pixelSize: 18; font.bold: true }
+                Text {
+                    text: "Relative to each session's home. Existing sessions are unaffected - it is created at "
+                          + "login, so it appears for the next client that connects."
+                    color: "#9aa1ac"
+                    font.pixelSize: 12
+                    wrapMode: Text.WordWrap
+                    width: parent.width
+                }
+            }
+
+            Column {
+                width: parent.width
+                spacing: 6
+                Text { text: "Directory"; color: "#9aa1ac"; font.pixelSize: 12 }
+                TextField {
+                    id: directoryField
+                    width: parent.width
+                    placeholderText: "e.g. incoming/mix"
+                    Material.accent: "#4f8cff"
+                    selectByMouse: true
+                    font.family: "monospace"
+                    Keys.onReturnPressed: if (addDirectoryButton.enabled) addDirectoryButton.clicked()
+                }
+
+                Text {
+                    width: parent.width
+                    wrapMode: Text.WordWrap
+                    font.pixelSize: 11
+                    color: directoryField.text.length === 0 ? "#6b7280"
+                           : (addDirectoryDialog.valid ? "#6b7280" : "#ffb545")
+                    // Normalisation is shown rather than enforced: the server drops empty, "." and
+                    // ".." segments on its way to a key, so "../incoming/" is not refused - it is
+                    // simply "incoming". Saying so is more use than rejecting it.
+                    text: {
+                        if (directoryField.text.length === 0)
+                            return "Slashes separate levels; each level is created in turn."
+                        if (addDirectoryDialog.normalised.length === 0)
+                            return "This normalises to nothing - \".\" and \"..\" segments are dropped."
+                        if (!addDirectoryDialog.valid)
+                            return "\"" + addDirectoryDialog.normalised + "\" is already in the list."
+                        return "Stored as \"" + addDirectoryDialog.normalised + "\", created as \""
+                               + root.resolvedPath(directoryField.text) + "\" for "
+                               + (root.exampleUser === "{user}" ? "each client" : root.exampleUser) + "."
+                    }
+                }
+            }
+
+            Text {
+                text: addDirectoryDialog.errorText
+                color: "#ff6b6b"
+                font.pixelSize: 12
+                wrapMode: Text.WordWrap
+                width: parent.width
+                visible: text.length > 0
+            }
+
+            Item {
+                width: parent.width
+                height: 40
+
+                Button {
+                    text: "Cancel"
+                    flat: true
+                    anchors.left: parent.left
+                    anchors.verticalCenter: parent.verticalCenter
+                    Material.theme: Material.Dark
+                    onClicked: addDirectoryDialog.close()
+                }
+
+                BusyIndicator {
+                    running: root.savingDirectories
+                    visible: root.savingDirectories
+                    width: 22
+                    height: 22
+                    anchors.right: addDirectoryButton.left
+                    anchors.rightMargin: 12
+                    anchors.verticalCenter: parent.verticalCenter
+                }
+
+                Button {
+                    id: addDirectoryButton
+                    text: "Add"
+                    highlighted: true
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    Material.theme: Material.Dark
+                    Material.accent: "#4f8cff"
+                    enabled: !root.savingDirectories && addDirectoryDialog.valid
+                    onClicked: {
+                        addDirectoryDialog.errorText = ""
+                        root.addDirectory(directoryField.text)
                     }
                 }
             }
