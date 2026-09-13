@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.5](https://github.com/jensvogt/euclid-rui/compare/1.1.4...v1.1.5) (2026-09-13)
+
+
+### Bug Fixes
+
+* FTP/SFTP roles and permissions ([1985ad1](https://github.com/jensvogt/euclid-rui/commit/1985ad1fd799d6feb0aa590e04a6ab7f6c0ccee0))
+
 ## [1.1.4](https://github.com/jensvogt/euclid-rui/compare/1.1.3...v1.1.4) (2026-09-12)
 
 
