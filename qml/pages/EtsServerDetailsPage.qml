@@ -49,6 +49,52 @@ Item {
         etsClient.updateServer(root.serverId, { userIds: root.detail("userIds", []).filter(u => u !== userId) })
     }
 
+    // Every EAM user group, for the picker and for working out who a group already covers.
+    // TransferServer::userGroups holds names rather than ERNs - see TransferAuthenticator, which
+    // resolves each with findUserGroupByName - so a name is what goes in the list.
+    property var eamGroups: []
+
+    function groupMembers(name) {
+        const group = root.eamGroups.find(g => g.name === name)
+        return group ? group.userIds.map(u => String(u)) : []
+    }
+
+    // Users listed individually who are already members of the named group. Access is a union, so
+    // each of these is allowed twice over - and the individual entry is the one that goes stale,
+    // because it stays behind when somebody leaves the group.
+    function usersCoveredBy(name) {
+        const members = root.groupMembers(name)
+        return root.detail("userIds", []).map(u => String(u)).filter(u => members.indexOf(u) >= 0)
+    }
+
+    function addGroup(name) {
+        const groups = root.detail("userGroups", []).map(g => String(g))
+        if (groups.indexOf(name) >= 0) {
+            root.error = "\"" + name + "\" is already allowed to log in."
+            return
+        }
+        groups.push(name)
+
+        // Written in the same call as the group that makes them redundant, so the list is never
+        // briefly saying two things at once.
+        const covered = root.usersCoveredBy(name)
+        const users = root.detail("userIds", []).map(u => String(u)).filter(u => covered.indexOf(u) < 0)
+
+        root.error = ""
+        root.savingAccess = true
+        etsClient.updateServer(root.serverId, { userGroups: groups, userIds: users })
+    }
+
+    function removeGroup(name) {
+        root.error = ""
+        root.savingAccess = true
+        // Only the group. Whoever it was letting in loses access unless they are listed some other
+        // way - putting them all back as individuals would be a different decision, and not one a
+        // × should make on somebody's behalf.
+        etsClient.updateServer(root.serverId,
+                               { userGroups: root.detail("userGroups", []).filter(g => String(g) !== name) })
+    }
+
     function serverStateColor(value) {
         if (value === "RUNNING") return "#4cd97b"
         if (value === "STOPPED") return "#ffb545"
@@ -62,6 +108,9 @@ Item {
         // No per-server refresh is needed beyond the list: "get-server" returns the same fields,
         // and the list is what keeps every other view in sync.
         etsClient.fetchServers("")
+        // The groups this server could allow, and who is in each. Needed for the picker and to work
+        // out which individually listed users a group already covers.
+        eamClient.fetchUserGroups("", 0, 500)
     }
 
     onVisibleChanged: if (visible) refresh()
@@ -74,6 +123,13 @@ Item {
         running: appSettings.autoRefreshSeconds > 0 && root.visible && root.loggedIn
         repeat: true
         onTriggered: root.refresh()
+    }
+
+    Connections {
+        target: eamClient
+        function onUserGroupsLoaded(list, total) {
+            root.eamGroups = list
+        }
     }
 
     Connections {
@@ -99,12 +155,14 @@ Item {
             root.deleting = false
             root.savingAccess = false
             if (addUserDialog.opened) addUserDialog.errorText = message
+            else if (addGroupDialog.opened) addGroupDialog.errorText = message
             else root.error = message
         }
         function onServerStateChanged(serverId, desiredState) {
             if (serverId !== root.serverId) return
             root.savingAccess = false
             addUserDialog.close()
+            addGroupDialog.close()
             // The change is already stored; re-reading is what puts the new list on screen.
             root.refresh()
         }
@@ -304,15 +362,28 @@ Item {
                             }
                         }
 
-                        Button {
-                            text: "+ Add user"
-                            highlighted: true
+                        Row {
                             anchors.right: parent.right
                             anchors.verticalCenter: accessHeaderRow.verticalCenter
-                            Material.theme: Material.Dark
-                            Material.accent: "#4f8cff"
-                            enabled: !root.savingAccess
-                            onClicked: addUserDialog.open()
+                            spacing: 8
+
+                            Button {
+                                text: "+ Add group"
+                                flat: true
+                                Material.theme: Material.Dark
+                                Material.accent: "#4f8cff"
+                                enabled: !root.savingAccess
+                                onClicked: addGroupDialog.open()
+                            }
+
+                            Button {
+                                text: "+ Add user"
+                                highlighted: true
+                                Material.theme: Material.Dark
+                                Material.accent: "#4f8cff"
+                                enabled: !root.savingAccess
+                                onClicked: addUserDialog.open()
+                            }
                         }
                     }
 
@@ -320,7 +391,8 @@ Item {
                         width: parent.width
                         text: "EAM users listed directly, plus every member of the listed groups - a union, not an "
                               + "intersection. A running server keeps its current list until the reconciler next "
-                              + "restarts it. Groups are edited through the ETS API."
+                              + "restarts it. Adding a group drops anyone it already covers from the individual list, "
+                              + "since a second way in is one more thing to remember to take away."
                         color: "#6b7280"
                         font.pixelSize: 11
                         wrapMode: Text.WordWrap
@@ -389,16 +461,188 @@ Item {
                                 radius: 8
                                 color: "#31384a"
                                 height: 26
-                                width: groupChipText.implicitWidth + 20
-                                Text {
-                                    id: groupChipText
+                                width: groupChipRow.implicitWidth + 20
+
+                                Row {
+                                    id: groupChipRow
                                     anchors.centerIn: parent
-                                    text: "group · " + groupChip.modelData
-                                    color: "#c4c9d1"
-                                    font.pixelSize: 11
+                                    spacing: 6
+
+                                    Text {
+                                        id: groupChipText
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        text: "group · " + groupChip.modelData
+                                              + " (" + root.groupMembers(groupChip.modelData).length + ")"
+                                        color: "#c4c9d1"
+                                        font.pixelSize: 11
+                                    }
+                                    Text {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        text: "×"
+                                        color: removeGroupArea.containsMouse ? "#ff6b6b" : "#9aa1ac"
+                                        font.pixelSize: 13
+                                        font.bold: true
+
+                                        MouseArea {
+                                            id: removeGroupArea
+                                            anchors.fill: parent
+                                            anchors.margins: -4
+                                            hoverEnabled: true
+                                            cursorShape: Qt.PointingHandCursor
+                                            enabled: !root.savingAccess
+                                            onClicked: root.removeGroup(groupChip.modelData)
+                                        }
+                                    }
                                 }
                             }
                         }
+                    }
+                }
+            }
+        }
+    }
+
+    Dialog {
+        id: addGroupDialog
+        modal: true
+        anchors.centerIn: parent
+        width: 460
+        padding: 28
+        topPadding: 24
+        bottomPadding: 24
+        standardButtons: Dialog.NoButton
+
+        property string errorText: ""
+
+        // Only groups this server does not already allow. One that is already on it is not a choice.
+        readonly property var choices: {
+            const listed = root.detail("userGroups", []).map(g => String(g))
+            return root.eamGroups.filter(g => listed.indexOf(String(g.name)) < 0)
+        }
+
+        readonly property var selectedGroup: addGroupDialog.choices.length > 0 && groupCombo.currentIndex >= 0
+                                             ? addGroupDialog.choices[groupCombo.currentIndex] : null
+
+        // Who the chosen group would make redundant, worked out before anything is written so the
+        // dialog can say it rather than have it happen quietly.
+        readonly property var covered: addGroupDialog.selectedGroup
+                                       ? root.usersCoveredBy(addGroupDialog.selectedGroup.name) : []
+
+        background: Rectangle {
+            radius: 16
+            color: "#1b1e25"
+            border.color: "#2c313c"
+            border.width: 1
+        }
+
+        onOpened: {
+            addGroupDialog.errorText = ""
+            groupCombo.currentIndex = 0
+        }
+
+        contentItem: Column {
+            width: addGroupDialog.availableWidth
+            spacing: 16
+
+            Column {
+                width: parent.width
+                spacing: 4
+                Text { text: "Add User Group"; color: "white"; font.pixelSize: 18; font.bold: true }
+                Text {
+                    text: "Every member may log in, and stays able to as the group's membership changes - which is "
+                          + "the point of listing a group rather than the people in it."
+                    color: "#9aa1ac"
+                    font.pixelSize: 12
+                    wrapMode: Text.WordWrap
+                    width: parent.width
+                }
+            }
+
+            Column {
+                id: groupColumn
+                width: parent.width
+                spacing: 6
+                Text { text: "Group"; color: "#9aa1ac"; font.pixelSize: 12 }
+                ComboBox {
+                    id: groupCombo
+                    width: groupColumn.width
+                    model: addGroupDialog.choices.map(g => g.name + "  (" + g.userIds.length + " member(s))")
+                    Material.theme: Material.Dark
+                    Material.accent: "#4f8cff"
+                }
+                Text {
+                    width: parent.width
+                    wrapMode: Text.WordWrap
+                    color: "#6b7280"
+                    font.pixelSize: 11
+                    text: addGroupDialog.choices.length === 0
+                          ? (root.eamGroups.length === 0 ? "No user groups could be read."
+                                                         : "Every group is already allowed on this server.")
+                          : (addGroupDialog.selectedGroup
+                             ? (String(addGroupDialog.selectedGroup.description).length > 0
+                                ? addGroupDialog.selectedGroup.description
+                                : "Members: " + addGroupDialog.selectedGroup.userIds.join(", "))
+                             : "")
+                }
+            }
+
+            // The other half of what this does, said before it is done.
+            Text {
+                width: parent.width
+                wrapMode: Text.WordWrap
+                visible: addGroupDialog.covered.length > 0
+                color: "#e0a458"
+                font.pixelSize: 11
+                text: "Also removes " + addGroupDialog.covered.length + " user(s) from the individual list - "
+                      + addGroupDialog.covered.join(", ") + " - who are in this group and would otherwise be "
+                      + "allowed in twice over. They keep access through the group; the entry that would have gone "
+                      + "stale is the one being dropped."
+            }
+
+            Text {
+                text: addGroupDialog.errorText
+                color: "#ff6b6b"
+                font.pixelSize: 12
+                wrapMode: Text.WordWrap
+                width: parent.width
+                visible: text.length > 0
+            }
+
+            Item {
+                width: parent.width
+                height: 40
+
+                Button {
+                    text: "Cancel"
+                    flat: true
+                    anchors.left: parent.left
+                    anchors.verticalCenter: parent.verticalCenter
+                    Material.theme: Material.Dark
+                    onClicked: addGroupDialog.close()
+                }
+
+                BusyIndicator {
+                    running: root.savingAccess
+                    visible: root.savingAccess
+                    width: 22
+                    height: 22
+                    anchors.right: addGroupButton.left
+                    anchors.rightMargin: 12
+                    anchors.verticalCenter: parent.verticalCenter
+                }
+
+                Button {
+                    id: addGroupButton
+                    text: "Add"
+                    highlighted: true
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    Material.theme: Material.Dark
+                    Material.accent: "#4f8cff"
+                    enabled: !root.savingAccess && addGroupDialog.selectedGroup !== null
+                    onClicked: {
+                        addGroupDialog.errorText = ""
+                        root.addGroup(addGroupDialog.selectedGroup.name)
                     }
                 }
             }

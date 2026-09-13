@@ -90,6 +90,8 @@ qt_add_qml_module(euclid-rui
         qml/pages/EamAccountDetailsPage.qml
         qml/pages/EamNamespaceDetailsPage.qml
         qml/pages/EamUserGroupsPage.qml
+        qml/pages/EamRolesPage.qml
+        qml/pages/EamRoleDetailsPage.qml
         qml/pages/EqsQueuesPage.qml
         qml/pages/EqsQueueDetailsPage.qml
         qml/pages/EqsMessagesPage.qml
@@ -137,6 +139,7 @@ qt_add_qml_module(euclid-rui
         qml/components/ImportExportDialog.qml
         qml/components/CertificateImportDialog.qml
         qml/components/ServiceModuleTile.qml
+        qml/components/RoleGrants.qml
         qml/components/ToggleSwitch.qml
         qml/components/SectionHeader.qml
         qml/components/ActivityRow.qml

@@ -84,6 +84,56 @@ public:
     Q_INVOKABLE void grantNamespaceAccess(const QString &userErn, const QString &accountId, const QString &namespaceName);
     Q_INVOKABLE void revokeNamespaceAccess(const QString &userErn, const QString &accountId, const QString &namespaceName);
 
+    // ── Roles and grants ─────────────────────────────────────────────────────
+    // What authorization is actually made of: a role is a named set of permissions, and a grant
+    // gives one to a principal - a user or a user group - in named namespaces and over named
+    // resources. The pair above is the narrow case of this, fixed to the "operator" role.
+
+    // Every role the account can grant: the six built-ins and whatever has been created alongside
+    // them. Asked for by the grant dialog, which offers them rather than taking a typed name that
+    // the server would then refuse.
+    Q_INVOKABLE void fetchRoles(const QString &accountId = QString());
+
+    // One role and every permission it holds. Answers for a built-in too, which is the only way to
+    // see what one of those actually covers - they are not rows in the account.
+    Q_INVOKABLE void fetchRole(const QString &name);
+
+    // Every permission a role may hold, with the modules they belong to. "unbindable" names the
+    // modules no role can reach (emm and emd): they gate themselves, so no permission of theirs
+    // exists to be granted.
+    Q_INVOKABLE void fetchPermissions();
+
+    // A role needs at least one permission - one that grants nothing is a mistake rather than a
+    // starting point - and every one is checked against what the modules actually dispatch.
+    Q_INVOKABLE void createRole(const QString &name, const QStringList &permissions, const QString &description = QString());
+
+    // Replaces rather than merges: a permission left out is taken away, which is the only way to
+    // narrow a role. Built-in roles are refused.
+    Q_INVOKABLE void updateRole(const QString &name, const QStringList &permissions, const QString &description = QString());
+
+    // Refused while anything still holds it - revoke those grants first - and refused outright for
+    // a built-in.
+    Q_INVOKABLE void deleteRole(const QString &name);
+
+    // Who holds a role, which is the other half of "what may they do". Its own signal so a page
+    // showing a role's holders is not confused by a principal's grant list.
+    Q_INVOKABLE void fetchRoleGrants(const QString &role, const QString &accountId = QString());
+
+    // One principal's grants. Takes a user ERN or a user-group ERN - the ERN is what says which,
+    // and the server resolves it either way.
+    Q_INVOKABLE void fetchGrants(const QString &principalErn);
+
+    // Namespaces and resources are both required by the server and both take "*". A grant that
+    // applies in no namespace grants nothing, which is a mistake rather than a configuration, so
+    // there is no "leave it empty" here either.
+    Q_INVOKABLE void grantRole(const QString &role, const QString &principalErn,
+                               const QStringList &namespaces, const QStringList &resources,
+                               const QString &accountId = QString());
+
+    // By grant id, which is what list-grants answers with: a grant's scope is fixed once written,
+    // so narrowing one means revoking it and writing what is left.
+    Q_INVOKABLE void revokeRole(const QString &grantId, const QString &principalErn);
+
     Q_INVOKABLE void fetchUserGroups(const QString &prefix = QString(), int pageIndex = 0, int pageSize = 10, const QString &sortColumn = QStringLiteral("userId"), const QString &sortDirection = QStringLiteral("asc"));
     // Admin-only; group name must be unique across the deployment. Starts empty - members are
     // added afterward via user-group-add-user (not yet exposed here).
@@ -139,6 +189,35 @@ signals:
     // Likewise for namespace grants: `granted` false means the grant was revoked.
     void namespaceAccessChanged(const QString &userErn, const QString &accountId, const QString &namespaceName, bool granted);
     void namespaceAccessFailed(const QString &message);
+
+    // Each role: {name, description, builtin, permissions, permissionCount}. "builtin" marks the
+    // six every installation has, which cannot be redefined or deleted.
+    void rolesLoaded(const QVariantList &roles);
+    void rolesFailed(const QString &message);
+    void rolesReload();
+    void roleLoaded(const QString &name, const QVariantMap &role);
+    void roleLoadFailed(const QString &name, const QString &message);
+    // {permissions, modules, unbindableModules}
+    void permissionsLoaded(const QStringList &permissions, const QStringList &modules, const QStringList &unbindableModules);
+    void permissionsFailed(const QString &message);
+    void roleCreated(const QString &name, const QVariantMap &role);
+    void roleCreateFailed(const QString &message);
+    void roleUpdated(const QString &name, const QVariantMap &role);
+    void roleUpdateFailed(const QString &message);
+    void roleDeleted(const QString &name);
+    void roleDeleteFailed(const QString &message);
+    // The grants that name one role, rather than one principal.
+    void roleGrantsLoaded(const QString &role, const QVariantList &grants);
+    void roleGrantsFailed(const QString &role, const QString &message);
+    // Each grant: {grantId, role, principal, accountId, namespaces, resources, granted, grantedBy}.
+    // Carries the principal it was asked for, so a page showing one is not confused by an answer
+    // about another.
+    void grantsLoaded(const QString &principalErn, const QVariantList &grants);
+    void grantsFailed(const QString &principalErn, const QString &message);
+    void roleGranted(const QString &principalErn, const QString &grantId);
+    void roleGrantFailed(const QString &message);
+    void roleRevoked(const QString &principalErn, const QString &grantId);
+    void roleRevokeFailed(const QString &message);
 
     void userGroupsLoaded(const QVariantList &groups, int total);
     void userGroupsFailed(const QString &message);
