@@ -499,10 +499,12 @@ Item {
             width: parent.width
             spacing: 20
 
-            Button {
-                text: "‹ Back to Tables"
-                flat: true
-                onClicked: root.back()
+            Breadcrumb {
+                width: parent.width
+                segments: [
+                    { label: "Tables", action: () => root.back() },
+                    { label: root.tableName }
+                ]
             }
 
             Item {

@@ -222,10 +222,12 @@ Item {
             width: parent.width
             spacing: 20
 
-            Button {
-                text: "‹ Back to EAG Dashboard"
-                flat: true
-                onClicked: root.back()
+            Breadcrumb {
+                width: parent.width
+                segments: [
+                    { label: "EAG", action: () => root.back() },
+                    { label: "Listeners" }
+                ]
             }
 
             Item {

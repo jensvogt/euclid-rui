@@ -131,10 +131,12 @@ Item {
             width: parent.width
             spacing: 20
 
-            Button {
-                text: "‹ Back to Buckets"
-                flat: true
-                onClicked: root.back()
+            Breadcrumb {
+                width: parent.width
+                segments: [
+                    { label: "Buckets", action: () => root.back() },
+                    { label: root.bucketName }
+                ]
             }
 
             Item {

@@ -63,10 +63,12 @@ Item {
             width: parent.width
             spacing: 20
 
-            Button {
-                text: "‹ Back to Modules"
-                flat: true
-                onClicked: root.back()
+            Breadcrumb {
+                width: parent.width
+                segments: [
+                    { label: "Modules", action: () => root.back() },
+                    { label: root.moduleName }
+                ]
             }
 
             SectionHeader {

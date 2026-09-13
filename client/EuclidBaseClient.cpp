@@ -1,4 +1,6 @@
 #include "EuclidBaseClient.h"
+#include <algorithm>
+#include <QDateTime>
 #include "RequestSigner.h"
 
 #include <QJsonArray>
@@ -31,7 +33,106 @@ QJsonObject replyBody(QNetworkReply *reply) {
 }
 }
 
-EuclidBaseClient::EuclidBaseClient(QObject *parent) : QObject(parent), m_baseUrl(QString::fromLatin1(kDefaultBaseUrl)) {}
+EuclidBaseClient::EuclidBaseClient(QObject *parent) : QObject(parent), m_baseUrl(QString::fromLatin1(kDefaultBaseUrl)) {
+    m_sessionRefreshTimer.setSingleShot(true);
+    connect(&m_sessionRefreshTimer, &QTimer::timeout, this, &EuclidBaseClient::refreshSession);
+}
+
+// The "exp" claim, read out of the JWT's payload without verifying anything. A JWT is three
+// base64url segments; the middle one is the claims, and the only claim needed here is when this
+// stops being accepted. Verifying it would need the signing secret, which is the server's alone -
+// and there is nothing to protect against: a client lying to itself about its own expiry only
+// renews at the wrong moment.
+qint64 EuclidBaseClient::secondsUntilExpiry(const QString &token) {
+    const auto segments = token.split(QLatin1Char('.'));
+    if (segments.size() < 2)
+        return -1;
+
+    const auto payload = QByteArray::fromBase64(segments.at(1).toUtf8(), QByteArray::Base64UrlEncoding);
+    const auto claims = QJsonDocument::fromJson(payload).object();
+    const auto expiry = claims.value(QStringLiteral("exp"));
+    if (!expiry.isDouble())
+        return -1;
+
+    return static_cast<qint64>(expiry.toDouble()) - QDateTime::currentSecsSinceEpoch();
+}
+
+void EuclidBaseClient::scheduleSessionRefresh() {
+
+    m_sessionRefreshTimer.stop();
+    if (m_token.isEmpty())
+        return;
+
+    // Nothing to renew while requests are signed: the token is not sent, so its expiry decides
+    // nothing. Asking anyway would be an hourly request that buys nothing - and an hourly failure
+    // reported to the user on any server without refresh-session, for a session that is working
+    // perfectly well. The mirror of authorize()'s own condition, deliberately: whether the token
+    // matters is exactly whether it would be sent.
+    if (m_authMode == QLatin1String("rfc9421") && !m_accessKeyId.isEmpty() && !m_secretAccessKey.isEmpty())
+        return;
+
+    const auto remaining = secondsUntilExpiry(m_token);
+    if (remaining < 0) {
+        // No usable expiry: either not a JWT or a claim this cannot read. Renewing on a guess would
+        // be worse than not renewing - the session still works until it does not, which is where
+        // this started.
+        return;
+    }
+
+    // A minute of headroom, or half the lifetime for a session short enough that a minute is most
+    // of it. Early rather than late on purpose: refresh-session authenticates like every other
+    // action, so a token that has already expired cannot be used to ask for its successor.
+    const qint64 lead = std::min<qint64>(60, remaining / 2);
+    const qint64 delay = std::max<qint64>(1, remaining - lead);
+
+    m_sessionRefreshTimer.start(static_cast<int>(std::min<qint64>(delay, 24 * 60 * 60) * 1000));
+}
+
+void EuclidBaseClient::refreshSession() {
+
+    if (m_token.isEmpty() || m_refreshingSession)
+        return;
+    m_refreshingSession = true;
+
+    // Not marked busy: this is the application keeping itself alive rather than anything the user
+    // asked for, and a spinner appearing once an hour for no reason somebody can see is worse than
+    // no spinner.
+    post("eam", "refresh-session", QJsonObject{}, true,
+         [this](const QJsonObject &response) {
+             m_refreshingSession = false;
+
+             const auto token = response.value("token").toString();
+             if (token.isEmpty()) {
+                 emit sessionRefreshFailed(tr("The gateway renewed the session without giving a token."));
+                 return;
+             }
+             m_token = token;
+
+             // The key comes back with it, and may have been reissued since - adopted for the same
+             // reason login adopts it.
+             if (const auto accessKeyId = response.value("accessKeyId").toString(),
+                 secretAccessKey = response.value("secretAccessKey").toString();
+                 !accessKeyId.isEmpty() && !secretAccessKey.isEmpty()) {
+                 setAccessKey(accessKeyId, secretAccessKey);
+                 emit accessKeyIssued(accessKeyId, secretAccessKey);
+             }
+
+             scheduleSessionRefresh();
+             emit sessionRefreshed(secondsUntilExpiry(m_token));
+         },
+         [this](const QString &message) {
+             m_refreshingSession = false;
+             // Tried again once, sooner: a renewal that failed because the gateway was briefly
+             // unreachable should not cost the whole session, and there is still headroom left
+             // before the token actually expires.
+             const auto remaining = secondsUntilExpiry(m_token);
+             if (remaining > 10) {
+                 m_sessionRefreshTimer.start(static_cast<int>(std::min<qint64>(remaining - 5, 30) * 1000));
+                 return;
+             }
+             emit sessionRefreshFailed(message);
+         });
+}
 
 void EuclidBaseClient::setBaseUrl(const QString &baseUrl) {
     if (baseUrl.isEmpty() || baseUrl == m_baseUrl)
@@ -41,6 +142,9 @@ void EuclidBaseClient::setBaseUrl(const QString &baseUrl) {
 
     const bool hadSession = !m_token.isEmpty();
     m_token.clear();
+    // The session this was renewing is gone; renewing it against another gateway would be asking a
+    // backend about a token it never minted.
+    m_sessionRefreshTimer.stop();
     m_namespace.clear();
     if (m_isAdmin) {
         m_isAdmin = false;
@@ -288,6 +392,10 @@ void EuclidBaseClient::login(const QString &userId, const QString &password) {
                  // session has stopped using.
                  emit accessKeyIssued(accessKeyId, secretAccessKey);
              }
+
+             // Renewal starts with the session rather than when something first fails: a token is
+             // good for an hour, and the point is to replace it while it still works.
+             scheduleSessionRefresh();
 
              emit isAdminChanged();
              emit accountIdChanged();

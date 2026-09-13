@@ -91,10 +91,12 @@ Item {
             width: parent.width
             spacing: 20
 
-            Button {
-                text: "‹ Back to Messages"
-                flat: true
-                onClicked: root.back()
+            Breadcrumb {
+                width: parent.width
+                segments: [
+                    { label: "Messages", action: () => root.back() },
+                    { label: root.messageId }
+                ]
             }
 
             Item {

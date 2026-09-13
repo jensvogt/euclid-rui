@@ -87,10 +87,12 @@ Item {
             width: parent.width
             spacing: 20
 
-            Button {
-                text: "‹ Back to User Groups"
-                flat: true
-                onClicked: root.back()
+            Breadcrumb {
+                width: parent.width
+                segments: [
+                    { label: "User Groups", action: () => root.back() },
+                    { label: root.groupName }
+                ]
             }
 
             Item {

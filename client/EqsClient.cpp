@@ -75,12 +75,17 @@ void EqsClient::createQueue(const QString &name, const QString &dlqName, const i
          });
 }
 
-void EqsClient::purgeQueue(const QString &queueErn) {
+void EqsClient::purgeQueue(const QString &queueErn, const bool async) {
     QJsonObject body;
     body["ern"] = queueErn;
+    body["async"] = async;
 
     m_base->post("eqs", "purge-queue", body, true,
-         [this, queueErn](const QJsonObject &response) {
+         [this, queueErn, async](const QJsonObject &response) {
+             emit queuePurged(queueErn, response.value("async").toBool(async),
+                              response.value("messages").toInt());
+             // Re-read either way. A background purge has not finished - the counts will still be
+             // falling - but the listing is the only thing that shows it happening at all.
              emit messagesReload(queueErn);
              emit queuesReload();
          },

@@ -461,10 +461,12 @@ Item {
             width: parent.width
             spacing: 20
 
-            Button {
-                text: "‹ Back to Dashboard"
-                flat: true
-                onClicked: root.back()
+            Breadcrumb {
+                width: parent.width
+                segments: [
+                    { label: "Dashboard", action: () => root.back() },
+                    { label: "Modules" }
+                ]
             }
 
             SectionHeader {

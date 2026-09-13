@@ -734,10 +734,12 @@ Item {
             width: parent.width
             spacing: 20
 
-            Button {
-                text: "‹ Back to Roles"
-                flat: true
-                onClicked: root.back()
+            Breadcrumb {
+                width: parent.width
+                segments: [
+                    { label: "Roles", action: () => root.back() },
+                    { label: root.roleName }
+                ]
             }
 
             Item {

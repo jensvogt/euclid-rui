@@ -121,10 +121,12 @@ Item {
             width: parent.width
             spacing: 20
 
-            Button {
-                text: "‹ Back to Certificates"
-                flat: true
-                onClicked: root.back()
+            Breadcrumb {
+                width: parent.width
+                segments: [
+                    { label: "Certificates", action: () => root.back() },
+                    { label: root.certificateName }
+                ]
             }
 
             Item {

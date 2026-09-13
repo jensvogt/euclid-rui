@@ -99,10 +99,12 @@ Item {
             width: parent.width
             spacing: 20
 
-            Button {
-                text: "‹ Back to Keys"
-                flat: true
-                onClicked: root.back()
+            Breadcrumb {
+                width: parent.width
+                segments: [
+                    { label: "Keys", action: () => root.back() },
+                    { label: root.keyName }
+                ]
             }
 
             Item {

@@ -277,10 +277,12 @@ Item {
             width: parent.width
             spacing: 20
 
-            Button {
-                text: "‹ Back to EAM Dashboard"
-                flat: true
-                onClicked: root.back()
+            Breadcrumb {
+                width: parent.width
+                segments: [
+                    { label: "EAM", action: () => root.back() },
+                    { label: "Users" }
+                ]
             }
 
             Item {

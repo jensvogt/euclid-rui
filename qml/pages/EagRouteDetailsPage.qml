@@ -119,10 +119,12 @@ Item {
             width: parent.width
             spacing: 20
 
-            Button {
-                text: "‹ Back to Routes"
-                flat: true
-                onClicked: root.back()
+            Breadcrumb {
+                width: parent.width
+                segments: [
+                    { label: "Routes", action: () => root.back() },
+                    { label: root.routeId }
+                ]
             }
 
             Item {

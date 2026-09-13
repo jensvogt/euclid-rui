@@ -383,10 +383,12 @@ Item {
             width: parent.width
             spacing: 20
 
-            Button {
-                text: "‹ Back to ESS Dashboard"
-                flat: true
-                onClicked: root.back()
+            Breadcrumb {
+                width: parent.width
+                segments: [
+                    { label: "ESS", action: () => root.back() },
+                    { label: "Secrets" }
+                ]
             }
 
             Item {

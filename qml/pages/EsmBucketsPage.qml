@@ -675,10 +675,12 @@ Item {
             width: parent.width
             spacing: 20
 
-            Button {
-                text: "‹ Back to ESM Dashboard"
-                flat: true
-                onClicked: root.back()
+            Breadcrumb {
+                width: parent.width
+                segments: [
+                    { label: "ESM", action: () => root.back() },
+                    { label: "Buckets" }
+                ]
             }
 
             Item {
