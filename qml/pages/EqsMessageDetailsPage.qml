@@ -34,7 +34,7 @@ Item {
 
     function priorityColor(priority) {
         if (priority === "HIGH") return "#d94c4c"
-        if (priority === "MIDDLE") return "#ffb545"
+        if (priority === "MEDIUM") return "#ffb545"
         if (priority === "LOW") return "#4f8cff"
         return "#9aa1ac"
     }
