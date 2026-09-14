@@ -64,6 +64,18 @@ Item {
     // its own period, so they no longer come back together.
     property var updatedByTile: ({})
 
+    // When a refresh somebody asked for last completed - F5, or opening the page. Deliberately not
+    // moved by the periodic timer: this line answers "when did I last pull this", which is the
+    // question a key you just pressed raises, and a figure that quietly advanced on its own would
+    // answer a different one. The cadence beside it says the data is fresher than this in between.
+    property string lastUpdatedText: "—"
+    // Set while a refresh somebody asked for is outstanding, so the line can say so rather than
+    // appear to ignore the key, and cleared by whichever read answers first.
+    property bool refreshing: false
+    // Whether the outstanding refresh was asked for. The reads themselves are identical either way;
+    // only what they stamp differs.
+    property bool refreshRequested: false
+
     // Row cap multiplier for the aggregated per-module queries: one bucket costs one row per
     // action, so the cap has to be buckets * actions. The busiest module instruments 23 actions,
     // so 32 leaves room for a few more before histories start getting trimmed at the far end.
@@ -261,11 +273,168 @@ Item {
     }
 
     // What F5 calls (see Main.qml's refreshCurrentPage()): for this page, every tile at once.
-    function refresh() {
+    // ── EAP pools ────────────────────────────────────────────────────────────
+    //
+    // Not a metric series like everything else on this page, and it cannot be: utilisation and
+    // backlog are a control signal the autoscaler reads off the module record, deliberately kept
+    // out of the monitoring store - see Entity::EMM::Module::utilisation for why. So this tile is
+    // the live state of the pools rather than a chart of it.
+
+    // Application pools, by the name the manager runs them under. An EMM module row is named after
+    // Entity::EAP::RuntimeName(), not the applicationId, so the two lists are joined on that.
+    property var applications: []
+    property var modules: []
+
+    // The newest "application-utilisation"/"application-backlog" sample per instance, from EMO.
+    //
+    // Two roads carry the same numbers and an application may be on either. The newer one is
+    // "eap report-load", which writes them onto the instance record where the manager reads them on
+    // every reconcile; the older is pushing them to EMO as metrics, which the manager still reads
+    // back as a fallback - but only to decide scaling. It never copies them onto the record (see
+    // Controller.cpp's second load pass), so an application on the older road reports nothing as far
+    // as list-modules is concerned while quite visibly driving its pool. Reading both is the only
+    // way this tile can say what is actually happening.
+    property var emoUtilisation: ({})
+    property var emoBacklog: ({})
+
+    // How old an EMO sample may be before it stops counting as current. Wider than the manager's
+    // own load-freshness-seconds (45 as shipped) on purpose, because these samples do not arrive
+    // when they are taken: EMO accumulates in memory and writes a row only when its averaging
+    // bucket closes - euclid.modules.emo.average-period, five minutes as shipped - so the newest
+    // row for a busy instance is routinely minutes old - measured at eleven on an installation
+    // whose pools had just gone quiet. Three buckets, so a late flush does not blank the tile,
+    // while an instance that has genuinely stopped reporting still ages out. The manager applies no
+    // age limit at all on this road, which is the other end of the same trade.
+    readonly property int emoSampleWindowSeconds: 900
+
+    function freshSample(map, instanceId) {
+        const sample = map[instanceId]
+        if (!sample) return undefined
+        const at = new Date(sample.timestamp)
+        if (isNaN(at.getTime())) return undefined
+        if ((Date.now() - at.getTime()) / 1000 > root.emoSampleWindowSeconds) return undefined
+        // The peak, not the average, for the reason EmoClient records both and the manager reads
+        // this one.
+        return Number(sample.maxValue)
+    }
+
+    // One pool, summed the way Database::Entity::EMM::SummarisePool does it: the mean for
+    // utilisation and the total for backlog, counting only the instances that report at all.
+    function summarise(module) {
+        const instances = module.instances || []
+        let running = 0
+        let reporting = 0
+        let utilisationSum = 0
+        let backlog = 0
+
+        for (const instance of instances) {
+            if (String(instance.state) !== "RUNNING") continue
+            ++running
+
+            // The record first: it is the road the autoscaler prefers and the fresher of the two.
+            let utilisation = Number(instance.utilisation)
+            let waiting = Number(instance.backlog)
+
+            if (utilisation < 0) {
+                const sample = root.freshSample(root.emoUtilisation, String(instance.instanceId))
+                if (sample !== undefined) utilisation = sample
+            }
+            if (waiting < 0) {
+                const sample = root.freshSample(root.emoBacklog, String(instance.instanceId))
+                if (sample !== undefined) waiting = sample
+            }
+
+            if (utilisation < 0 && waiting < 0) continue
+            ++reporting
+            if (utilisation >= 0) utilisationSum += utilisation
+            if (waiting >= 0) backlog += waiting
+        }
+
+        return {
+            running: running,
+            reporting: reporting,
+            utilisation: reporting > 0 ? utilisationSum / reporting : -1,
+            backlog: reporting > 0 ? backlog : -1
+        }
+    }
+
+    readonly property var applicationPools: {
+        const pools = []
+        for (const application of root.applications) {
+            const runtimeName = String(application.runtimeName).length > 0
+                                ? String(application.runtimeName) : String(application.applicationId)
+            const module = root.modules.find(m => String(m.name) === runtimeName)
+            if (!module) continue
+            const load = root.summarise(module)
+            pools.push({
+                applicationId: String(application.applicationId),
+                runtimeName: runtimeName,
+                running: load.running,
+                maxInstances: Number(module.maxInstances),
+                reporting: load.reporting,
+                utilisation: load.utilisation,
+                backlog: load.backlog
+            })
+        }
+        return pools.sort((a, b) => String(a.applicationId).localeCompare(String(b.applicationId)))
+    }
+
+    readonly property int poolInstances: root.applicationPools.reduce((sum, p) => sum + p.running, 0)
+    readonly property int poolCeiling: root.applicationPools.reduce((sum, p) => sum + p.maxInstances, 0)
+    // Across the pools that report, for the reason a single pool is averaged: half the instances at
+    // 100% is 50%, and a pool that reports nothing is not a pool at zero.
+    readonly property var reportingPools: root.applicationPools.filter(p => p.reporting > 0)
+    readonly property double poolUtilisation: root.reportingPools.length > 0
+        ? root.reportingPools.reduce((sum, p) => sum + p.utilisation, 0) / root.reportingPools.length
+        : -1
+    readonly property int poolBacklog: root.reportingPools.reduce((sum, p) => sum + p.backlog, 0)
+
+    // A percentage already, not a fraction: the manager's own threshold is
+    // kBusyUtilisationPercent = 5.0, and what instances report reads 51.7, 61.5. Multiplying by a
+    // hundred here would have shown 5173%.
+    function utilisationText(value) {
+        return value < 0 ? "—" : Math.round(value) + "%"
+    }
+
+    // The colours the autoscaler's thresholds imply rather than arbitrary bands: a pool sitting
+    // near its ceiling is the one worth noticing.
+    function utilisationColor(value) {
+        if (value < 0) return "#6b7280"
+        if (value >= 80) return "#ff6b6b"
+        if (value >= 50) return "#ffb545"
+        return "#4cd97b"
+    }
+
+    // Called by F5 as well as by the page's own timer - see Main.qml's refreshCurrentPage(), which
+    // passes true for the first. Acted on here only to say that the key did something: the read is
+    // the same read either way.
+    function refresh(requested) {
+        if (requested === true) {
+            root.refreshing = true
+            root.refreshRequested = true
+        }
         root.refreshMetrics()
     }
 
+    function markUpdated() {
+        if (!root.refreshRequested)
+            return
+        // The first answer to arrive is the one that stamps it: the tiles come back one at a time,
+        // and the last of them can be seconds later - long enough that a line updating on it would
+        // look like the key was slow.
+        root.refreshRequested = false
+        root.refreshing = false
+        root.lastUpdatedText = Qt.formatDateTime(new Date(), "hh:mm:ss")
+    }
+
     function refreshMetrics() {
+        // The pools, which are read rather than charted - see applicationPools above.
+        eapClient.fetchApplications("")
+        emmClient.fetchModules()
+        // The older of the two load roads - see emoUtilisation. One request per metric, not one per
+        // instance.
+        emoClient.fetchLatestByLabel("application-utilisation")
+        emoClient.fetchLatestByLabel("application-backlog")
         root.refreshTile("gateway")
         root.refreshTile("eqs-repository")
         for (const m of root.serviceModules)
@@ -289,8 +458,8 @@ Item {
         return false
     }
 
-    onVisibleChanged: if (visible) refreshMetrics()
-    onLoggedInChanged: if (loggedIn && visible) refreshMetrics()
+    onVisibleChanged: if (visible) root.refresh(true)
+    onLoggedInChanged: if (loggedIn && visible) root.refresh(true)
 
     Timer {
         interval: appSettings.autoRefreshSeconds * 1000
@@ -300,7 +469,28 @@ Item {
     }
 
     Connections {
+        target: eapClient
+        function onApplicationsLoaded(list, total) {
+            root.applications = list
+            root.markUpdated()
+        }
+    }
+
+    Connections {
+        target: emmClient
+        function onModulesLoaded(list, total) {
+            root.modules = list
+            root.markUpdated()
+        }
+    }
+
+    Connections {
         target: emoClient
+        function onLatestByLabelLoaded(metricName, latest) {
+            if (metricName === "application-utilisation") root.emoUtilisation = latest
+            else if (metricName === "application-backlog") root.emoBacklog = latest
+            root.markUpdated()
+        }
         function onSeriesLoaded(name, labelValue, points) {
             const tileId = root.tileForMetric(name)
             if (tileId.length === 0) return
@@ -327,6 +517,7 @@ Item {
             const updated = Object.assign({}, root.updatedByTile)
             updated[tileId] = Qt.formatDateTime(new Date(), "hh:mm:ss")
             root.updatedByTile = updated
+            root.markUpdated()
         }
         function onSeriesFailed(name, labelValue, message) {
             if (name === "gateway-service-count") {
@@ -567,152 +758,225 @@ Item {
                 }
             }
 
+            // ── EAP pools ────────────────────────────────────────────────────
             Rectangle {
                 width: parent.width
-                height: 260
-                radius: 14
-                color: "#20242e"
-                border.color: "#2c313c"
-                border.width: 1
-
-                Row {
-                    anchors.fill: parent
-                    anchors.margins: 24
-                    spacing: 30
-
-                    Column {
-                        spacing: 16
-                        width: 220
-                        anchors.verticalCenter: parent.verticalCenter
-
-                        Text { text: "Traffic Sources"; color: "white"; font.pixelSize: 15; font.bold: true }
-
-                        Repeater {
-                            model: [
-                                { label: "Organic Search", pct: 42, color: "#4f8cff" },
-                                { label: "Direct", pct: 27, color: "#4cd97b" },
-                                { label: "Referral", pct: 18, color: "#ffb545" },
-                                { label: "Social", pct: 13, color: "#c56bff" }
-                            ]
-                            delegate: Column {
-                                spacing: 4
-                                width: 220
-
-                                Row {
-                                    width: parent.width
-                                    Text {
-                                        text: modelData.label
-                                        color: "#c4c9d1"
-                                        font.pixelSize: 12
-                                        width: parent.width - 34
-                                    }
-                                    Text {
-                                        text: modelData.pct + "%"
-                                        color: "white"
-                                        font.pixelSize: 12
-                                        width: 34
-                                        horizontalAlignment: Text.AlignRight
-                                    }
-                                }
-                                Rectangle {
-                                    width: parent.width
-                                    height: 6
-                                    radius: 3
-                                    color: "#2c313c"
-
-                                    Rectangle {
-                                        height: parent.height
-                                        radius: 3
-                                        color: modelData.color
-                                        width: 0
-                                        Behavior on width { NumberAnimation { duration: 700; easing.type: Easing.OutCubic } }
-                                        Component.onCompleted: width = parent.width * modelData.pct / 100
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    Item {
-                        width: 1
-                        height: parent.height
-                        Rectangle { anchors.fill: parent; color: "#2c313c" }
-                    }
-
-                    Column {
-                        anchors.verticalCenter: parent.verticalCenter
-                        spacing: 18
-
-                        Text { text: "Conversion Funnel"; color: "white"; font.pixelSize: 15; font.bold: true }
-
-                        Repeater {
-                            model: [
-                                { label: "Visitors", value: 1.0 },
-                                { label: "Signups", value: 0.62 },
-                                { label: "Trials", value: 0.34 },
-                                { label: "Paid", value: 0.15 }
-                            ]
-                            delegate: Row {
-                                spacing: 12
-                                Text {
-                                    text: modelData.label
-                                    color: "#9aa1ac"
-                                    font.pixelSize: 12
-                                    width: 70
-                                    anchors.verticalCenter: parent.verticalCenter
-                                }
-                                Rectangle {
-                                    height: 22
-                                    radius: 6
-                                    color: "#4f8cff"
-                                    opacity: 0.35 + 0.65 * modelData.value
-                                    width: 0
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    Behavior on width { NumberAnimation { duration: 700; easing.type: Easing.OutCubic } }
-                                    Component.onCompleted: width = 260 * modelData.value
-
-                                    Text {
-                                        anchors.right: parent.right
-                                        anchors.rightMargin: 8
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        text: Math.round(modelData.value * 100) + "%"
-                                        color: "white"
-                                        font.pixelSize: 11
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            Rectangle {
-                width: parent.width
-                height: 200
+                height: poolsColumn.implicitHeight + 40
                 radius: 14
                 color: "#20242e"
                 border.color: "#2c313c"
                 border.width: 1
 
                 Column {
-                    anchors.fill: parent
+                    id: poolsColumn
+                    anchors.top: parent.top
+                    anchors.left: parent.left
+                    anchors.right: parent.right
                     anchors.margins: 20
-                    spacing: 12
+                    spacing: 14
 
-                    Text { text: "Top Pages"; color: "white"; font.pixelSize: 15; font.bold: true }
+                    Item {
+                        width: parent.width
+                        height: poolsHeader.implicitHeight
+
+                        Text {
+                            id: poolsHeader
+                            text: "Application Pools"
+                            color: "white"
+                            font.pixelSize: 15
+                            font.bold: true
+                        }
+
+                        Row {
+                            anchors.right: parent.right
+                            anchors.verticalCenter: poolsHeader.verticalCenter
+                            spacing: 20
+
+                            Text {
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: root.poolInstances + " / " + root.poolCeiling + " instances"
+                                color: "#c4c9d1"
+                                font.pixelSize: 12
+                            }
+                            Text {
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: root.utilisationText(root.poolUtilisation) + " used"
+                                color: root.utilisationColor(root.poolUtilisation)
+                                font.pixelSize: 12
+                            }
+                            Text {
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: root.poolBacklog + " waiting"
+                                color: root.poolBacklog > 0 ? "#ffb545" : "#6b7280"
+                                font.pixelSize: 12
+                            }
+                        }
+                    }
+
+                    Text {
+                        width: parent.width
+                        wrapMode: Text.WordWrap
+                        color: "#6b7280"
+                        font.pixelSize: 11
+                        // Said plainly because this tile is the odd one out on a page of charts,
+                        // and because the numbers come from somewhere unusual.
+                        text: "What each application's pool is doing right now, not a history of it: utilisation and "
+                              + "backlog are what an instance reports about itself for the autoscaler to act on, and "
+                              + "they are deliberately kept out of the metrics store. Utilisation is the mean across "
+                              + "the instances that report; backlog is their total, because half a pool at 100% is a "
+                              + "pool at 50%, while half a pool holding 500 each is 1000 waiting."
+                    }
+
+                    Text {
+                        visible: root.applicationPools.length === 0
+                        text: "No application pools are running."
+                        color: "#6b7280"
+                        font.pixelSize: 12
+                    }
 
                     Repeater {
-                        model: [
-                            { page: "/dashboard", views: "8,204" },
-                            { page: "/pricing", views: "5,912" },
-                            { page: "/docs/getting-started", views: "4,330" }
-                        ]
-                        delegate: Row {
-                            width: parent.width
-                            height: 28
-                            Text { text: modelData.page; color: "#c4c9d1"; font.pixelSize: 13; width: parent.width - 100 }
-                            Text { text: modelData.views; color: "#9aa1ac"; font.pixelSize: 13; width: 100; horizontalAlignment: Text.AlignRight }
+                        model: root.applicationPools
+
+                        delegate: Item {
+                            id: poolRow
+                            required property var modelData
+
+                            width: poolsColumn.width
+                            height: 44
+
+                            // Name, and underneath it the name the pool actually runs as when the
+                            // two differ - which is what the module list and the host show.
+                            Column {
+                                anchors.left: parent.left
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: parent.width * 0.3
+                                spacing: 2
+
+                                Text {
+                                    text: poolRow.modelData.applicationId
+                                    color: "#e5e7eb"
+                                    font.pixelSize: 13
+                                    elide: Text.ElideRight
+                                    width: parent.width
+                                }
+                                Text {
+                                    visible: poolRow.modelData.runtimeName !== poolRow.modelData.applicationId
+                                    text: poolRow.modelData.runtimeName
+                                    color: "#6b7280"
+                                    font.pixelSize: 10
+                                    font.family: "monospace"
+                                    elide: Text.ElideRight
+                                    width: parent.width
+                                }
+                            }
+
+                            // Instances against the ceiling the pool may grow to: the pair that says
+                            // whether there is headroom left.
+                            Text {
+                                anchors.left: parent.left
+                                anchors.leftMargin: parent.width * 0.32
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: poolRow.modelData.running + " / " + poolRow.modelData.maxInstances
+                                color: poolRow.modelData.running >= poolRow.modelData.maxInstances
+                                       ? "#ffb545" : "#c4c9d1"
+                                font.pixelSize: 12
+                            }
+
+                            // Utilisation as a bar, because a proportion is what it is.
+                            Rectangle {
+                                id: utilisationTrack
+                                anchors.left: parent.left
+                                anchors.leftMargin: parent.width * 0.44
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: parent.width * 0.3
+                                height: 8
+                                radius: 4
+                                color: "#2c313c"
+
+                                Rectangle {
+                                    width: poolRow.modelData.utilisation > 0
+                                           ? Math.min(1, poolRow.modelData.utilisation / 100) * utilisationTrack.width
+                                           : 0
+                                    height: parent.height
+                                    radius: parent.radius
+                                    color: root.utilisationColor(poolRow.modelData.utilisation)
+                                }
+                            }
+
+                            Text {
+                                anchors.left: utilisationTrack.right
+                                anchors.leftMargin: 10
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: root.utilisationText(poolRow.modelData.utilisation)
+                                color: root.utilisationColor(poolRow.modelData.utilisation)
+                                font.pixelSize: 12
+                            }
+
+                            Text {
+                                anchors.right: parent.right
+                                anchors.verticalCenter: parent.verticalCenter
+                                // "—" rather than 0 for a pool nothing reports from: an instance
+                                // that has never said anything is not an instance saying it is idle,
+                                // and the autoscaler treats the two differently too.
+                                text: poolRow.modelData.reporting === 0
+                                      ? "not reporting"
+                                      : poolRow.modelData.backlog + " waiting"
+                                      + (poolRow.modelData.reporting < poolRow.modelData.running
+                                         ? " · " + poolRow.modelData.reporting + " of "
+                                           + poolRow.modelData.running + " reporting" : "")
+                                color: poolRow.modelData.reporting === 0 ? "#6b7280"
+                                       : (poolRow.modelData.backlog > 0 ? "#ffb545" : "#6b7280")
+                                font.pixelSize: 11
+                            }
+
+                            Rectangle {
+                                anchors.bottom: parent.bottom
+                                width: parent.width
+                                height: 1
+                                color: "#232830"
+                            }
                         }
+                    }
+                }
+            }
+
+            // The page's own "last update", directly under the last tile: the tiles each carry
+            // their own, and none of them answers "is this page live at all". Left rather than
+            // right because it reads as a footnote to the content above it, not as a control.
+            Item {
+                width: parent.width
+                height: 28
+
+                Row {
+                    anchors.left: parent.left
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: 8
+
+                    BusyIndicator {
+                        running: root.refreshing
+                        visible: root.refreshing
+                        width: 14
+                        height: 14
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: root.refreshing ? "Refreshing…" : "Last update " + root.lastUpdatedText
+                        color: "#6b7280"
+                        font.pixelSize: 11
+                    }
+
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        // What the stamp beside it does and does not mean. The tiles keep updating
+                        // on the timer in between, so saying only "last update" would read as
+                        // though nothing had happened since.
+                        text: appSettings.autoRefreshSeconds > 0
+                              ? "· F5 · refreshing on its own every " + appSettings.autoRefreshSeconds + "s"
+                              : "· F5 to refresh"
+                        color: "#4a5160"
+                        font.pixelSize: 11
                     }
                 }
             }

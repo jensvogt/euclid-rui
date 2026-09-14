@@ -22,6 +22,16 @@ public:
 
     Q_INVOKABLE void fetchAverage(const QString &metricName);
 
+    // The most recent sample of a metric for every label it carries, in one request rather than one
+    // per label. For a metric labelled by instance - "application-utilisation" and
+    // "application-backlog" are - that is "what is each instance saying right now", which is a
+    // question with as many answers as there are instances and no action of its own to ask it.
+    //
+    // The server answers newest-first, so the first row seen for a label is its latest; `limit`
+    // bounds how far back that search goes, and a limit too small for the number of labels simply
+    // leaves the quiet ones out.
+    Q_INVOKABLE void fetchLatestByLabel(const QString &metricName, int limit = 500);
+
     // Fetches up to `limit` historical samples for a metric name, oldest first, ready to plot
     // left-to-right. labelName/labelValue optionally filter to one label (e.g. labelName="method",
     // labelValue="GET"); leave both empty for a metric recorded without labels at all. Passing a
@@ -64,6 +74,9 @@ signals:
     // method) can tell the responses apart.
     void seriesLoaded(const QString &metricName, const QString &labelValue, const QVariantList &points);
     void seriesFailed(const QString &metricName, const QString &labelValue, const QString &message);
+    // {labelValue: {value, timestamp}} - the newest sample per label, and nothing older.
+    void latestByLabelLoaded(const QString &metricName, const QVariantMap &latest);
+    void latestByLabelFailed(const QString &metricName, const QString &message);
 
 private:
     void fetchLatestMetric(const QString &metricName, const QString &moduleName,
