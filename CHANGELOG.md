@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.8](https://github.com/jensvogt/euclid-rui/compare/1.1.7...v1.1.8) (2026-09-14)
+
+
+### Bug Fixes
+
+* cleanup of code ([2002cdb](https://github.com/jensvogt/euclid-rui/commit/2002cdb88f6cf9b4334ec8c3d08e5d00683205b7))
+
 ## [1.1.7](https://github.com/jensvogt/euclid-rui/compare/1.1.6...v1.1.7) (2026-09-13)
 
 
