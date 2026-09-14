@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.9](https://github.com/jensvogt/euclid-rui/compare/1.1.8...v1.1.9) (2026-09-14)
+
+
+### Bug Fixes
+
+* faster EAP ramp up/down time ([2949eb5](https://github.com/jensvogt/euclid-rui/commit/2949eb5099cc5f847d3bd696c2c802d47c6756ed))
+
 ## [1.1.8](https://github.com/jensvogt/euclid-rui/compare/1.1.7...v1.1.8) (2026-09-14)
 
 
