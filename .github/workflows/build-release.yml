@@ -1,18 +1,11 @@
 name: Release + Build (Linux / macOS / Windows, static Qt)
 
-# Adapted from ~/work/awsmock-qt-ui's build-release.yml, with one structural difference: that
-# template installs a normal (dynamic) Qt via jurplel/install-qt-action / aqtinstall for every
-# run. Here Qt is built *from source* with -static once per OS and cached (actions/cache, keyed
-# on OS + Qt version), since no prebuilt static Qt package exists. Every build job downstream
-# just restores that cache instead of rebuilding Qt - only a cache-key bump or the first-ever run
-# pays the (multi-hour) source build cost.
-#
 # Because the app binary is statically linked against Qt, packaging is simpler than the template
 # in one respect: there's no Qt runtime (shared libs/plugins/qml modules) to bundle alongside it
 # with windeployqt/macdeployqt - the executable is already self-contained.
 #
-# Windows installer: like awsmock-qt-ui, Windows is packaged as a real Qt Installer Framework
-# (IFW) installer (dist/win32/installer/config + dist/win32/installer/packages/<id>/), not just a
+# Windows installer: Windows is packaged as a real Qt Installer Framework (IFW) installer
+# (dist/win32/installer/config + dist/win32/installer/packages/<id>/), not just a
 # zipped exe - this gives Windows users the same "check for updates" capability the IFW
 # maintenance tool provides, pointed at a repogen-generated online repository (RemoteRepositories
 # in config.xml, published to GitHub Pages by the "deploy" job, same idea as the "build-apt-repo"

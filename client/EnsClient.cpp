@@ -117,6 +117,29 @@ void EnsClient::startTopic(const QString &topicErn) {
          120000);
 }
 
+void EnsClient::resendMessages(const QString &topicErn, const QString &messageId) {
+    QJsonObject body;
+    body["ern"] = topicErn;
+    // Omitted rather than sent empty: an absent messageId is what asks for the whole topic, and an
+    // empty string would be a message id that matches nothing.
+    if (!messageId.isEmpty())
+        body["messageId"] = messageId;
+
+    // Two minutes rather than the usual fifteen seconds, for the reason startTopic takes them: the
+    // server fans the whole topic out inside this request, a page of 500 at a time.
+    m_base->post("ens", "resend-messages", body, true,
+         [this, topicErn](const QJsonObject &response) {
+             emit messagesResent(topicErn, response.value("resent").toInt(), response.value("held").toInt());
+             // Nothing about the topic changed - the messages are still in it - but a subscription
+             // that is a queue has just been given them, so what is on screen elsewhere has.
+             emit messagesReload(topicErn);
+         },
+         [this](const QString &message) {
+             emit messagesResendFailed(message);
+         },
+         120000);
+}
+
 void EnsClient::setTopicRetention(const QString &topicErn, const qint64 retentionPeriod) {
     QJsonObject body;
     body["ern"] = topicErn;

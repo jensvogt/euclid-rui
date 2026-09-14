@@ -132,6 +132,105 @@ Item {
         function onTopicDeliveryFailed(message) {
             root.error = message
         }
+        function onMessagesResent(topicErn, resent, held) {
+            const name = root.topicNameForErn(topicErn)
+            root.actionNote = "Resent " + resent + " message(s) from '" + name + "' to every subscription."
+                              + (held > 0
+                                 ? " " + held + " were left: they were published while the topic was stopped and "
+                                   + "have never been delivered - starting the topic is what releases those."
+                                 : "")
+        }
+        function onMessagesResendFailed(message) {
+            root.error = message
+        }
+    }
+
+    Dialog {
+        id: resendDialog
+        modal: true
+        anchors.centerIn: parent
+        width: 460
+        padding: 28
+        topPadding: 24
+        bottomPadding: 24
+        standardButtons: Dialog.NoButton
+
+        property string topicErn: ""
+        property string topicName: ""
+        property int messages: 0
+
+        function openFor(row) {
+            resendDialog.topicErn = row.ern
+            resendDialog.topicName = row.name
+            resendDialog.messages = Number(row.messages)
+            resendDialog.open()
+        }
+
+        background: Rectangle {
+            radius: 16
+            color: "#1b1e25"
+            border.color: "#2c313c"
+            border.width: 1
+        }
+
+        contentItem: Column {
+            width: resendDialog.availableWidth
+            spacing: 18
+
+            Text { text: "Resend Messages"; color: "white"; font.pixelSize: 18; font.bold: true }
+
+            Text {
+                width: parent.width
+                wrapMode: Text.WordWrap
+                color: "#9aa1ac"
+                font.pixelSize: 12
+                text: "Hands the " + resendDialog.messages + " message(s) in \"" + resendDialog.topicName
+                      + "\" to its subscriptions again, oldest first. Nothing is removed and nothing is "
+                      + "republished - the topic keeps exactly what it holds."
+            }
+
+            Text {
+                width: parent.width
+                wrapMode: Text.WordWrap
+                color: "#e0a458"
+                font.pixelSize: 12
+                // The part that cannot be undone, and the part a dialog exists to say: the effect
+                // is somebody else's queue, and every subscriber gets everything - including the
+                // ones that were never missing anything.
+                text: "⚠ Every subscription receives all of them, including any that already did. A consumer "
+                      + "that is not prepared for a message it has seen before will process it twice, and "
+                      + "nothing here can take that back."
+            }
+
+            Item {
+                width: parent.width
+                height: 40
+
+                Button {
+                    text: "Cancel"
+                    flat: true
+                    anchors.left: parent.left
+                    anchors.verticalCenter: parent.verticalCenter
+                    Material.theme: Material.Dark
+                    onClicked: resendDialog.close()
+                }
+
+                Button {
+                    text: "Resend"
+                    highlighted: true
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    Material.theme: Material.Dark
+                    Material.accent: "#ffb545"
+                    onClicked: {
+                        root.actionNote = ""
+                        root.error = ""
+                        ensClient.resendMessages(resendDialog.topicErn)
+                        resendDialog.close()
+                    }
+                }
+            }
+        }
     }
 
     Dialog {
@@ -337,6 +436,17 @@ Item {
                         action: function(row) {
                             ensClient.purgeTopic(row.ern)
                         }
+                    },
+                    {
+                        // Asked about rather than done, unlike everything else in this menu: a
+                        // resend is the one entry whose effect lands outside euclid. Every
+                        // subscriber receives the whole topic again, and no dialog anywhere can
+                        // take that back.
+                        text: "Resend messages…",
+                        enabled: function(row) {
+                            return !!row && Number(row.messages) > 0 && !root.isStopped(row)
+                        },
+                        action: function(row) { resendDialog.openFor(row) }
                     },
                     {
                         // Two entries rather than one that changes its meaning with the row under

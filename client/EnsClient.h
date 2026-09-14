@@ -30,6 +30,19 @@ public:
     Q_INVOKABLE void stopTopic(const QString &topicErn);
     Q_INVOKABLE void startTopic(const QString &topicErn);
 
+    // Hands the topic's stored messages to its subscriptions again - all of them, or one named by
+    // id. What this is for is a subscriber that was down, or one added after the fact: the messages
+    // are still in the topic, and nothing else re-delivers them.
+    //
+    // Two things it will not do. A stopped topic is refused outright, because resending would be a
+    // way to get messages out of a topic somebody stopped delivering from; start it first, which
+    // releases the backlog anyway. And messages held while it was stopped are skipped rather than
+    // sent - the answer counts them separately, so a caller can see that they were left.
+    //
+    // Every subscription receives them again, including ones that got them the first time: this is
+    // a redelivery, not a repair, and there is no way to aim it at one subscriber.
+    Q_INVOKABLE void resendMessages(const QString &topicErn, const QString &messageId = QString());
+
     // How long a message published to this topic is kept, in seconds. Two of the values are not
     // durations: 0 gives the topic no period of its own, so it follows
     // euclid.modules.ens.retention-period as that changes, and -1 keeps everything forever by
@@ -78,6 +91,10 @@ signals:
     void topicMaxMessageLengthChanged(const QString &topicErn, qint64 maxMessageLength);
     // Shared by both: they are set from one dialog, and it has one place to put an error.
     void topicConfigurationFailed(const QString &message);
+    // What the resend did: `resent` went out to every subscription, `held` were skipped because they
+    // were published while the topic was stopped and have never been delivered at all.
+    void messagesResent(const QString &topicErn, int resent, int held);
+    void messagesResendFailed(const QString &message);
     void topicTagAdded(const QString &topicErn, const QString &key, const QString &value);
     void topicTagAddFailed(const QString &message);
     void topicTagDeleted(const QString &topicErn, const QString &key);

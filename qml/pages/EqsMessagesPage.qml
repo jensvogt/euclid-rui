@@ -101,7 +101,7 @@ Item {
 
     function priorityColor(status) {
         if (status === "HIGH") return "#d94c4c"
-        if (status === "MIDDLE") return "#ffb545"
+        if (status === "MEDIUM") return "#ffb545"
         if (status === "LOW") return "#4f8cff"
         return "#9aa1ac"
     }
@@ -254,7 +254,7 @@ Item {
         property bool sending: false
         property string errorText: ""
         property var attributeRows: [{ key: "", value: "" }]
-        property string selectedMessagePriority: "MIDDLE"
+        property string selectedMessagePriority: "MEDIUM"
 
         function addAttributeRow() {
             let rows = attributeRows.slice()
@@ -359,7 +359,7 @@ Item {
                             id: messagePriorityCombo
                             width: parent.width
                             implicitHeight: 36
-                            model: ["HIGH", "MIDDLE", "LOW"]
+                            model: ["HIGH", "MEDIUM", "LOW"]
                             Material.theme: Material.Dark
                             Material.accent: "#4f8cff"
 
