@@ -114,6 +114,16 @@ void EmmClient::fetchModules() {
                      // actually reachable - the thing the API gateway routes to.
                      entry["httpPort"] = instance.value("httpPort").toInt();
                      entry["restartCount"] = instance.value("restartCount").toInt();
+                     // The three an instance says about itself, which the manager never writes and
+                     // cannot observe: how loaded it is, how much work is waiting, and when it last
+                     // said so. -1 means it has never reported - a different thing from reporting
+                     // nothing, and the difference between "idle" and "not instrumented".
+                     entry["utilisation"] = instance.value("utilisation").toDouble(-1.0);
+                     entry["backlog"] = instance.value("backlog").toInteger(-1);
+                     entry["loadReportedAt"] = instance.value("loadReportedAt").toString();
+                     // Work no request is waiting on - an async purge, say. The autoscaler passes
+                     // over an instance reporting any, so it explains a pool that will not shrink.
+                     entry["backgroundTasks"] = instance.value("backgroundTasks").toInt();
                      entry["created"] = instance.value("created").toString();
                      entry["modified"] = instance.value("modified").toString();
                      instanceList << entry;
@@ -138,6 +148,7 @@ void EmmClient::fetchModules() {
                  entry["desiredThreads"] = module.value("desiredThreads").toInt(-1);
                  entry["runningInstances"] = runningInstances;
                  entry["instances"] = instanceList;
+
                  // What the manager runs and where it listens - only interesting one module at a
                  // time, which is what the details page is.
                  entry["executable"] = module.value("executable").toString();

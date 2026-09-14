@@ -130,6 +130,44 @@ void EmoClient::fetchAverage(const QString &metricName) {
         [this, metricName](const QString &message) { emit averageFailed(metricName, message); });
 }
 
+void EmoClient::fetchLatestByLabel(const QString &metricName, const int limit) {
+    QJsonObject body;
+    body["name"] = metricName;
+    // No labelName/labelValue: every label of this metric at once, which is the point.
+    body["limit"] = limit;
+    // The raw tier. An averaging bucket would hide exactly what this is read for - a burst that
+    // saturates an instance and stops is the load worth seeing, and five minutes of averaging
+    // reports it as though it never happened.
+    body["resolution"] = QStringLiteral("RAW");
+
+    m_base->post("emo", "list", body, true,
+         [this, metricName](const QJsonObject &response) {
+             QVariantMap latest;
+             // Newest first, so the first row for a label is the one to keep and everything after
+             // it is that label's history.
+             for (const QJsonArray items = response.value("items").toArray(); const auto &value: items) {
+                 const QJsonObject item = value.toObject();
+                 const auto label = item.value("labelValue").toString();
+                 if (label.isEmpty() || latest.contains(label))
+                     continue;
+                 QVariantMap sample;
+                 sample["value"] = item.value("value").toDouble();
+                 // The peak within the bucket as well as its average, because for a control signal
+                 // they are different questions and the manager reads the peak: a burst that
+                 // saturates an instance for twenty seconds and then stops averages down to almost
+                 // nothing across a five-minute bucket - which is exactly the load worth seeing,
+                 // reported as though it never happened.
+                 sample["maxValue"] = item.value("maxValue").toDouble();
+                 sample["timestamp"] = item.value("timestamp").toString();
+                 latest.insert(label, sample);
+             }
+             emit latestByLabelLoaded(metricName, latest);
+         },
+         [this, metricName](const QString &message) {
+             emit latestByLabelFailed(metricName, message);
+         });
+}
+
 void EmoClient::fetchSeries(const QString &metricName, const QString &labelName, const QString &labelValue, const int limit, const QString &resolution) {
     QJsonObject body;
     body["name"] = metricName;
