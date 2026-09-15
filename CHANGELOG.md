@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.10](https://github.com/jensvogt/euclid-rui/compare/1.1.9...v1.1.10) (2026-09-15)
+
+
+### Bug Fixes
+
+* search field for editable tables ([142c17a](https://github.com/jensvogt/euclid-rui/commit/142c17a7cf2fa67543fe29e288747764b2465c70))
+
 ## [1.1.9](https://github.com/jensvogt/euclid-rui/compare/1.1.8...v1.1.9) (2026-09-14)
 
 
