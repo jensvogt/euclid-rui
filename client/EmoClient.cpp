@@ -152,6 +152,10 @@ void EmoClient::fetchLatestByLabel(const QString &metricName, const int limit) {
                      continue;
                  QVariantMap sample;
                  sample["value"] = item.value("value").toDouble();
+                 // Every dimension the row carried, not just the one this is keyed by. euclid's own
+                 // metrics have exactly one and the two say the same thing; a metric pushed by an
+                 // application has as many as its meter did, and they are only readable here.
+                 sample["labels"] = item.value("labels").toObject().toVariantMap();
                  // The peak within the bucket as well as its average, because for a control signal
                  // they are different questions and the manager reads the peak: a burst that
                  // saturates an instance for twenty seconds and then stops averages down to almost
@@ -194,6 +198,7 @@ void EmoClient::fetchSeries(const QString &metricName, const QString &labelName,
                  QVariantMap point;
                  point["timestamp"] = item.value("timestamp").toString();
                  point["value"] = item.value("value").toDouble();
+                 point["labels"] = item.value("labels").toObject().toVariantMap();
                  points << point;
              }
              emit seriesLoaded(metricName, labelValue, points);
