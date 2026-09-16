@@ -19,6 +19,7 @@ class EuclidBaseClient : public QObject {
     Q_OBJECT
     Q_PROPERTY(bool busy READ busy NOTIFY busyChanged)
     Q_PROPERTY(bool isAdmin READ isAdmin NOTIFY isAdminChanged)
+    Q_PROPERTY(QString userId READ userId NOTIFY userIdChanged)
     Q_PROPERTY(QString accountId READ accountId NOTIFY accountIdChanged)
     Q_PROPERTY(QString region READ region NOTIFY regionChanged)
     Q_PROPERTY(QString baseUrl READ baseUrl WRITE setBaseUrl NOTIFY baseUrlChanged)
@@ -52,6 +53,12 @@ public:
     // configured falls back to the bearer token rather than sending an unauthenticated request.
     Q_INVOKABLE void setAuthMode(const QString &authMode);
     Q_INVOKABLE void setAccessKey(const QString &accessKeyId, const QString &secretAccessKey);
+
+    // Who this session logs in as, exactly as it was typed and exactly as every request's
+    // x-euclid-user-id header carries it - which is what EAD stores as the author of a command,
+    // so it is also what narrows the audit trail to "mine". Empty until login() succeeds.
+    [[nodiscard]]
+    QString userId() const { return m_userId; }
 
     // Empty until login() succeeds.
     [[nodiscard]]
@@ -99,6 +106,7 @@ public:
 signals:
     void busyChanged();
     void isAdminChanged();
+    void userIdChanged();
     void accountIdChanged();
     void regionChanged();
     void baseUrlChanged();

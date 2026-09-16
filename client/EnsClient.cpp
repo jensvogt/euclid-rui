@@ -63,12 +63,17 @@ void EnsClient::createTopic(const QString &name, const int maxMessageLength) {
          });
 }
 
-void EnsClient::purgeTopic(const QString &topicErn) {
+void EnsClient::purgeTopic(const QString &topicErn, const bool async) {
     QJsonObject body;
     body["ern"] = topicErn;
+    body["async"] = async;
 
     m_base->post("ens", "purge-topic", body, true,
-         [this, topicErn](const QJsonObject &response) {
+         [this, topicErn, async](const QJsonObject &response) {
+             emit topicPurged(topicErn, response.value("async").toBool(async),
+                              response.value("messages").toInt());
+             // Re-read either way. A background purge has not finished - the counts will still be
+             // falling - but the listing is the only thing that shows it happening at all.
              emit messagesReload(topicErn);
              emit topicsReload();
          },

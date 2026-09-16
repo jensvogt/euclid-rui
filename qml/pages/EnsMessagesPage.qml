@@ -27,6 +27,9 @@ Item {
     property var pendingTopicErns: []
     property bool loading: false
     property string error: ""
+    // What the last purge did. Kept on the page because a background purge is not finished when it
+    // is acknowledged: the list below goes on shrinking for as long as it takes.
+    property string actionNote: ""
     property string lastUpdatedText: "—"
 
     // One topic is paged by the server: the page on screen is the page that was asked for. The
@@ -199,6 +202,14 @@ Item {
 
         function onMessagesReload() {
             refresh()
+        }
+
+        function onTopicPurged(topicErn, async, messages) {
+            if (topicErn !== root.topicErn) return
+            root.actionNote = async
+                ? "Purging " + messages + " message(s) in the background. The topic empties as it goes, and "
+                  + "anything published meanwhile stays."
+                : "Topic purged."
         }
 
         function onMessagePublished(ern) {
@@ -505,7 +516,15 @@ Item {
                         flat: true
                         Material.theme: Material.Dark
                         Material.accent: "#ff6b6b"
-                        onClicked: ensClient.purgeTopic(root.topicErn)
+                        // Asked for in the background: a topic holding a retention period's worth
+                        // of messages takes longer to empty than the gateway waits, so doing it
+                        // inline would report a failure for a purge that is running perfectly well.
+                        // The note below says what was accepted, and the table catches up as the
+                        // count falls.
+                        onClicked: {
+                            root.actionNote = ""
+                            ensClient.purgeTopic(root.topicErn, true)
+                        }
                     }
 
                     Button {
@@ -571,6 +590,15 @@ Item {
                         }
                     }
                 ]
+            }
+
+            Text {
+                width: parent.width
+                wrapMode: Text.WordWrap
+                color: "#4cd97b"
+                font.pixelSize: 12
+                visible: root.actionNote.length > 0
+                text: root.actionNote
             }
         }
     }
