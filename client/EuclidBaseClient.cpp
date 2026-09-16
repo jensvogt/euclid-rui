@@ -150,6 +150,10 @@ void EuclidBaseClient::setBaseUrl(const QString &baseUrl) {
         m_isAdmin = false;
         emit isAdminChanged();
     }
+    if (!m_userId.isEmpty()) {
+        m_userId.clear();
+        emit userIdChanged();
+    }
     if (!m_accountId.isEmpty()) {
         m_accountId.clear();
         emit accountIdChanged();
@@ -398,6 +402,7 @@ void EuclidBaseClient::login(const QString &userId, const QString &password) {
              scheduleSessionRefresh();
 
              emit isAdminChanged();
+             emit userIdChanged();
              emit accountIdChanged();
              emit regionChanged();
              emit loginSucceeded();

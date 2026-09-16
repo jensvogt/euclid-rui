@@ -63,6 +63,7 @@ qt_add_executable(euclid-rui main.cpp
         client/EkmClient.h client/EkmClient.cpp
         client/EkvClient.h client/EkvClient.cpp
         client/EmoClient.h client/EmoClient.cpp
+        client/EadClient.h client/EadClient.cpp
 )
 
 set_source_files_properties(qml/components/DateFormat.qml PROPERTIES

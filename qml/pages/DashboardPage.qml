@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Controls.Material
 import "../components"
 
 Item {
@@ -100,6 +101,63 @@ Item {
         return total
     }
 
+    // ── Recent activity ──────────────────────────────────────────────────────
+    // The audit trail, read as the page's activity feed. EAD records one entry per command that
+    // changed something and one per command that was refused or failed, which is as close as this
+    // installation gets to "what has been happening here".
+    //
+    // An administrator sees everybody's, because for them the installation itself is the subject;
+    // everyone else sees their own, which is what they are in a position to account for. The
+    // narrowing is done by naming the user in the request: EAD confines a read to the caller's
+    // account on its own, but not to the caller, so asking for nobody in particular asks for the
+    // whole account.
+    readonly property bool activityForEveryone: euclidClient.isAdmin
+    readonly property int activityLimit: 5
+    property var activityEvents: []
+    property string activityError: ""
+    // Distinguishes "not asked yet" from "asked, and the trail is empty", the same way
+    // modulesFetched does above.
+    property bool activityFetched: false
+
+    function activityInitials(userId) {
+        const name = String(userId || "").trim()
+        if (name.length === 0) return "??"
+        // "jens.vogt", "jens_vogt", "jens-vogt" and "jens vogt" are one name in two parts. An email
+        // address is cut down to its local part first - the domain is the same for everybody here,
+        // so initials taken from it would be the same for everybody too.
+        const parts = name.split("@")[0].split(/[.\-_ ]+/).filter(part => part.length > 0)
+        if (parts.length >= 2) return String(parts[0].charAt(0) + parts[1].charAt(0)).toUpperCase()
+        return name.substring(0, 2).toUpperCase()
+    }
+
+    // The colour carries the outcome, because that is the one thing a feed of commands cannot say
+    // in its text without repeating itself: a refusal looks exactly like a command nobody made.
+    function activityColor(status) {
+        if (status >= 500) return "#ff6b6b"
+        if (status >= 400) return "#ffb545"
+        return "#4cd97b"
+    }
+
+    function activityStatusText(status) {
+        if (status >= 200 && status < 300) return ""
+        return status === 403 ? "refused (403)" : "failed (" + status + ")"
+    }
+
+    // Ages rather than timestamps, which is what a feed is read for - "18m ago" answers "is this
+    // still going on", and the exact second does not. Coarsens as it goes back, so an old entry
+    // says "3d" rather than "4,317m".
+    function activityAge(isoString) {
+        const when = new Date(isoString)
+        if (isNaN(when.getTime())) return ""
+        const seconds = Math.max(0, (Date.now() - when.getTime()) / 1000)
+        if (seconds < 60) return "just now"
+        const minutes = Math.floor(seconds / 60)
+        if (minutes < 60) return minutes + "m ago"
+        const hours = Math.floor(minutes / 60)
+        if (hours < 24) return hours + "h ago"
+        return Math.floor(hours / 24) + "d ago"
+    }
+
     // Set while a refresh the user asked for is outstanding. Everything on this page comes from
     // emo, which answers out of five-minute buckets, and the page re-reads itself every
     // autoRefreshSeconds regardless - so F5 nearly always brings back the numbers already on
@@ -132,6 +190,10 @@ Item {
         emoClient.fetchAverage("database-storage-size")
         emoClient.fetchAggregatedSeries(root.trafficMetric, root.trafficRowLimit, "DAY")
         emmClient.fetchModules()
+        // An empty userId is not a filter on nobody, it is no filter at all - which is what an
+        // administrator is asking for.
+        eadClient.fetchEvents(root.activityForEveryone ? "" : euclidClient.userId,
+                              "", "", 0, root.activityLimit)
     }
 
     onVisibleChanged: if (visible) refresh()
@@ -204,6 +266,21 @@ Item {
             root.modules = []
             root.modulesError = message
             root.modulesFetched = true
+        }
+    }
+
+    Connections {
+        target: eadClient
+        function onEventsLoaded(events, total) {
+            root.activityEvents = events
+            root.activityError = ""
+            root.activityFetched = true
+            root.markUpdated()
+        }
+        function onEventsFailed(message) {
+            root.activityEvents = []
+            root.activityError = message
+            root.activityFetched = true
         }
     }
 
@@ -443,60 +520,118 @@ Item {
 
             Rectangle {
                 width: parent.width
-                height: 280
+                // Sized to what it holds rather than fixed: the feed is anything from no rows to
+                // activityLimit of them, and one height either clips the full case or leaves a hole
+                // under the empty one.
+                height: Math.max(200, activityContent.implicitHeight + 40)
                 radius: 14
                 color: "#20242e"
                 border.color: "#2c313c"
                 border.width: 1
 
                 Column {
+                    id: activityContent
                     anchors.fill: parent
                     anchors.margins: 20
                     spacing: 14
 
-                    Text {
-                        text: "Recent Activity"
-                        color: "white"
-                        font.pixelSize: 15
-                        font.bold: true
+                    Row {
+                        width: parent.width
+                        spacing: 8
+
+                        Text {
+                            text: "Recent Activity"
+                            color: "white"
+                            font.pixelSize: 15
+                            font.bold: true
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+
+                        // Said rather than left to be worked out: the same tile shows two different
+                        // things depending on who is looking at it, and a feed of one person's own
+                        // commands is indistinguishable from a very quiet installation.
+                        Text {
+                            text: root.activityForEveryone ? "· everyone" : "· yours"
+                            color: "#6b7280"
+                            font.pixelSize: 12
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
                     }
 
                     Column {
                         width: parent.width
-                        spacing: 10
+                        spacing: 4
 
-                        ActivityRow {
-                            width: parent.width
-                            initials: "AK"
-                            avatarColor: "#4f8cff"
-                            title: "Anna Kern deployed build #482"
-                            subtitle: "production · euclid-rui"
-                            time: "2m ago"
+                        Repeater {
+                            model: root.activityEvents
+                            // A row rather than the ActivityRow itself: the entry opens in full
+                            // when it is clicked, and that needs something behind the text to take
+                            // the click and to show, by lighting up, that there is one to make.
+                            delegate: Rectangle {
+                                id: activityItem
+                                required property var modelData
+
+                                width: parent.width
+                                height: 56
+                                radius: 8
+                                color: activityArea.containsMouse ? "#262b36" : "transparent"
+
+                                ActivityRow {
+                                    id: activityRow
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    x: 8
+                                    width: parent.width - 16
+                                    initials: root.activityInitials(activityItem.modelData.userId)
+                                    avatarColor: root.activityColor(activityItem.modelData.status)
+                                    // Who, only when it could be anybody: in the personal view
+                                    // every row is the same person, and repeating the name crowds
+                                    // out the part that differs.
+                                    title: (root.activityForEveryone ? activityItem.modelData.userId + " · " : "")
+                                           + activityItem.modelData.module + " " + activityItem.modelData.command
+                                    subtitle: {
+                                        const parts = []
+                                        // Bracket access: "namespace" is a reserved word in enough
+                                        // JavaScript dialects to be worth not writing as a member.
+                                        const ns = activityItem.modelData["namespace"]
+                                        if (ns && ns.length > 0) parts.push(ns)
+                                        const outcome = root.activityStatusText(activityItem.modelData.status)
+                                        if (outcome.length > 0) parts.push(outcome)
+                                        return parts.join(" · ")
+                                    }
+                                    time: root.activityAge(activityItem.modelData.created)
+                                }
+
+                                MouseArea {
+                                    id: activityArea
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: auditDialog.showEvent(activityItem.modelData)
+                                }
+                            }
                         }
-                        ActivityRow {
-                            width: parent.width
-                            initials: "TS"
-                            avatarColor: "#4cd97b"
-                            title: "Tom Sato resolved issue #918"
-                            subtitle: "bug · high priority"
-                            time: "18m ago"
-                        }
-                        ActivityRow {
-                            width: parent.width
-                            initials: "MB"
-                            avatarColor: "#ffb545"
-                            title: "Maria Bell commented on PR #205"
-                            subtitle: "code review"
-                            time: "1h ago"
-                        }
-                        ActivityRow {
-                            width: parent.width
-                            initials: "JV"
-                            avatarColor: "#c56bff"
-                            title: "Jens Vogt updated settings"
-                            subtitle: "configuration"
-                            time: "3h ago"
-                        }
+                    }
+
+                    // EAD is a module an installation can be running without, and the answer then
+                    // is a 404 from the gateway rather than an empty trail. Said plainly and in
+                    // grey: nothing on this page is broken by it.
+                    Text {
+                        width: parent.width
+                        wrapMode: Text.WordWrap
+                        visible: root.activityError.length > 0
+                        text: "The audit trail could not be read: " + root.activityError
+                        color: "#9aa1ac"
+                        font.pixelSize: 12
+                    }
+
+                    Text {
+                        visible: root.activityFetched && root.activityError.length === 0
+                                 && root.activityEvents.length === 0
+                        text: root.activityForEveryone
+                              ? "Nothing recorded in this account yet."
+                              : "Nothing recorded for " + euclidClient.userId + " yet."
+                        color: "#6b7280"
+                        font.pixelSize: 12
                     }
                 }
             }
@@ -514,5 +649,168 @@ Item {
         text: root.refreshing ? "Refreshing…" : "Last update " + root.lastUpdatedText
         color: root.refreshing ? "#4f8cff" : "#6b7280"
         font.pixelSize: 11
+    }
+
+    // One entry in full. The feed says module, command and roughly when; everything else that makes
+    // an entry worth keeping - who, where, what it was called with, and what it was answered with -
+    // is only here.
+    Dialog {
+        id: auditDialog
+        modal: true
+        anchors.centerIn: parent
+        width: 720
+        padding: 28
+        topPadding: 24
+        bottomPadding: 24
+        standardButtons: Dialog.NoButton
+
+        property var event: ({})
+
+        function showEvent(entry) {
+            auditDialog.event = entry
+            auditDialog.open()
+        }
+
+        function field(name) {
+            const value = auditDialog.event ? auditDialog.event[name] : undefined
+            return value === undefined || value === null ? "" : String(value)
+        }
+
+        readonly property int status: auditDialog.event && auditDialog.event.status !== undefined
+                                      ? Number(auditDialog.event.status) : 0
+        readonly property string parameters: auditDialog.field("parameters")
+        // Declared as JSON only when it looks like JSON. Every euclid action carries one, but an
+        // entry recorded for a request that never got that far carries whatever arrived - and a
+        // body announced as JSON that then fails to parse is reported by the viewer as malformed,
+        // which would be this page's mistake rather than the record's.
+        readonly property string parametersType: {
+            const text = auditDialog.parameters.trim()
+            return text.startsWith("{") || text.startsWith("[") ? "application/json" : "text/plain"
+        }
+
+        background: Rectangle {
+            radius: 16
+            color: "#1b1e25"
+            border.color: "#2c313c"
+            border.width: 1
+        }
+
+        contentItem: Column {
+            width: auditDialog.availableWidth
+            spacing: 18
+
+            Row {
+                width: parent.width
+                spacing: 10
+
+                Rectangle {
+                    width: 34
+                    height: 34
+                    radius: 17
+                    color: root.activityColor(auditDialog.status)
+                    anchors.verticalCenter: parent.verticalCenter
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: root.activityInitials(auditDialog.field("userId"))
+                        color: "white"
+                        font.pixelSize: 12
+                        font.bold: true
+                    }
+                }
+
+                Column {
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: 2
+
+                    Text {
+                        text: auditDialog.field("module") + " " + auditDialog.field("command")
+                        color: "white"
+                        font.pixelSize: 15
+                        font.bold: true
+                    }
+                    Text {
+                        text: {
+                            const outcome = root.activityStatusText(auditDialog.status)
+                            return outcome.length > 0 ? outcome : "succeeded (" + auditDialog.status + ")"
+                        }
+                        color: root.activityColor(auditDialog.status)
+                        font.pixelSize: 12
+                    }
+                }
+            }
+
+            Grid {
+                width: parent.width
+                columns: 2
+                columnSpacing: 24
+                rowSpacing: 14
+
+                // Copyable, both of them: a user id and a namespace are what somebody narrows the
+                // next search by, and retyping either from a dialog is how a typo gets made.
+                DetailField {
+                    width: (parent.width - 24) / 2
+                    label: "User"
+                    value: auditDialog.field("userId")
+                    copyable: true
+                }
+                DetailField {
+                    width: (parent.width - 24) / 2
+                    label: "When"
+                    value: DateFormat.format(auditDialog.field("created"))
+                }
+                DetailField {
+                    width: (parent.width - 24) / 2
+                    label: "Account"
+                    value: auditDialog.field("accountId")
+                }
+                DetailField {
+                    width: (parent.width - 24) / 2
+                    label: "Namespace"
+                    // An action that names no namespace is recorded with none, which is a fact
+                    // about the command rather than a gap in the record.
+                    value: auditDialog.field("namespace").length > 0 ? auditDialog.field("namespace") : "—"
+                    copyable: auditDialog.field("namespace").length > 0
+                }
+            }
+
+            Column {
+                width: parent.width
+                spacing: 6
+
+                Text {
+                    text: "Parameters"
+                    color: "#6b7280"
+                    font.pixelSize: 10
+                }
+
+                EditableText {
+                    width: parent.width
+                    height: 220
+                    readOnly: true
+                    contentType: auditDialog.parametersType
+                    content: auditDialog.parameters
+                    // A request body is as often one long line as it is indented JSON, and this is
+                    // a fixed-width panel rather than something to scroll sideways in.
+                    wrapMode: TextArea.Wrap
+                    showHeader: false
+                    emptyText: "(no parameters recorded)"
+                }
+            }
+
+            Item {
+                width: parent.width
+                height: 34
+
+                Button {
+                    text: "Close"
+                    flat: true
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    Material.theme: Material.Dark
+                    onClicked: auditDialog.close()
+                }
+            }
+        }
     }
 }
