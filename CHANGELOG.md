@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.11](https://github.com/jensvogt/euclid-rui/compare/1.1.10...v1.1.11) (2026-09-16)
+
+
+### Bug Fixes
+
+* ead auditing ([cf7e590](https://github.com/jensvogt/euclid-rui/commit/cf7e590ebbde1ad5b12ae0e6178811de82922cd3))
+
 ## [1.1.10](https://github.com/jensvogt/euclid-rui/compare/1.1.9...v1.1.10) (2026-09-15)
 
 
