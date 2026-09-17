@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.1.12](https://github.com/jensvogt/euclid-rui/compare/1.1.11...v1.1.12) (2026-09-17)
+
+
+### Bug Fixes
+
+* emo application metrics ([e97e0c5](https://github.com/jensvogt/euclid-rui/commit/e97e0c517228e53dc721c196d6ccd9990c23ce51))
+* logout and avatar ([4f38db1](https://github.com/jensvogt/euclid-rui/commit/4f38db15efde370754fd770ee45cfde26a86c48f))
+
 ## [1.1.11](https://github.com/jensvogt/euclid-rui/compare/1.1.10...v1.1.11) (2026-09-16)
 
 
