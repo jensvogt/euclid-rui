@@ -140,12 +140,32 @@ void EuclidBaseClient::setBaseUrl(const QString &baseUrl) {
     m_baseUrl = baseUrl;
     emit baseUrlChanged();
 
-    const bool hadSession = !m_token.isEmpty();
-    m_token.clear();
     // The session this was renewing is gone; renewing it against another gateway would be asking a
-    // backend about a token it never minted.
+    // backend about a token it never minted. The key is kept, though - it is the operator's
+    // setting, and AppSettings would push the same one straight back in anyway.
+    clearSession(false);
+}
+
+void EuclidBaseClient::logout() {
+    // And here the key goes too. Under RFC 9421 the server resolves the caller from the key and
+    // never reads the token at all, so a sign-out that dropped only the token would leave every
+    // request after it exactly as authorized as the ones before.
+    clearSession(true);
+}
+
+void EuclidBaseClient::clearSession(const bool forgetAccessKey) {
+
+    const bool hadSession = !m_token.isEmpty() || (forgetAccessKey && !m_accessKeyId.isEmpty());
+    m_token.clear();
     m_sessionRefreshTimer.stop();
     m_namespace.clear();
+    if (forgetAccessKey) {
+        // In this process only. What is on disk belongs to the settings page, and wiping a
+        // credential the user typed there is not what "sign out" asks for - the next login adopts
+        // whichever key the gateway hands back regardless.
+        m_accessKeyId.clear();
+        m_secretAccessKey.clear();
+    }
     if (m_isAdmin) {
         m_isAdmin = false;
         emit isAdminChanged();

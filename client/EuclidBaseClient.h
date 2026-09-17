@@ -69,6 +69,16 @@ public:
     QString region() const { return m_region; }
 
     Q_INVOKABLE void login(const QString &userId, const QString &password);
+
+    // Ends the session this process is holding: the token, the renewal it had scheduled, the
+    // namespace, and the access key it was signing with. Everything that reads "somebody is signed
+    // in" follows from sessionCleared(), which this emits.
+    //
+    // Local, because there is nothing to tell the server: a euclid session is a JWT that carries
+    // its own expiry and no module keeps a list of the live ones, so a token is forgotten here
+    // rather than revoked there. It stays valid for whatever is left of its hour - which matters
+    // only to somebody who already has a copy of it.
+    Q_INVOKABLE void logout();
     Q_INVOKABLE void fetchNamespaces();
     Q_INVOKABLE void setNamespace(const QString &namespaceName);
 
@@ -129,6 +139,11 @@ signals:
     void namespacesFailed(const QString &message);
 
 private:
+    // Drops everything that identifies this session. Shared by logout() and by pointing the client
+    // at another gateway, which throws the session away for a different reason but in the same
+    // way; "forgetAccessKey" is the one thing they disagree about.
+    void clearSession(bool forgetAccessKey);
+
     void setBusy(bool busy);
 
     // Applies whichever scheme m_authMode names to a request that is about to be sent. `target`
