@@ -782,33 +782,37 @@ ApplicationWindow {
                 height: 64
                 color: "#181b21"
 
-                Row {
-                    anchors.fill: parent
+                // Anchored at the two ends rather than laid out left to right around a spacer.
+                // The spacer's width was a sum of constants - a 320 field, two 40px buttons and a
+                // 150px name block - and the bar has had three buttons and a name block wider than
+                // 150 ("development · localhost:5566") for a while, so the row overflowed its right
+                // margin by about that much and carried the last item, the avatar, off the edge of
+                // the window. Anchoring cannot drift that way: whatever is in the right-hand group
+                // ends at the margin, and the gap in the middle is whatever is left over.
+                TextField {
+                    id: searchField
+                    width: 320
+                    height: 40
+                    anchors.left: parent.left
                     anchors.leftMargin: 28
-                    anchors.rightMargin: 28
-                    spacing: 16
-
-                    TextField {
-                        id: searchField
-                        width: 320
-                        height: 40
-                        anchors.verticalCenter: parent.verticalCenter
-                        placeholderText: "Search..."
-                        Material.theme: Material.Dark
-                        Material.accent: "#4f8cff"
-                        onAccepted: {
-                            const route = window.moduleRouteFor(text)
-                            if (route.length > 0) {
-                                window.currentRoute = route
-                                text = ""
-                            }
+                    anchors.verticalCenter: parent.verticalCenter
+                    placeholderText: "Search..."
+                    Material.theme: Material.Dark
+                    Material.accent: "#4f8cff"
+                    onAccepted: {
+                        const route = window.moduleRouteFor(text)
+                        if (route.length > 0) {
+                            window.currentRoute = route
+                            text = ""
                         }
                     }
+                }
 
-                    Item {
-                        width: parent.width - 320 - 16 - 40 - 40 - 150 - 32
-                        height: 1
-                    }
+                Row {
+                    anchors.right: parent.right
+                    anchors.rightMargin: 28
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: 16
 
                     Column {
                         visible: window.loggedIn
@@ -860,10 +864,11 @@ ApplicationWindow {
                     }
 
                     Rectangle {
+                        id: accountButton
                         width: 40
                         height: 40
                         radius: 20
-                        color: "#2c3648"
+                        color: accountMouse.containsMouse ? "#3a4763" : "#2c3648"
                         anchors.verticalCenter: parent.verticalCenter
                         Text {
                             anchors.centerIn: parent
@@ -873,8 +878,47 @@ ApplicationWindow {
                             font.bold: true
                         }
                         MouseArea {
+                            id: accountMouse
                             anchors.fill: parent
-                            onClicked: loginDialog.open()
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            // Signed out there is only one thing to offer, so the click does it
+                            // rather than opening a menu of one.
+                            onClicked: {
+                                if (window.loggedIn) accountMenu.popup(accountButton, 0, accountButton.height + 6)
+                                else loginDialog.open()
+                            }
+                        }
+
+                        // Where signing out lives. On the avatar because that is where "who am I"
+                        // already is - the name and namespace are right beside it - and because a
+                        // sign-out sitting loose in the toolbar is a click away from every other
+                        // toolbar button.
+                        Menu {
+                            id: accountMenu
+                            Material.theme: Material.Dark
+
+                            MenuItem {
+                                // Not a control: it says whose session is about to end, which is
+                                // worth confirming before the click below.
+                                text: "Signed in as " + window.currentUser
+                                enabled: false
+                            }
+
+                            MenuSeparator {}
+
+                            MenuItem {
+                                text: "Sign out"
+                                // Straight back to the sign-in prompt, the way the window starts.
+                                // Done here rather than on sessionCleared() because that also fires
+                                // when the gateway address changes, and a modal appearing over the
+                                // settings page mid-edit is not what that should do. Escape
+                                // dismisses it for anyone who meant to leave the window signed out.
+                                onTriggered: {
+                                    euclidClient.logout()
+                                    loginDialog.open()
+                                }
+                            }
                         }
                     }
                 }
