@@ -91,7 +91,11 @@ void EsmClient::purgeBucket(const QString &bucketErn, const bool async) {
                                        : response.value("count").toInt();
              emit bucketPurged(bucketErn, async, objects);
              emit objectsReload(bucketErn);
-             emit bucketsReload();
+             // No bucketsReload() on purpose, unlike every other mutation here. The bucket listing
+             // is sorted by object count by default, so re-reading it moves the bucket that was
+             // just emptied to the bottom of the sort - or off the page - while the operator is
+             // still looking at the row they started the purge from. The page applies the purge to
+             // that row instead; see EsmBucketsPage's emptyBucketLocally().
          },
          [this](const QString &message) {
              emit bucketsFailed(message);
