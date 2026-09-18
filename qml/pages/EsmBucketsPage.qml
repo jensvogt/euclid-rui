@@ -44,6 +44,13 @@ Item {
                 colorFor: function (v, row) { return row && row.internal ? "#9aa1ac" : "#c4c9d1" }
             },
             { title: "Objects", key: "objects" },
+            // Beside Objects rather than folded into it. A directory marker is a zero-byte key
+            // ending in "/" that keeps an empty directory in existence for an FTP or SFTP client
+            // to change into - a listing shows it, but nobody stored it, so it is not one of the
+            // bucket's objects. Mostly 0, and worth the column anyway: on a transfer bucket it is
+            // most of what is there, and reading those rows as objects is what made one show
+            // "5 objects, 0 B" when it held a single empty receipt file.
+            { title: "Directories", key: "directories" },
             { title: "Size", key: "size", formatter: function (v) { return SizeFormat.format(v) } },
             // Says what happens to the next object written, not that everything in the bucket is
             // encrypted - a bucket holds objects written under whatever setting was in force at the

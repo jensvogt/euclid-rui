@@ -115,6 +115,11 @@ Item {
     }
 
     readonly property int objects: Number(detail("objects", 0))
+    // Directory markers - zero-byte keys ending in "/" that hold an empty directory open for a
+    // transfer client. Not objects, and shown as their own figure rather than added to the one
+    // above: on a transfer bucket they are most of what is there, and counting them as objects is
+    // what made one read "5 objects, 0 B" for a single empty receipt file.
+    readonly property int directories: Number(detail("directories", 0))
 
     // See EsmBucketsPage: past this many objects a synchronous purge outlasts its own request.
     readonly property int asyncPurgeThreshold: 1000
@@ -193,6 +198,7 @@ Item {
                 spacing: 18
 
                 StatCard { title: "Objects"; value: String(root.objects); trend: "in bucket"; trendUp: true; accent: "#4cd97b" }
+                StatCard { title: "Directories"; value: String(root.directories); trend: "markers"; trendUp: true; accent: "#4ca6d9" }
                 StatCard { title: "Size"; value: SizeFormat.format(root.detail("size", 0)); trend: "on disk"; trendUp: true; accent: "#c56bff" }
             }
 

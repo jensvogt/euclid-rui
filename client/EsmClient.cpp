@@ -41,6 +41,10 @@ void EsmClient::fetchBuckets(const QString &prefix, const int pageIndex, const i
                  // bucket. Both of these pass 2^31 in an installation of any size.
                  entry["size"] = bucket.value("size").toInteger();
                  entry["objects"] = bucket.value("objects").toInteger();
+                 // Directory markers, kept apart from the objects count: a zero-byte key ending
+                 // in "/" that holds an empty directory open for a transfer client. Counting them
+                 // as objects made a transfer bucket read "5 objects, 0 B" for one file.
+                 entry["directories"] = bucket.value("directories").toInteger();
                  entry["tags"] = bucket.value("tags").toObject().toVariantMap();
                  entry["encrypted"] = bucket.value("encrypted").toBool();
                  // Only ever true in a listing an administrator asked to include them in, so a row
