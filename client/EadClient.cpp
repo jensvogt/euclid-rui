@@ -29,8 +29,7 @@ QVariantMap eventToMap(const QJsonObject &event) {
 
 EadClient::EadClient(EuclidBaseClient *baseClient, QObject *parent) : QObject(parent), m_base(baseClient) {}
 
-void EadClient::fetchEvents(const QString &userId, const QString &moduleName, const QString &command,
-                            const int pageIndex, const int pageSize) {
+void EadClient::fetchEvents(const QString &userId, const QString &moduleName, const QString &command, const int pageIndex, const int pageSize) {
     QJsonObject body;
     body["userId"] = userId;
     body["module"] = moduleName;
