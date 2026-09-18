@@ -77,10 +77,13 @@ void EnsClient::purgeTopic(const QString &topicErn, const bool async) {
          [this, topicErn, async](const QJsonObject &response) {
              emit topicPurged(topicErn, response.value("async").toBool(async),
                               response.value("messages").toInt());
-             // Re-read either way. A background purge has not finished - the counts will still be
-             // falling - but the listing is the only thing that shows it happening at all.
              emit messagesReload(topicErn);
-             emit topicsReload();
+             // No topicsReload() on purpose, unlike every other mutation here. The topic listing is
+             // sorted by message count by default, so re-reading it moves the topic that was just
+             // emptied to the bottom of the sort - or off the page - while the operator is still
+             // looking at the row they started the purge from. The page applies the purge to that
+             // row instead; see EnsTopicsPage's emptyTopicLocally(). The same trade EQS's
+             // purgeQueue makes.
          },
          [this](const QString &message) {
              emit topicsFailed(message);
