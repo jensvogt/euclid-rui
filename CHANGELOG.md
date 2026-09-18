@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.1.14](https://github.com/jensvogt/euclid-rui/compare/1.1.13...v1.1.14) (2026-09-18)
+
+
+### Bug Fixes
+
+* send/resend column for ENS ([edca616](https://github.com/jensvogt/euclid-rui/commit/edca616891075cd2b21407d3bafa8e99a96845b1))
+* send/resend column for ENS ([084655e](https://github.com/jensvogt/euclid-rui/commit/084655e67b165a48d2ef07352a249accf73340a4))
+
 ## [1.1.13](https://github.com/jensvogt/euclid-rui/compare/1.1.12...v1.1.13) (2026-09-18)
 
 
