@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.1.15](https://github.com/jensvogt/euclid-rui/compare/1.1.14...v1.1.15) (2026-09-18)
+
+
+### Bug Fixes
+
+* ESM bucket list purge disregards pageSize ([8e850c5](https://github.com/jensvogt/euclid-rui/commit/8e850c51dfe4e14e2d0561df80bf692299d7764c))
+* ESM bucket list purge disregards sorting ([ba02c5a](https://github.com/jensvogt/euclid-rui/commit/ba02c5a5df19fad38026902ddb583569c95fc988))
+* ESM bucket list purge disregards sorting ([dcc8e68](https://github.com/jensvogt/euclid-rui/commit/dcc8e68ad41588d84c85ac359b8271c6da22ca4b))
+
 ## [1.1.14](https://github.com/jensvogt/euclid-rui/compare/1.1.13...v1.1.14) (2026-09-18)
 
 
