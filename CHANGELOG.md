@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.13](https://github.com/jensvogt/euclid-rui/compare/1.1.12...v1.1.13) (2026-09-18)
+
+
+### Bug Fixes
+
+* logout and avatar ([b28842e](https://github.com/jensvogt/euclid-rui/commit/b28842e847da7f805bcc9c74761e7b209546db57))
+
 ## [1.1.12](https://github.com/jensvogt/euclid-rui/compare/1.1.11...v1.1.12) (2026-09-17)
 
 
