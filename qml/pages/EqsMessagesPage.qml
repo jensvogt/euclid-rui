@@ -133,11 +133,15 @@ Item {
         pendingQueueErns = []
         error = ""
         loading = true
-        if (root.singleQueue)
+        if (root.singleQueue) {
+            // What this refresh is waiting for. One queue rather than a list of them, but the same
+            // bookkeeping: it is what tells an answer meant for this refresh from one that is not.
+            root.pendingQueueErns = [root.queueErn]
             eqsClient.fetchMessages(root.queueErn, root.pageIndex, root.pageSize,
                                     root.sortKey, root.sortAscending ? "asc" : "desc")
-        else
+        } else {
             eqsClient.fetchQueues("", 0, 100)
+        }
     }
 
     onVisibleChanged: if (visible) refresh()
@@ -192,37 +196,41 @@ Item {
                   + "anything sent meanwhile stays."
                 : "Queue purged."
         }
+        // An answer is taken only if this refresh asked for it and has not already had it.
+        //
+        // "messagesLoaded" is a signal on the client, not a reply to a caller: every page that
+        // listens sees every answer, including the ones a previous visit to this page asked for. The
+        // merged view alone fires one request per queue - thirty of them, 200 rows each - and those
+        // land long after the user has opened a single queue. Appending whatever arrived, which is
+        // what this used to do, put another queue's messages under this queue's heading, in arrival
+        // order, and inflated the total the pager counts pages from: the symptoms being a list that
+        // is suddenly longer than a page, sorted by nothing in particular.
+        //
+        // Dropping the ern from the pending list as it is consumed also settles the other half of
+        // it: two refreshes in flight at once - a purge answers immediately and re-reads, and the
+        // auto-refresh timer does not stop to ask - produce two answers for the same queue, and only
+        // the first is now taken.
         function onMessagesLoaded(ern, list, total) {
-            if (!root.loading)
+            if (!root.loading || root.pendingQueueErns.indexOf(ern) < 0)
                 return
-            root.allMessages = root.allMessages.concat(list)
-            // What the queue holds, which is not what was loaded: each request asks for the first
-            // 200, while "total" is the server's own count of the whole queue. The header says how
-            // many there are; the table's own footer says how many of them are in hand.
-            root.totalMessages += total
-            if (root.queueErn.length > 0) {
-                if (ern === root.queueErn) {
-                    root.loading = false
-                    root.lastUpdatedText = Qt.formatDateTime(new Date(), "hh:mm:ss")
-                }
-                return
-            }
             root.pendingQueueErns = root.pendingQueueErns.filter(function (e) { return e !== ern })
+
+            root.allMessages = root.allMessages.concat(list)
+            // What the queue holds, which is not what was loaded: the merged view asks each queue
+            // for its first 200, while "total" is the server's own count of the whole queue. The
+            // header says how many there are; the table's own footer says how many are in hand.
+            root.totalMessages += total
+
             if (root.pendingQueueErns.length === 0) {
                 root.loading = false
                 root.lastUpdatedText = Qt.formatDateTime(new Date(), "hh:mm:ss")
             }
         }
         function onMessagesFailed(ern, message) {
-            if (!root.loading)
+            if (!root.loading || root.pendingQueueErns.indexOf(ern) < 0)
                 return
-            root.error = message
-            if (root.queueErn.length > 0) {
-                if (ern === root.queueErn)
-                    root.loading = false
-                return
-            }
             root.pendingQueueErns = root.pendingQueueErns.filter(function (e) { return e !== ern })
+            root.error = message
             if (root.pendingQueueErns.length === 0)
                 root.loading = false
         }
