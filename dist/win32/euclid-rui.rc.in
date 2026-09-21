@@ -1,0 +1,45 @@
+// Windows resource script, filled in by CMakeLists.txt at configure time (@ICON_FILE@ is absolute,
+// because this is compiled from the build directory rather than from here).
+//
+// This is what the *shell* reads, and it is the only thing it reads: Explorer, the taskbar button
+// before the window exists, Alt-Tab, and every shortcut the installer creates - those point at the
+// executable and take its icon rather than carrying one of their own. Nothing in the shell ever
+// asks Qt, so QGuiApplication::setWindowIcon() in main.cpp does not cover any of it: that dresses a
+// window that is already open, which is a later and much smaller moment than this one.
+
+#include <windows.h>
+
+// IDI_ICON1 is not a windows.h macro - it is the name qmake has always given this resource, kept
+// here so anything that goes looking for a Qt application's icon by the usual name still finds it.
+IDI_ICON1 ICON "@ICON_FILE@"
+
+VS_VERSION_INFO VERSIONINFO
+FILEVERSION    @PROJECT_VERSION_MAJOR@,@PROJECT_VERSION_MINOR@,@PROJECT_VERSION_PATCH@,0
+PRODUCTVERSION @PROJECT_VERSION_MAJOR@,@PROJECT_VERSION_MINOR@,@PROJECT_VERSION_PATCH@,0
+FILEFLAGSMASK  VS_FFI_FILEFLAGSMASK
+FILEFLAGS      0x0L
+FILEOS         VOS_NT_WINDOWS32
+FILETYPE       VFT_APP
+FILESUBTYPE    VFT2_UNKNOWN
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        // US English, Unicode - the pair repeated in the VarFileInfo block below, which is what
+        // says the strings above are actually in that language.
+        BLOCK "040904b0"
+        BEGIN
+            VALUE "CompanyName",      "Dr. Jens Vogt"
+            VALUE "FileDescription",  "Euclid RUI"
+            VALUE "FileVersion",      "@VERSION_STRING@"
+            VALUE "InternalName",     "euclid-rui"
+            VALUE "LegalCopyright",   "Dr. Jens Vogt"
+            VALUE "OriginalFilename", "euclid-rui.exe"
+            VALUE "ProductName",      "Euclid RUI"
+            VALUE "ProductVersion",   "@VERSION_STRING@"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x409, 1200
+    END
+END

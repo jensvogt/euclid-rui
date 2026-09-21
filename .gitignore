@@ -14,6 +14,11 @@ out/
 dist/win32/installer/config/config.xml
 dist/win32/installer/packages/de.jensvogt.euclidrui/meta/package.xml
 
+# Copied out of dist/branding/ by CMakeLists.txt at configure time, next to the config.xml that
+# names them - IFW resolves its icons against the config directory.
+dist/win32/installer/config/euclid-rui.ico
+dist/win32/installer/config/euclid-rui.png
+
 # Windows installer build output (binarycreator/repogen)
 dist/win32/installer/packages/de.jensvogt.euclidrui/data/
 dist/win32/installer/*.exe

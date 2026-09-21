@@ -4,6 +4,8 @@
 #include <QDateTime>
 #include <QMessageAuthenticationCode>
 
+Q_LOGGING_CATEGORY(lcAuth, "euclid.rui.auth")
+
 namespace {
 
 QByteArray hmacSha256(const QByteArray &key, const QByteArray &data) {
@@ -119,6 +121,16 @@ QMap<QString, QString> RequestSigner::signRfc9421(const Request &request, const 
     base += "\"@signature-params\": " + parameters;
 
     const QByteArray signature = hmacSha256(credentials.secretAccessKey.toUtf8(), base.toUtf8());
+
+    // The base verbatim, because that is the only thing worth seeing when a signature is refused:
+    // the server rebuilds this string from the request it received, and a refusal means the two
+    // spellings differ somewhere. Printed with the newlines shown rather than as one run-together
+    // line, so an empty component - the failure this exists to catch - reads as a line with nothing
+    // after the colon instead of disappearing into the middle of the string.
+    if (lcAuth().isDebugEnabled()) {
+        for (const QString &line: base.split(QLatin1Char('\n')))
+            qCDebug(lcAuth).noquote() << "  base |" << line;
+    }
 
     return {
             {"Content-Digest", contentDigest},

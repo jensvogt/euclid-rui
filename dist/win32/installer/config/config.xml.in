@@ -6,6 +6,13 @@
     <Publisher>Dr. Jens Vogt</Publisher>
     <StartMenuDir>euclid</StartMenuDir>
     <TargetDir>@ApplicationsDir@/euclid</TargetDir>
+    <!-- Deliberately without the extension: IFW appends the platform's own (.ico here, .icns on
+         macOS, .png on Linux), so naming euclid-rui.ico would have it look for euclid-rui.ico.ico.
+         This is what the installer and the maintenance tool it leaves behind are shown as. -->
+    <InstallerApplicationIcon>euclid-rui</InstallerApplicationIcon>
+    <!-- And this one *does* carry its extension - it is a PNG on every platform. Title bar of the
+         installer window. -->
+    <InstallerWindowIcon>euclid-rui.png</InstallerWindowIcon>
     <RemoteRepositories>
         <Repository>
             <Url>https://jensvogt.github.io/euclid-rui</Url>

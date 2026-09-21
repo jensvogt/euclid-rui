@@ -20,11 +20,17 @@ Component.prototype.createOperations = function()
             "description=Euclid RUI"
         );
 
+        // Same iconPath as the start menu entry above. A .lnk with no icon of its own already
+        // falls back to the target's, so this changes nothing about which icon is shown - it
+        // writes the choice into the shortcut rather than leaving it to that fallback, which is
+        // what keeps the two shortcuts from drifting apart.
         component.addOperation(
             "CreateShortcut",
-            installer.value("TargetDir") + "/euclid-rui.exe",
+            targetExe,
             installer.value("DesktopDir") + "/euclid-rui.lnk",
-            "workingDirectory=" + installer.value("TargetDir")
+            "workingDirectory=" + installer.value("TargetDir"),
+            "iconPath=" + targetExe,
+            "description=Euclid RUI"
         );
     }
 };
