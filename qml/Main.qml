@@ -782,45 +782,64 @@ ApplicationWindow {
                 height: 64
                 color: "#181b21"
 
-                Row {
-                    anchors.fill: parent
+                // Two clusters anchored to their own edges, rather than one Row with a spacer
+                // sized by hand between them. The spacer used to be the header's width less every
+                // item in it, which meant guessing at the one item whose width is not fixed - the
+                // user and gateway line. The guess was 150px; "development · 192.168.178.45:5566"
+                // is nearer 175, and the Row overflowed by the difference and carried the avatar
+                // off the right-hand edge of the window, where nothing clips it and it simply is
+                // not there. Anchoring drops the arithmetic and the assumption underneath it.
+                TextField {
+                    id: searchField
+                    width: 320
+                    height: 40
+                    anchors.left: parent.left
                     anchors.leftMargin: 28
-                    anchors.rightMargin: 28
-                    spacing: 16
-
-                    TextField {
-                        id: searchField
-                        width: 320
-                        height: 40
-                        anchors.verticalCenter: parent.verticalCenter
-                        placeholderText: "Search..."
-                        Material.theme: Material.Dark
-                        Material.accent: "#4f8cff"
-                        onAccepted: {
-                            const route = window.moduleRouteFor(text)
-                            if (route.length > 0) {
-                                window.currentRoute = route
-                                text = ""
-                            }
+                    anchors.verticalCenter: parent.verticalCenter
+                    placeholderText: "Search..."
+                    Material.theme: Material.Dark
+                    Material.accent: "#4f8cff"
+                    onAccepted: {
+                        const route = window.moduleRouteFor(text)
+                        if (route.length > 0) {
+                            window.currentRoute = route
+                            text = ""
                         }
                     }
+                }
 
-                    Item {
-                        width: parent.width - 320 - 16 - 40 - 40 - 150 - 32
-                        height: 1
-                    }
+                Row {
+                    anchors.right: parent.right
+                    anchors.rightMargin: 28
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: 16
 
                     Column {
                         visible: window.loggedIn
                         anchors.verticalCenter: parent.verticalCenter
                         spacing: 1
-                        Text { text: window.currentUser; color: "#e5e7eb"; font.pixelSize: 12 }
+                        // Both lines are capped rather than left to size themselves. The cap is
+                        // what keeps this cluster from growing without limit and reaching the
+                        // search field: 320 here plus three 40px buttons and their gaps still fits
+                        // beside the search field at the window's 960px minimum width.
+                        Text {
+                            text: window.currentUser
+                            color: "#e5e7eb"
+                            font.pixelSize: 12
+                            width: Math.min(implicitWidth, 320)
+                            elide: Text.ElideRight
+                        }
                         // Which gateway, alongside the namespace: with a remote euclid-mgr one
                         // click away, "where am I connected" stops being obvious.
                         Text {
                             text: window.currentNamespace + " · " + appSettings.host + ":" + appSettings.port
                             color: "#9aa1ac"
                             font.pixelSize: 11
+                            width: Math.min(implicitWidth, 320)
+                            // Elided in the middle, not at the end: a host that has to be cut
+                            // should still show which namespace it is and which port it is on,
+                            // and those are at opposite ends of the line.
+                            elide: Text.ElideMiddle
                         }
                     }
 
@@ -860,6 +879,7 @@ ApplicationWindow {
                     }
 
                     Rectangle {
+                        id: avatarButton
                         width: 40
                         height: 40
                         radius: 20
@@ -874,7 +894,45 @@ ApplicationWindow {
                         }
                         MouseArea {
                             anchors.fill: parent
-                            onClicked: loginDialog.open()
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            // Nothing to choose between before there is a session: both items below
+                            // would come down to opening the dialog, so the click does that
+                            // directly rather than going through a menu of one.
+                            onClicked: window.loggedIn ? accountMenu.open() : loginDialog.open()
+                        }
+
+                        Menu {
+                            id: accountMenu
+                            // Dropped from under the avatar and right-aligned with it, because the
+                            // avatar sits at the right edge of the window and a menu opened at the
+                            // cursor would hang off it.
+                            x: avatarButton.width - width
+                            y: avatarButton.height + 6
+
+                            // Reopening the login dialog over a live session is what clicking the
+                            // avatar has always done, and it keeps the top slot: it is the one of
+                            // the two reached often.
+                            MenuItem {
+                                text: "Switch namespace or server…"
+                                onTriggered: loginDialog.open()
+                            }
+
+                            MenuSeparator {}
+
+                            // ...which left no way to actually end a session. The dialog cannot be
+                            // it: dismissing it over a live session means "never mind" and returns
+                            // to that session (see LoginDialog's onRejected), so signing out has to
+                            // be said somewhere else, and this is it. Named for both halves of what
+                            // it does, since a menu item that closes the application is not what
+                            // "Sign out" leads anyone to expect on its own.
+                            MenuItem {
+                                text: "Sign out and quit"
+                                onTriggered: {
+                                    euclidClient.logout()
+                                    Qt.quit()
+                                }
+                            }
                         }
                     }
                 }

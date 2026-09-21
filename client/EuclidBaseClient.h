@@ -19,6 +19,7 @@ class EuclidBaseClient : public QObject {
     Q_OBJECT
     Q_PROPERTY(bool busy READ busy NOTIFY busyChanged)
     Q_PROPERTY(bool isAdmin READ isAdmin NOTIFY isAdminChanged)
+    Q_PROPERTY(QString userId READ userId NOTIFY userIdChanged)
     Q_PROPERTY(QString accountId READ accountId NOTIFY accountIdChanged)
     Q_PROPERTY(QString region READ region NOTIFY regionChanged)
     Q_PROPERTY(QString baseUrl READ baseUrl WRITE setBaseUrl NOTIFY baseUrlChanged)
@@ -53,6 +54,16 @@ public:
     Q_INVOKABLE void setAuthMode(const QString &authMode);
     Q_INVOKABLE void setAccessKey(const QString &accessKeyId, const QString &secretAccessKey);
 
+    // Who is signed in, as EAM spells it - which is not always what was typed into the login
+    // dialog: signing in with an email address is allowed, and then the two differ. Taken from the
+    // login response rather than from the form for exactly that reason, because this is the name
+    // every other action has to use when it means "me" - telling a user's own password change from
+    // an administrator resetting it, above all.
+    //
+    // Empty until login() succeeds.
+    [[nodiscard]]
+    QString userId() const { return m_userId; }
+
     // Empty until login() succeeds.
     [[nodiscard]]
     QString accountId() const { return m_accountId; }
@@ -62,6 +73,19 @@ public:
     QString region() const { return m_region; }
 
     Q_INVOKABLE void login(const QString &userId, const QString &password);
+
+    // Ends the session, locally. There is nothing to ask the gateway: euclid mints a token and
+    // hands back an access key, but has no action that takes either of them back - a token stops
+    // being accepted when it expires, and a key lives until EAM is told to delete it. So what
+    // signing out can honestly do is leave this client unable to authenticate as anyone: the token
+    // goes, the key it signs with goes, and the renewal that would otherwise fetch a fresh token
+    // goes with them.
+    //
+    // Deliberately does not touch AppSettings' stored copy of the key. That is on disk so the next
+    // start can sign before anyone has logged in (see main.cpp), and erasing it from here would
+    // quietly redefine signing out as forgetting the installation's credentials.
+    Q_INVOKABLE void logout();
+
     Q_INVOKABLE void fetchNamespaces();
     Q_INVOKABLE void setNamespace(const QString &namespaceName);
 
@@ -99,6 +123,7 @@ public:
 signals:
     void busyChanged();
     void isAdminChanged();
+    void userIdChanged();
     void accountIdChanged();
     void regionChanged();
     void baseUrlChanged();
@@ -122,6 +147,13 @@ signals:
 
 private:
     void setBusy(bool busy);
+
+    // The part of ending a session that is the same whichever way it ends - pointing the client at
+    // another gateway, or signing out - so the two cannot drift apart. Drops the token, everything
+    // it resolved to, and the renewal that would have replaced it. Returns whether there was a
+    // session to end, which is what decides if sessionCleared() is worth emitting; the signal
+    // belongs to the caller because only it knows what the whole operation was.
+    bool clearSessionState();
 
     // Applies whichever scheme m_authMode names to a request that is about to be sent. `target`
     // and `action` are already on the request; the body is passed separately because the

@@ -359,6 +359,24 @@ void EamClient::deleteUser(const QString &userId) {
          });
 }
 
+void EamClient::changePassword(const QString &userId, const QString &oldPassword, const QString &newPassword) {
+    QJsonObject body;
+    // Sent even when it is the caller's own, rather than left out: the server reads an absent
+    // userId as "mine", which is the same answer, but saying it means the request describes who it
+    // is about instead of depending on which session happens to carry it.
+    body["userId"] = userId;
+    body["oldPassword"] = oldPassword;
+    body["newPassword"] = newPassword;
+
+    m_base->post("eam", "change-password", body, true,
+         [this, userId](const QJsonObject &) {
+             emit passwordChanged(userId);
+         },
+         [this](const QString &message) {
+             emit passwordChangeFailed(message);
+         });
+}
+
 void EamClient::fetchAccessKeys() {
     m_base->post("eam", "list-access-keys", QJsonObject(), true,
          [this](const QJsonObject &response) {

@@ -134,17 +134,14 @@ void EuclidBaseClient::refreshSession() {
          });
 }
 
-void EuclidBaseClient::setBaseUrl(const QString &baseUrl) {
-    if (baseUrl.isEmpty() || baseUrl == m_baseUrl)
-        return;
-    m_baseUrl = baseUrl;
-    emit baseUrlChanged();
+bool EuclidBaseClient::clearSessionState() {
 
     const bool hadSession = !m_token.isEmpty();
     m_token.clear();
-    // The session this was renewing is gone; renewing it against another gateway would be asking a
+    // Whatever this was renewing is gone - and against another gateway it would be asking a
     // backend about a token it never minted.
     m_sessionRefreshTimer.stop();
+    m_refreshingSession = false;
     m_namespace.clear();
     if (m_isAdmin) {
         m_isAdmin = false;
@@ -158,7 +155,34 @@ void EuclidBaseClient::setBaseUrl(const QString &baseUrl) {
         m_region.clear();
         emit regionChanged();
     }
-    if (hadSession)
+    return hadSession;
+}
+
+void EuclidBaseClient::setBaseUrl(const QString &baseUrl) {
+    if (baseUrl.isEmpty() || baseUrl == m_baseUrl)
+        return;
+    m_baseUrl = baseUrl;
+    emit baseUrlChanged();
+
+    // The key is left alone: login() adopts whatever the new gateway hands back, and until someone
+    // signs in again the stored one is still the best guess this client has.
+    if (clearSessionState())
+        emit sessionCleared();
+}
+
+void EuclidBaseClient::logout() {
+
+    // Beyond what a gateway change drops: who was signed in, and the credentials every authorized
+    // request is signed with. Without these two a session change would still leave a client that
+    // can prove it is somebody, which is the one thing signing out has to rule out.
+    if (!m_userId.isEmpty()) {
+        m_userId.clear();
+        emit userIdChanged();
+    }
+    m_accessKeyId.clear();
+    m_secretAccessKey.clear();
+
+    if (clearSessionState())
         emit sessionCleared();
 }
 
@@ -399,8 +423,15 @@ void EuclidBaseClient::login(const QString &userId, const QString &password) {
 
     post("eam", "login", body, false,
          [this, userId](const QJsonObject &response) {
-             m_userId = userId;
              const QJsonObject metadata = response.value("metadata").toObject();
+             // What EAM calls this user, in preference to what was typed: signing in by email is
+             // allowed, and then the two are not the same string. Everything downstream that means
+             // "me" - the signed x-euclid-user-id header, and whether a password change is one's
+             // own or an administrator's reset - needs the name EAM knows, not the one that opened
+             // the door. Falls back to the typed value for a server that does not send it.
+             m_userId = metadata.value("user").toString();
+             if (m_userId.isEmpty())
+                 m_userId = userId;
              m_token = response.value("token").toString();
              m_accountId = metadata.value("accountId").toString();
              m_region = metadata.value("region").toString();
@@ -430,6 +461,7 @@ void EuclidBaseClient::login(const QString &userId, const QString &password) {
              scheduleSessionRefresh();
 
              emit isAdminChanged();
+             emit userIdChanged();
              emit accountIdChanged();
              emit regionChanged();
              emit loginSucceeded();
