@@ -216,6 +216,16 @@ Item {
     // "eap redeploy-application" as a dialog: upload the new build into the application's own
     // bucket under the key it already uses, then stamp the definition with the new version - which
     // is what the manager reads as a new revision and restarts the pool onto.
+    // What the scale dialog opens on. Scaling moves the floor, not the ceiling: the floor is what
+    // the manager guarantees to run, so raising it starts an instance, while raising the ceiling
+    // only permits the autoscaler to add one under load. Nothing is sent until the dialog is
+    // confirmed - these are the numbers it starts with, and both fields are editable.
+    function scaleUpSuggestion(row) {
+        const min = Number(row.minInstances) + 1
+        // EAP refuses a floor above the ceiling, so the ceiling comes along when pushed.
+        return { min: min, max: Math.max(Number(row.maxInstances), min) }
+    }
+
     Dialog {
         id: redeployDialog
         modal: true
@@ -465,6 +475,168 @@ Item {
                         redeployDialog.uploading = true
                         esmClient.uploadObject(redeployDialog.bucketErn, redeployArtifactField.text.trim(),
                                                redeployDialog.pendingFile)
+                    }
+                }
+            }
+        }
+    }
+
+    Dialog {
+        id: scaleDialog
+        modal: true
+        anchors.centerIn: parent
+        width: 420
+        padding: 28
+        topPadding: 24
+        bottomPadding: 24
+        standardButtons: Dialog.NoButton
+
+        // The row the menu was opened on, which carries the bounds already - nothing is re-read.
+        property var application: null
+        readonly property string applicationId: application ? application.applicationId : ""
+        readonly property int currentMin: application ? Number(application.minInstances) : 1
+        readonly property int currentMax: application ? Number(application.maxInstances) : 1
+        readonly property int runningInstances: application ? Number(application.instances) : 0
+
+        readonly property int wantedMin: parseInt(scaleMinField.text, 10)
+        readonly property int wantedMax: parseInt(scaleMaxField.text, 10)
+        readonly property bool valid: !isNaN(wantedMin) && !isNaN(wantedMax)
+                                      && wantedMin >= 1 && wantedMax >= 1 && wantedMin <= wantedMax
+
+        // Refused by the server rather than silently corrected, so it is said here first.
+        readonly property string problem: {
+            if (isNaN(scaleDialog.wantedMin) || isNaN(scaleDialog.wantedMax)) return ""
+            if (scaleDialog.wantedMin < 1) return "An application's floor is at least 1 - stop it to take it off the air."
+            if (scaleDialog.wantedMax < 1) return "The ceiling has to be at least 1."
+            if (scaleDialog.wantedMin > scaleDialog.wantedMax)
+                return "The floor (" + scaleDialog.wantedMin + ") cannot be above the ceiling (" + scaleDialog.wantedMax + ")."
+            return ""
+        }
+
+        function openFor(row, suggestion) {
+            scaleDialog.application = row
+            scaleDialog.open()
+            scaleMinField.text = String(suggestion.min)
+            scaleMaxField.text = String(suggestion.max)
+            scaleMinField.forceActiveFocus()
+            scaleMinField.selectAll()
+        }
+
+        background: Rectangle {
+            radius: 16
+            color: "#1b1e25"
+            border.color: "#2c313c"
+            border.width: 1
+        }
+
+        contentItem: Column {
+            width: scaleDialog.availableWidth
+            spacing: 18
+
+            Column {
+                width: parent.width
+                spacing: 4
+                Text { text: "Scale Application"; color: "white"; font.pixelSize: 18; font.bold: true }
+                Text {
+                    text: scaleDialog.applicationId + "  ·  " + scaleDialog.runningInstances + " running, currently "
+                          + scaleDialog.currentMin + "–" + scaleDialog.currentMax
+                    color: "#9aa1ac"
+                    font.pixelSize: 12
+                    elide: Text.ElideRight
+                    width: parent.width
+                }
+            }
+
+            Text {
+                width: parent.width
+                wrapMode: Text.WordWrap
+                color: "#6b7280"
+                font.pixelSize: 11
+                text: "The floor is what the manager keeps running; the ceiling is as far as the autoscaler may "
+                      + "go under load. Raising the floor starts instances now, raising the ceiling only permits "
+                      + "them. Neither happens here - the manager acts on its next pass, and a new instance is "
+                      + "handed work once it reports ready."
+            }
+
+            Row {
+                width: parent.width
+                spacing: 12
+
+                Column {
+                    width: (scaleDialog.availableWidth - 12) / 2
+                    spacing: 6
+                    Text { text: "Min instances"; color: "#9aa1ac"; font.pixelSize: 12 }
+                    TextField {
+                        id: scaleMinField
+                        width: parent.width
+                        Material.accent: "#4f8cff"
+                        selectByMouse: true
+                        // Bottom of 1, unlike a module's 0: EAP clamps the floor to one, so a pool
+                        // cannot be drained to nothing here. Stopping the application is what takes
+                        // it off the air, and that is undone by starting it rather than by
+                        // remembering which number to put back.
+                        validator: IntValidator { bottom: 1; top: 999 }
+                        Keys.onReturnPressed: scaleMaxField.forceActiveFocus()
+                    }
+                }
+
+                Column {
+                    width: (scaleDialog.availableWidth - 12) / 2
+                    spacing: 6
+                    Text { text: "Max instances"; color: "#9aa1ac"; font.pixelSize: 12 }
+                    TextField {
+                        id: scaleMaxField
+                        width: parent.width
+                        Material.accent: "#4f8cff"
+                        selectByMouse: true
+                        validator: IntValidator { bottom: 1; top: 999 }
+                        Keys.onReturnPressed: if (applyScaleButton.enabled) applyScaleButton.clicked()
+                    }
+                }
+            }
+
+            Text {
+                width: parent.width
+                wrapMode: Text.WordWrap
+                color: "#ff6b6b"
+                font.pixelSize: 12
+                visible: scaleDialog.problem.length > 0
+                text: scaleDialog.problem
+            }
+
+            Item {
+                width: parent.width
+                height: 40
+
+                Button {
+                    text: "Cancel"
+                    flat: true
+                    anchors.left: parent.left
+                    anchors.verticalCenter: parent.verticalCenter
+                    Material.theme: Material.Dark
+                    onClicked: scaleDialog.close()
+                }
+
+                Button {
+                    id: applyScaleButton
+                    text: "Apply"
+                    highlighted: true
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    Material.theme: Material.Dark
+                    Material.accent: "#4f8cff"
+                    enabled: scaleDialog.valid
+                             && (scaleDialog.wantedMin !== scaleDialog.currentMin
+                                 || scaleDialog.wantedMax !== scaleDialog.currentMax)
+                    onClicked: {
+                        // Through EAP rather than EMM's set-instances: the application's own
+                        // definition is what the manager reconciles the pool against, so a bound
+                        // written onto the module row alone would be undone on its next pass.
+                        eapClient.updateApplication(scaleDialog.applicationId, {
+                            minInstances: scaleDialog.wantedMin,
+                            maxInstances: scaleDialog.wantedMax
+                        })
+                        scaleDialog.close()
                     }
                 }
             }
@@ -806,6 +978,18 @@ Item {
                         },
                         action: function(row) {
                             eapClient.stopApplication(row.applicationId)
+                        }
+                    },
+                    {
+                        text: "Scale Up…",
+                        // Only while it is meant to be running: raising the floor of a stopped
+                        // application records a number the manager will not act on until it is
+                        // started, which reads as a scale-up that did nothing.
+                        enabled: function(row) {
+                            return !!row && row.desiredState === "RUNNING"
+                        },
+                        action: function(row) {
+                            scaleDialog.openFor(row, root.scaleUpSuggestion(row))
                         }
                     },
                     {

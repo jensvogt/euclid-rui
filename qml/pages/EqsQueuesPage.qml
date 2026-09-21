@@ -91,6 +91,25 @@ Item {
         return parts.length > 0 ? parts[parts.length - 1] : ern
     }
 
+    // Writes a finished purge into the row it was started from, rather than re-reading the page.
+    // A re-read re-sorts, and the default sort is by available messages: the queue that was just
+    // emptied drops to the bottom of the listing - or off the page entirely, with everything
+    // below it moving up - while the operator is still looking at the row they purged. The
+    // counts are known exactly here, so the row is corrected where it stands and the ordering
+    // only changes at the next refresh, when the operator asked for a new reading anyway.
+    // Reassigned rather than mutated, so the "var" property's change notification fires.
+    function emptyQueueLocally(queueErn) {
+        root.queues = root.queues.map(function (queue) {
+            // All three counts, not just the available one: a purge deletes the queue's messages
+            // outright, so the delayed and in-flight ones go with them. "Modified" is left to the
+            // next refresh - the server stamps it with its own clock, and guessing at that here
+            // would put a time in the column that nothing agrees with.
+            return queue.ern === queueErn
+                    ? Object.assign({}, queue, { available: 0, delayed: 0, invisible: 0, size: 0 })
+                    : queue
+        })
+    }
+
     signal back()
     signal openQueue(string queueErn, string queueName)
     signal openQueueDetails(string queueErn, string queueName, var details)
@@ -164,6 +183,22 @@ Item {
         }
         function onQueueStatusFailed(message) {
             root.error = message
+        }
+
+        function onQueuePurged(queueErn, async, messages) {
+            const name = root.queueNameForErn(queueErn)
+            // Applied whether or not this page is the one on screen: the row is in the list either
+            // way, and a purge started from the message list must not leave a stale count behind
+            // it. Only for a synchronous purge - a background one has not finished, so its counts
+            // are still falling and zeroing them here would claim more than the server has done.
+            if (!async) root.emptyQueueLocally(queueErn)
+            if (!root.visible) return
+            root.actionNote = async
+                ? "Purging " + messages + " message(s) from '" + name + "' in the background. Its counts fall as the "
+                  + "server works through them; refresh to see where they stand."
+                // A synchronous purge answers with no count of its own - it has already finished,
+                // and what it removed is simply everything the queue held.
+                : "Purged '" + name + "'. The queue holds nothing now."
         }
 
         function onQueuesReload() {
@@ -465,6 +500,7 @@ Item {
                             return !!row && Number(row.available) > 0
                         },
                         action: function(row) {
+                            root.actionNote = ""
                             eqsClient.purgeQueue(row.ern)
                         }
                     },

@@ -19,7 +19,11 @@ public:
                                  const QString &sortColumn = QStringLiteral("name"),
                                  const QString &sortDirection = QStringLiteral("asc"));
     Q_INVOKABLE void createTopic(const QString &name, int maxMessageLength = 1048576);
-    Q_INVOKABLE void purgeTopic(const QString &topicErn);
+    // Empties the topic. `async` hands the work to the server's background purge, which answers as
+    // soon as it has accepted it rather than when it is done - a topic holding a retention period's
+    // worth of messages takes longer to empty than the gateway waits, so the caller would otherwise
+    // be handed a failure for work that is running anyway. The same trade EQS's purgeQueue makes.
+    Q_INVOKABLE void purgeTopic(const QString &topicErn, bool async = false);
     Q_INVOKABLE void deleteTopic(const QString &topicErn);
 
     // Stops and resumes delivery. Not the same trade EQS's stop-queue makes, and worth being exact
@@ -81,6 +85,9 @@ signals:
     void topicsReload();
     void topicCreated(const QString &name);
     void topicCreateFailed(const QString &message);
+    // What the purge did, or accepted: `messages` is how many the topic held when a background
+    // purge was accepted, and 0 for a synchronous one, which has already finished.
+    void topicPurged(const QString &topicErn, bool async, int messages);
     // The state the server recorded - "RUNNING" or "STOPPED", the same words the listing uses - and,
     // for a start, how many held messages it delivered on the way. Always 0 for a stop, which
     // releases nothing.

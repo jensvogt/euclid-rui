@@ -8,6 +8,7 @@
 #include <QQuickWindow>
 
 #include "AppSettings.h"
+#include "client/EadClient.h"
 #include "client/EamClient.h"
 #include "client/EagClient.h"
 #include "client/EapClient.h"
@@ -65,6 +66,7 @@ int main(int argc, char *argv[]) {
     EtsClient etsClient(&euclidClient);
     EagClient eagClient(&euclidClient);
     EmoClient emoClient(&euclidClient);
+    EadClient eadClient(&euclidClient);
     AppSettings appSettings;
 
     // The gateway address lives in AppSettings (which persists it) and is pushed into the client,
@@ -110,6 +112,7 @@ int main(int argc, char *argv[]) {
     engine.rootContext()->setContextProperty("etsClient", &etsClient);
     engine.rootContext()->setContextProperty("eagClient", &eagClient);
     engine.rootContext()->setContextProperty("emoClient", &emoClient);
+    engine.rootContext()->setContextProperty("eadClient", &eadClient);
 
     engine.rootContext()->setContextProperty("appSettings", &appSettings);
     // QML has no way to read QCoreApplication::applicationVersion() on its own, nor the Qt

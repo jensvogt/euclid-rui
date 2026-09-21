@@ -44,6 +44,13 @@ Item {
                 colorFor: function (v, row) { return row && row.internal ? "#9aa1ac" : "#c4c9d1" }
             },
             { title: "Objects", key: "objects" },
+            // Beside Objects rather than folded into it. A directory marker is a zero-byte key
+            // ending in "/" that keeps an empty directory in existence for an FTP or SFTP client
+            // to change into - a listing shows it, but nobody stored it, so it is not one of the
+            // bucket's objects. Mostly 0, and worth the column anyway: on a transfer bucket it is
+            // most of what is there, and reading those rows as objects is what made one show
+            // "5 objects, 0 B" when it held a single empty receipt file.
+            { title: "Directories", key: "directories" },
             { title: "Size", key: "size", formatter: function (v) { return SizeFormat.format(v) } },
             // Says what happens to the next object written, not that everything in the bucket is
             // encrypted - a bucket holds objects written under whatever setting was in force at the
@@ -76,6 +83,23 @@ Item {
             return
         }
         esmClient.purgeBucket(row.ern, false)
+    }
+
+    // Writes a finished purge into the row it was started from, rather than re-reading the page.
+    // A re-read re-sorts, and the default sort is by object count: the bucket that was just
+    // emptied drops to the bottom of the listing - or off the page entirely, with everything
+    // below it moving up - while the operator is still looking at the row they purged. The
+    // counts are known exactly here, so the row is corrected where it stands and the ordering
+    // only changes at the next refresh, when the operator asked for a new reading anyway.
+    // Reassigned rather than mutated, so the "var" property's change notification fires.
+    function emptyBucketLocally(bucketErn) {
+        root.buckets = root.buckets.map(function (bucket) {
+            // Everything the purge removed. The purge is always whole-bucket here - the prefix
+            // sent with it is empty - so nothing of the bucket's contents is left to count.
+            return bucket.ern === bucketErn
+                    ? Object.assign({}, bucket, { objects: 0, directories: 0, size: 0 })
+                    : bucket
+        })
     }
 
     signal back()
@@ -129,6 +153,11 @@ Item {
         // done from the object tree would leave a message here to be found on the next visit,
         // describing something that happened somewhere else.
         function onBucketPurged(bucketErn, async, objects) {
+            // Whether or not this page is the one on screen: the row is in the list either way,
+            // and a purge started from the object tree must not leave a stale count behind it.
+            // Only for a synchronous purge - a background one has not finished, so its counts are
+            // still falling and zeroing them here would claim more than the server has done.
+            if (!async) root.emptyBucketLocally(bucketErn)
             if (!root.visible) return
             root.actionNote = async
                     ? "Purging " + objects + " object(s) in the background. The bucket's counts fall as it works through them."

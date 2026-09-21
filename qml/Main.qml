@@ -782,13 +782,13 @@ ApplicationWindow {
                 height: 64
                 color: "#181b21"
 
-                // Two clusters anchored to their own edges, rather than one Row with a spacer
-                // sized by hand between them. The spacer used to be the header's width less every
-                // item in it, which meant guessing at the one item whose width is not fixed - the
-                // user and gateway line. The guess was 150px; "development · 192.168.178.45:5566"
-                // is nearer 175, and the Row overflowed by the difference and carried the avatar
-                // off the right-hand edge of the window, where nothing clips it and it simply is
-                // not there. Anchoring drops the arithmetic and the assumption underneath it.
+                // Anchored at the two ends rather than laid out left to right around a spacer.
+                // The spacer's width was a sum of constants - a 320 field, two 40px buttons and a
+                // 150px name block - and the bar has had three buttons and a name block wider than
+                // 150 ("development · localhost:5566") for a while, so the row overflowed its right
+                // margin by about that much and carried the last item, the avatar, off the edge of
+                // the window. Anchoring cannot drift that way: whatever is in the right-hand group
+                // ends at the margin, and the gap in the middle is whatever is left over.
                 TextField {
                     id: searchField
                     width: 320
@@ -818,28 +818,13 @@ ApplicationWindow {
                         visible: window.loggedIn
                         anchors.verticalCenter: parent.verticalCenter
                         spacing: 1
-                        // Both lines are capped rather than left to size themselves. The cap is
-                        // what keeps this cluster from growing without limit and reaching the
-                        // search field: 320 here plus three 40px buttons and their gaps still fits
-                        // beside the search field at the window's 960px minimum width.
-                        Text {
-                            text: window.currentUser
-                            color: "#e5e7eb"
-                            font.pixelSize: 12
-                            width: Math.min(implicitWidth, 320)
-                            elide: Text.ElideRight
-                        }
+                        Text { text: window.currentUser; color: "#e5e7eb"; font.pixelSize: 12 }
                         // Which gateway, alongside the namespace: with a remote euclid-mgr one
                         // click away, "where am I connected" stops being obvious.
                         Text {
                             text: window.currentNamespace + " · " + appSettings.host + ":" + appSettings.port
                             color: "#9aa1ac"
                             font.pixelSize: 11
-                            width: Math.min(implicitWidth, 320)
-                            // Elided in the middle, not at the end: a host that has to be cut
-                            // should still show which namespace it is and which port it is on,
-                            // and those are at opposite ends of the line.
-                            elide: Text.ElideMiddle
                         }
                     }
 
@@ -879,11 +864,11 @@ ApplicationWindow {
                     }
 
                     Rectangle {
-                        id: avatarButton
+                        id: accountButton
                         width: 40
                         height: 40
                         radius: 20
-                        color: "#2c3648"
+                        color: accountMouse.containsMouse ? "#3a4763" : "#2c3648"
                         anchors.verticalCenter: parent.verticalCenter
                         Text {
                             anchors.centerIn: parent
@@ -893,44 +878,45 @@ ApplicationWindow {
                             font.bold: true
                         }
                         MouseArea {
+                            id: accountMouse
                             anchors.fill: parent
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
-                            // Nothing to choose between before there is a session: both items below
-                            // would come down to opening the dialog, so the click does that
-                            // directly rather than going through a menu of one.
-                            onClicked: window.loggedIn ? accountMenu.open() : loginDialog.open()
+                            // Signed out there is only one thing to offer, so the click does it
+                            // rather than opening a menu of one.
+                            onClicked: {
+                                if (window.loggedIn) accountMenu.popup(accountButton, 0, accountButton.height + 6)
+                                else loginDialog.open()
+                            }
                         }
 
+                        // Where signing out lives. On the avatar because that is where "who am I"
+                        // already is - the name and namespace are right beside it - and because a
+                        // sign-out sitting loose in the toolbar is a click away from every other
+                        // toolbar button.
                         Menu {
                             id: accountMenu
-                            // Dropped from under the avatar and right-aligned with it, because the
-                            // avatar sits at the right edge of the window and a menu opened at the
-                            // cursor would hang off it.
-                            x: avatarButton.width - width
-                            y: avatarButton.height + 6
+                            Material.theme: Material.Dark
 
-                            // Reopening the login dialog over a live session is what clicking the
-                            // avatar has always done, and it keeps the top slot: it is the one of
-                            // the two reached often.
                             MenuItem {
-                                text: "Switch namespace or server…"
-                                onTriggered: loginDialog.open()
+                                // Not a control: it says whose session is about to end, which is
+                                // worth confirming before the click below.
+                                text: "Signed in as " + window.currentUser
+                                enabled: false
                             }
 
                             MenuSeparator {}
 
-                            // ...which left no way to actually end a session. The dialog cannot be
-                            // it: dismissing it over a live session means "never mind" and returns
-                            // to that session (see LoginDialog's onRejected), so signing out has to
-                            // be said somewhere else, and this is it. Named for both halves of what
-                            // it does, since a menu item that closes the application is not what
-                            // "Sign out" leads anyone to expect on its own.
                             MenuItem {
-                                text: "Sign out and quit"
+                                text: "Sign out"
+                                // Straight back to the sign-in prompt, the way the window starts.
+                                // Done here rather than on sessionCleared() because that also fires
+                                // when the gateway address changes, and a modal appearing over the
+                                // settings page mid-edit is not what that should do. Escape
+                                // dismisses it for anyone who meant to leave the window signed out.
                                 onTriggered: {
                                     euclidClient.logout()
-                                    Qt.quit()
+                                    loginDialog.open()
                                 }
                             }
                         }

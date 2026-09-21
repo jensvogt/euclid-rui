@@ -27,6 +27,11 @@ void EnsClient::fetchTopics(const QString &prefix, const int pageIndex, const in
                  // number once a byte count or a message count passes 2^31.
                  entry["size"] = topic.value("size").toInteger();
                  entry["messages"] = topic.value("messages").toInteger();
+                 // Lifetime totals, not current counts: unlike "messages" these do not fall when a
+                 // topic is purged or when retention removes what it held, which is what makes them
+                 // worth a column of their own.
+                 entry["send"] = topic.value("send").toInteger();
+                 entry["resend"] = topic.value("resend").toInteger();
                  entry["maxMessageLength"] = topic.value("maxMessageLength").toInteger();
                  // How long a published message is kept, in seconds. Two values are not durations:
                  // 0 means the topic follows euclid.modules.ens.retention-period rather than
@@ -63,14 +68,22 @@ void EnsClient::createTopic(const QString &name, const int maxMessageLength) {
          });
 }
 
-void EnsClient::purgeTopic(const QString &topicErn) {
+void EnsClient::purgeTopic(const QString &topicErn, const bool async) {
     QJsonObject body;
     body["ern"] = topicErn;
+    body["async"] = async;
 
     m_base->post("ens", "purge-topic", body, true,
-         [this, topicErn](const QJsonObject &response) {
+         [this, topicErn, async](const QJsonObject &response) {
+             emit topicPurged(topicErn, response.value("async").toBool(async),
+                              response.value("messages").toInt());
              emit messagesReload(topicErn);
-             emit topicsReload();
+             // No topicsReload() on purpose, unlike every other mutation here. The topic listing is
+             // sorted by message count by default, so re-reading it moves the topic that was just
+             // emptied to the bottom of the sort - or off the page - while the operator is still
+             // looking at the row they started the purge from. The page applies the purge to that
+             // row instead; see EnsTopicsPage's emptyTopicLocally(). The same trade EQS's
+             // purgeQueue makes.
          },
          [this](const QString &message) {
              emit topicsFailed(message);

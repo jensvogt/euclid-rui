@@ -29,6 +29,14 @@ Item {
         let cols = [
             { title: "Name", key: "name", fill: true },
             { title: "Messages", key: "messages" },
+            // Lifetime totals beside the current count, and the pair is the point: "Messages" falls
+            // when a topic is purged or when retention removes what it held, so a topic that has
+            // published steadily for a fortnight and one that has never published at all both read
+            // as zero there. "Send" does not fall, and says which of the two it is.
+            { title: "Send", key: "send" },
+            // Above zero means somebody has had to replay this topic - a subscriber that was down,
+            // or one added after the fact - which is worth seeing next to what it has delivered.
+            { title: "Resend", key: "resend" },
             { title: "Size", key: "size", formatter: function (v) { return SizeFormat.format(v) } },
             {
                 // A stopped topic is invisible in every other column: it goes on accepting
@@ -67,6 +75,26 @@ Item {
         return parts.length > 0 ? parts[parts.length - 1] : ern
     }
 
+    // Writes a finished purge into the row it was started from, rather than re-reading the page.
+    // A re-read re-sorts, and the default sort is by message count: the topic that was just
+    // emptied drops to the bottom of the listing - or off the page entirely, with everything
+    // below it moving up - while the operator is still looking at the row they purged. The
+    // counts are known exactly here, so the row is corrected where it stands and the ordering
+    // only changes at the next refresh, when the operator asked for a new reading anyway.
+    // Reassigned rather than mutated, so the "var" property's change notification fires.
+    function emptyTopicLocally(topicErn) {
+        root.topics = root.topics.map(function (topic) {
+            // What the topic holds, and nothing else: "Send" and "Resend" are lifetime totals that
+            // a purge does not touch - that they outlive the messages is the whole reason they are
+            // in the table. "Modified" is left to the next refresh: the server stamps it with its
+            // own clock, and guessing at that here would put a time in the column that nothing
+            // agrees with.
+            return topic.ern === topicErn
+                    ? Object.assign({}, topic, { messages: 0, size: 0 })
+                    : topic
+        })
+    }
+
     function refresh() {
         if (!root.loggedIn) {
             error = "Sign in to view topics."
@@ -103,6 +131,23 @@ Item {
         function onTopicsFailed(message) {
             root.loading = false
             root.error = message
+        }
+
+        function onTopicPurged(topicErn, async, messages) {
+            const name = root.topicNameForErn(topicErn)
+            // Applied whether or not this page is the one on screen: the row is in the list either
+            // way, and a purge started from the message list must not leave a stale count behind
+            // it. Only for a synchronous purge - a background one has not finished, so its counts
+            // are still falling and zeroing them here would claim more than the server has done.
+            if (!async) root.emptyTopicLocally(topicErn)
+            if (!root.visible) return
+            root.actionNote = async
+                ? "Purging " + messages + " message(s) from '" + name + "' in the background. Its counts fall as the "
+                  + "server works through them; refresh to see where they stand."
+                // A synchronous purge answers with no count of its own - it has already finished,
+                // and what it removed is simply everything the topic held. Nothing is taken back
+                // from the subscribers that were already delivered to.
+                : "Purged '" + name + "'. The topic holds nothing now; what it had already delivered is untouched."
         }
 
         function onTopicsReload() {
@@ -434,6 +479,7 @@ Item {
                             return !!row && Number(row.messages) > 0
                         },
                         action: function(row) {
+                            root.actionNote = ""
                             ensClient.purgeTopic(row.ern)
                         }
                     },

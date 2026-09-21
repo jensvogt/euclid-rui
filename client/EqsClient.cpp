@@ -84,10 +84,13 @@ void EqsClient::purgeQueue(const QString &queueErn, const bool async) {
          [this, queueErn, async](const QJsonObject &response) {
              emit queuePurged(queueErn, response.value("async").toBool(async),
                               response.value("messages").toInt());
-             // Re-read either way. A background purge has not finished - the counts will still be
-             // falling - but the listing is the only thing that shows it happening at all.
              emit messagesReload(queueErn);
-             emit queuesReload();
+             // No queuesReload() on purpose, unlike every other mutation here. The queue listing is
+             // sorted by available messages by default, so re-reading it moves the queue that was
+             // just emptied to the bottom of the sort - or off the page - while the operator is
+             // still looking at the row they started the purge from. The page applies the purge to
+             // that row instead; see EqsQueuesPage's emptyQueueLocally(). The same trade ESM's
+             // purgeBucket makes.
          },
          [this](const QString &message) {
              emit queuesFailed(message);

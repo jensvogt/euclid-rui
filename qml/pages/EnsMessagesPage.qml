@@ -27,6 +27,9 @@ Item {
     property var pendingTopicErns: []
     property bool loading: false
     property string error: ""
+    // What the last purge did. Kept on the page because a background purge is not finished when it
+    // is acknowledged: the list below goes on shrinking for as long as it takes.
+    property string actionNote: ""
     property string lastUpdatedText: "—"
 
     // One topic is paged by the server: the page on screen is the page that was asked for. The
@@ -112,11 +115,15 @@ Item {
         pendingTopicErns = []
         error = ""
         loading = true
-        if (root.singleTopic)
+        if (root.singleTopic) {
+            // What this refresh is waiting for - the same bookkeeping the merged branch does, and
+            // what tells an answer meant for this refresh from one that is not.
+            root.pendingTopicErns = [root.topicErn]
             ensClient.fetchMessages(root.topicErn, root.pageIndex, root.pageSize,
                                     root.sortKey, root.sortAscending ? "asc" : "desc")
-        else
+        } else {
             ensClient.fetchTopics("", 0, 100)
+        }
     }
 
     onVisibleChanged: if (visible) refresh()
@@ -164,41 +171,44 @@ Item {
             root.loading = false
             root.error = message
         }
+        // An answer is taken only if this refresh asked for it and has not already had it. See the
+        // same handler in EqsMessagesPage: "messagesLoaded" is a signal on the client rather than a
+        // reply to a caller, so a merged view's thirty outstanding requests - or simply a second
+        // refresh started before the first came back - would otherwise be concatenated into
+        // whatever is on screen.
         function onMessagesLoaded(ern, list, total) {
-            if (!root.loading)
+            if (!root.loading || root.pendingTopicErns.indexOf(ern) < 0)
                 return
+            root.pendingTopicErns = root.pendingTopicErns.filter(function (e) { return e !== ern })
+
             root.allMessages = root.allMessages.concat(list)
             // The topic's own count, summed across topics in the merged view.
             root.totalMessages += total
-            if (root.topicErn.length > 0) {
-                if (ern === root.topicErn) {
-                    root.loading = false
-                    root.lastUpdatedText = Qt.formatDateTime(new Date(), "hh:mm:ss")
-                }
-                return
-            }
-            root.pendingTopicErns = root.pendingTopicErns.filter(function (e) { return e !== ern })
+
             if (root.pendingTopicErns.length === 0) {
                 root.loading = false
                 root.lastUpdatedText = Qt.formatDateTime(new Date(), "hh:mm:ss")
             }
         }
         function onMessagesFailed(ern, message) {
-            if (!root.loading)
+            if (!root.loading || root.pendingTopicErns.indexOf(ern) < 0)
                 return
-            root.error = message
-            if (root.topicErn.length > 0) {
-                if (ern === root.topicErn)
-                    root.loading = false
-                return
-            }
             root.pendingTopicErns = root.pendingTopicErns.filter(function (e) { return e !== ern })
+            root.error = message
             if (root.pendingTopicErns.length === 0)
                 root.loading = false
         }
 
         function onMessagesReload() {
             refresh()
+        }
+
+        function onTopicPurged(topicErn, async, messages) {
+            if (topicErn !== root.topicErn) return
+            root.actionNote = async
+                ? "Purging " + messages + " message(s) in the background. The topic empties as it goes, and "
+                  + "anything published meanwhile stays."
+                : "Topic purged."
         }
 
         function onMessagePublished(ern) {
@@ -505,7 +515,15 @@ Item {
                         flat: true
                         Material.theme: Material.Dark
                         Material.accent: "#ff6b6b"
-                        onClicked: ensClient.purgeTopic(root.topicErn)
+                        // Asked for in the background: a topic holding a retention period's worth
+                        // of messages takes longer to empty than the gateway waits, so doing it
+                        // inline would report a failure for a purge that is running perfectly well.
+                        // The note below says what was accepted, and the table catches up as the
+                        // count falls.
+                        onClicked: {
+                            root.actionNote = ""
+                            ensClient.purgeTopic(root.topicErn, true)
+                        }
                     }
 
                     Button {
@@ -571,6 +589,15 @@ Item {
                         }
                     }
                 ]
+            }
+
+            Text {
+                width: parent.width
+                wrapMode: Text.WordWrap
+                color: "#4cd97b"
+                font.pixelSize: 12
+                visible: root.actionNote.length > 0
+                text: root.actionNote
             }
         }
     }

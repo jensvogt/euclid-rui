@@ -29,6 +29,9 @@ Item {
     // given, so a large object freezes the window rather than filling it.
     property int maxLength: 1024 * 1024
     property bool showHeader: true
+    // Whether Ctrl+F opens a find bar over the editor. A caller showing a two-line value has
+    // nothing to search and can turn it off; everything holding a document leaves it on.
+    property bool searchEnabled: true
     // Shown centred when there is nothing to display, and as the editor's prompt when there is
     // nothing yet but something can be typed.
     property string emptyText: "(empty)"
@@ -81,6 +84,7 @@ Item {
     // given.
     readonly property real implicitContentHeight:
         editor.implicitHeight + 20 + (root.showHeader ? headerRow.implicitHeight + 8 : 0)
+        + (root.searchVisible ? root.searchBarHeight + 8 : 0)
     // What is in the editor right now, which is what a caller should save.
     readonly property string text: editor.text
     readonly property bool modified: root.showable && editor.text !== root.displayText
@@ -227,6 +231,122 @@ Item {
     onDisplayTextChanged: root.loadIntoEditor()
     Component.onCompleted: root.loadIntoEditor()
 
+    // ── Find ─────────────────────────────────────────────────────────────────
+    // Searches what is in the editor rather than "content": with pretty printing on, those are two
+    // different documents, and the one the user is looking at is the one they mean.
+
+    property bool searchVisible: false
+    property string searchTerm: ""
+    property int searchIndex: 0
+    readonly property int searchBarHeight: 34
+    // Offsets of every match, found once per term rather than per navigation step.
+    property var matches: []
+    readonly property int matchCount: root.matches.length
+    // A single character against a megabyte of JSON is hundreds of thousands of hits, none of which
+    // anybody steps through. The search stops counting here and says so with a "+".
+    readonly property int matchLimit: 2000
+    readonly property bool matchesCapped: root.matches.length >= root.matchLimit
+
+    function findAll(haystack, needle) {
+        const hay = haystack.toLowerCase()
+        const term = needle.toLowerCase()
+        const found = []
+        let from = 0
+        while (found.length < root.matchLimit) {
+            const at = hay.indexOf(term, from)
+            if (at < 0) break
+            found.push(at)
+            // Advanced past the match, not past its first character: overlapping hits of "aa" in
+            // "aaa" are one match to a reader, not two.
+            from = at + term.length
+        }
+        return found
+    }
+
+    // Recount without disturbing the selection - for an edit made while the bar is open.
+    function recount() {
+        root.matches = root.searchVisible && root.searchTerm.length > 0
+                       ? root.findAll(editor.text, root.searchTerm) : []
+        if (root.searchIndex >= root.matchCount) root.searchIndex = 0
+    }
+
+    function searchAgain() {
+        root.recount()
+        if (root.matchCount > 0) root.selectMatch(0)
+        else editor.deselect()
+    }
+
+    function selectMatch(index) {
+        if (root.matchCount === 0) return
+        // Wrapping in both directions, so "next" past the last match returns to the first rather
+        // than stopping at an end the user cannot see.
+        const wrapped = ((index % root.matchCount) + root.matchCount) % root.matchCount
+        root.searchIndex = wrapped
+        const at = root.matches[wrapped]
+        editor.select(at, at + root.searchTerm.length)
+        root.revealPosition(at)
+    }
+
+    function findNext() { root.selectMatch(root.searchIndex + 1) }
+    function findPrevious() { root.selectMatch(root.searchIndex - 1) }
+
+    // A TextArea inside a ScrollView does not scroll itself to a selection made in code, so a match
+    // below the fold would be highlighted where nobody can see it. Both axes: with wrapping off, a
+    // match can just as easily be off to the right.
+    function revealPosition(position) {
+        // ScrollView declares its content item as an Item and makes it a Flickable at runtime, so
+        // this asks the object rather than trusting the type.
+        const flick = scroll.contentItem
+        if (!flick || flick.contentHeight === undefined) return
+        const box = editor.positionToRectangle(position)
+        const margin = 24
+        if (box.y < flick.contentY)
+            flick.contentY = Math.max(0, box.y - margin)
+        else if (box.y + box.height > flick.contentY + flick.height)
+            flick.contentY = Math.min(Math.max(0, flick.contentHeight - flick.height),
+                                      box.y + box.height - flick.height + margin)
+        if (box.x < flick.contentX)
+            flick.contentX = Math.max(0, box.x - margin)
+        else if (box.x + box.width > flick.contentX + flick.width)
+            flick.contentX = Math.min(Math.max(0, flick.contentWidth - flick.width),
+                                      box.x + box.width - flick.width + margin)
+    }
+
+    function openSearch() {
+        if (!root.searchEnabled || !root.showable) return
+        root.searchVisible = true
+        searchField.forceActiveFocus()
+        // Ctrl+F on an already open bar means "search for something else", so the old term goes on
+        // being shown but the first keystroke replaces it.
+        searchField.selectAll()
+        root.searchAgain()
+    }
+
+    function closeSearch() {
+        root.searchVisible = false
+        root.matches = []
+        root.searchIndex = 0
+        editor.deselect()
+        editor.forceActiveFocus()
+    }
+
+    onSearchTermChanged: root.searchAgain()
+
+    // Ctrl+F belongs to whichever editor the user is in: these come two to a page - the body in the
+    // panel and the same body in the full-view dialog - and a shortcut enabled on both at once is
+    // ambiguous, which Qt answers by activating neither. Focus decides it, with hover standing in
+    // for the reader who is looking at the text but has not clicked into it.
+    HoverHandler { id: findHover }
+
+    Shortcut {
+        sequences: [StandardKey.Find]
+        context: Qt.WindowShortcut
+        enabled: root.searchEnabled && root.visible && root.showable
+                 && (editor.activeFocus || searchField.activeFocus || findHover.hovered)
+        onActivated: root.openSearch()
+        onActivatedAmbiguously: root.openSearch()
+    }
+
     Column {
         anchors.fill: parent
         spacing: 8
@@ -278,6 +398,25 @@ Item {
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: 12
 
+                // Ctrl+F nobody was told about is a feature nobody has. Same wording as the bar it
+                // opens, and it closes it again.
+                Text {
+                    text: "Find"
+                    color: findArea.containsMouse ? "#4f8cff" : (root.searchVisible ? "#4f8cff" : "#9aa1ac")
+                    font.pixelSize: 11
+                    anchors.verticalCenter: parent.verticalCenter
+                    visible: root.searchEnabled && root.showable
+
+                    MouseArea {
+                        id: findArea
+                        anchors.fill: parent
+                        anchors.margins: -4
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: root.searchVisible ? root.closeSearch() : root.openSearch()
+                    }
+                }
+
                 Text {
                     text: "Reset"
                     color: resetArea.containsMouse ? "#4f8cff" : "#9aa1ac"
@@ -312,9 +451,137 @@ Item {
             }
         }
 
+        // Hidden until Ctrl+F asks for it, so the component looks exactly as it always did to
+        // everyone who never presses it. Height and visibility both read root.searchVisible rather
+        // than each other: "visible" answers with the effective value, which latches an item whose
+        // height is what makes it visible in the first place.
+        Rectangle {
+            width: parent.width
+            height: root.searchVisible ? root.searchBarHeight : 0
+            visible: root.searchVisible
+            radius: 8
+            color: "#14161b"
+            border.color: searchField.activeFocus ? "#3d5473" : "#2c313c"
+            border.width: 1
+
+            Text {
+                id: findLabel
+                anchors.left: parent.left
+                anchors.leftMargin: 10
+                anchors.verticalCenter: parent.verticalCenter
+                text: "Find"
+                color: "#6b7280"
+                font.pixelSize: 11
+            }
+
+            Row {
+                id: findControls
+                anchors.right: parent.right
+                anchors.rightMargin: 10
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: 10
+
+                Text {
+                    anchors.verticalCenter: parent.verticalCenter
+                    font.pixelSize: 11
+                    text: {
+                        if (root.searchTerm.length === 0) return ""
+                        if (root.matchCount === 0) return "No matches"
+                        return (root.searchIndex + 1) + " of " + root.matchCount + (root.matchesCapped ? "+" : "")
+                    }
+                    color: root.searchTerm.length > 0 && root.matchCount === 0 ? "#e0a458" : "#6b7280"
+                }
+
+                Text {
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: "‹"
+                    font.pixelSize: 16
+                    color: root.matchCount === 0 ? "#3a4150" : (previousArea.containsMouse ? "#4f8cff" : "#9aa1ac")
+
+                    MouseArea {
+                        id: previousArea
+                        anchors.fill: parent
+                        anchors.margins: -4
+                        enabled: root.matchCount > 0
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: root.findPrevious()
+                    }
+                }
+
+                Text {
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: "›"
+                    font.pixelSize: 16
+                    color: root.matchCount === 0 ? "#3a4150" : (nextArea.containsMouse ? "#4f8cff" : "#9aa1ac")
+
+                    MouseArea {
+                        id: nextArea
+                        anchors.fill: parent
+                        anchors.margins: -4
+                        enabled: root.matchCount > 0
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: root.findNext()
+                    }
+                }
+
+                Text {
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: "✕"
+                    font.pixelSize: 11
+                    color: closeArea.containsMouse ? "#4f8cff" : "#9aa1ac"
+
+                    MouseArea {
+                        id: closeArea
+                        anchors.fill: parent
+                        anchors.margins: -4
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: root.closeSearch()
+                    }
+                }
+            }
+
+            TextField {
+                id: searchField
+                anchors.left: findLabel.right
+                anchors.leftMargin: 8
+                anchors.right: findControls.left
+                anchors.rightMargin: 12
+                anchors.verticalCenter: parent.verticalCenter
+                height: parent.height - 8
+                placeholderText: "Search this content"
+                color: "#c4c9d1"
+                font.pixelSize: 12
+                topPadding: 0
+                bottomPadding: 0
+                leftPadding: 0
+                rightPadding: 0
+                Material.theme: Material.Dark
+                Material.accent: "#4f8cff"
+                // The bar behind it already draws the frame, and an underline inside one reads as a
+                // second, narrower field.
+                background: null
+                onTextChanged: root.searchTerm = searchField.text
+                // Enter walks the matches rather than doing nothing, which is what every other find
+                // bar does; Shift+Enter walks them backwards.
+                Keys.onReturnPressed: event => {
+                    if (event.modifiers & Qt.ShiftModifier) root.findPrevious()
+                    else root.findNext()
+                }
+                Keys.onEnterPressed: event => {
+                    if (event.modifiers & Qt.ShiftModifier) root.findPrevious()
+                    else root.findNext()
+                }
+                Keys.onEscapePressed: root.closeSearch()
+            }
+        }
+
         Rectangle {
             width: parent.width
             height: parent.height - (root.showHeader ? headerRow.implicitHeight + 8 : 0)
+                    - (root.searchVisible ? root.searchBarHeight + 8 : 0)
             radius: 8
             color: "#14161b"
             border.color: "#2c313c"
@@ -336,6 +603,7 @@ Item {
             }
 
             ScrollView {
+                id: scroll
                 // Empty content is still an editor when it can be typed into - otherwise there
                 // would be no way to write the first version of something that has none yet. Only
                 // a read-only view of nothing falls back to the placeholder below.
@@ -359,7 +627,19 @@ Item {
                     Material.accent: "#4f8cff"
                     // The panel behind it already draws the frame.
                     background: null
-                    onTextChanged: if (!root.loading) root.edited(editor.text)
+                    onTextChanged: {
+                        if (!root.loading) root.edited(editor.text)
+                        // The document moved under the search: the offsets found before the edit
+                        // point at the wrong characters now. Counted again, but without jumping the
+                        // cursor - the user is typing, not searching.
+                        if (root.searchVisible) root.recount()
+                    }
+                    // Escape closes the bar from the text as well, which is where the cursor lands
+                    // after a match is found.
+                    Keys.onEscapePressed: event => {
+                        if (root.searchVisible) root.closeSearch()
+                        else event.accepted = false
+                    }
                 }
             }
 

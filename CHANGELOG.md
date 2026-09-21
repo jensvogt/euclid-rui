@@ -1,5 +1,59 @@
 # Changelog
 
+## [1.1.16](https://github.com/jensvogt/euclid-rui/compare/1.1.15...v1.1.16) (2026-09-21)
+
+
+### Bug Fixes
+
+* new icon for windows installer ([a10884a](https://github.com/jensvogt/euclid-rui/commit/a10884af365a88406cb39236ba499451ce3a5768))
+* new icon for windows installer ([3d6067c](https://github.com/jensvogt/euclid-rui/commit/3d6067cd05f80c61a5fa11dd3cc9225488e2a83b))
+
+## [1.1.15](https://github.com/jensvogt/euclid-rui/compare/1.1.14...v1.1.15) (2026-09-18)
+
+
+### Bug Fixes
+
+* ESM bucket list purge disregards pageSize ([8e850c5](https://github.com/jensvogt/euclid-rui/commit/8e850c51dfe4e14e2d0561df80bf692299d7764c))
+* ESM bucket list purge disregards sorting ([ba02c5a](https://github.com/jensvogt/euclid-rui/commit/ba02c5a5df19fad38026902ddb583569c95fc988))
+* ESM bucket list purge disregards sorting ([dcc8e68](https://github.com/jensvogt/euclid-rui/commit/dcc8e68ad41588d84c85ac359b8271c6da22ca4b))
+
+## [1.1.14](https://github.com/jensvogt/euclid-rui/compare/1.1.13...v1.1.14) (2026-09-18)
+
+
+### Bug Fixes
+
+* send/resend column for ENS ([edca616](https://github.com/jensvogt/euclid-rui/commit/edca616891075cd2b21407d3bafa8e99a96845b1))
+* send/resend column for ENS ([084655e](https://github.com/jensvogt/euclid-rui/commit/084655e67b165a48d2ef07352a249accf73340a4))
+
+## [1.1.13](https://github.com/jensvogt/euclid-rui/compare/1.1.12...v1.1.13) (2026-09-18)
+
+
+### Bug Fixes
+
+* logout and avatar ([b28842e](https://github.com/jensvogt/euclid-rui/commit/b28842e847da7f805bcc9c74761e7b209546db57))
+
+## [1.1.12](https://github.com/jensvogt/euclid-rui/compare/1.1.11...v1.1.12) (2026-09-17)
+
+
+### Bug Fixes
+
+* emo application metrics ([e97e0c5](https://github.com/jensvogt/euclid-rui/commit/e97e0c517228e53dc721c196d6ccd9990c23ce51))
+* logout and avatar ([4f38db1](https://github.com/jensvogt/euclid-rui/commit/4f38db15efde370754fd770ee45cfde26a86c48f))
+
+## [1.1.11](https://github.com/jensvogt/euclid-rui/compare/1.1.10...v1.1.11) (2026-09-16)
+
+
+### Bug Fixes
+
+* ead auditing ([cf7e590](https://github.com/jensvogt/euclid-rui/commit/cf7e590ebbde1ad5b12ae0e6178811de82922cd3))
+
+## [1.1.10](https://github.com/jensvogt/euclid-rui/compare/1.1.9...v1.1.10) (2026-09-15)
+
+
+### Bug Fixes
+
+* search field for editable tables ([142c17a](https://github.com/jensvogt/euclid-rui/commit/142c17a7cf2fa67543fe29e288747764b2465c70))
+
 ## [1.1.9](https://github.com/jensvogt/euclid-rui/compare/1.1.8...v1.1.9) (2026-09-14)
 
 
