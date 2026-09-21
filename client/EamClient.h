@@ -48,6 +48,24 @@ public:
     // Admin-only; deletes unconditionally (no check for group membership).
     Q_INVOKABLE void deleteUser(const QString &userId);
 
+    // Replaces a password. Which of the two things this is - somebody changing their own, or an
+    // administrator resetting somebody else's - is decided server-side by the userId alone and not
+    // by what the request carries, so a caller cannot reach the reset path just by omitting the old
+    // password. Naming yourself is the same request as leaving userId empty: both are the
+    // own-password path, and both need oldPassword. Naming anybody else is the reset, where
+    // oldPassword is ignored and being an administrator is the proof.
+    //
+    // Three refusals worth telling apart in the UI, because only the first is a mistake the user
+    // can correct in the dialog: the old password not matching (403), not being an administrator
+    // (403), and a user who has no password to change at all (409) - a federated login or an
+    // application's technical principal, which were deliberately created without one. See
+    // EamServer::handleChangePassword.
+    //
+    // Note what it does not do: a session already holding a token keeps it, here and everywhere
+    // else. The token is a JWT checked against the signing secret rather than against anything
+    // stored, so changing a password closes the door on the next login, not on the current session.
+    Q_INVOKABLE void changePassword(const QString &userId, const QString &oldPassword, const QString &newPassword);
+
     // Every user group in the deployment, each flagged with whether userId is currently a member -
     // which is how one user's memberships are read, there being no "list groups of user" action
     // server-side (membership lives on the group, in UserGroup.userIds).
@@ -166,6 +184,10 @@ signals:
     void usersReload();
     void userCreated(const QString &userId);
     void userCreateFailed(const QString &message);
+    // Carries the userId back so a dialog can tell its own result from one belonging to another
+    // open on the same client - these signals reach every listener, not just the caller.
+    void passwordChanged(const QString &userId);
+    void passwordChangeFailed(const QString &message);
 
     // Each entry: {accessKeyId, active, createdAt}. Never a secret.
     void accessKeysLoaded(const QVariantList &accessKeys);

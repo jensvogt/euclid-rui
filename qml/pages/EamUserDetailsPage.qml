@@ -3,10 +3,11 @@ import QtQuick.Controls
 import QtQuick.Controls.Material
 import "../components"
 
-// What EAM actually lets an admin change about an existing user: group membership and namespace
-// grants. Everything else on the user record (email, region, home account, password, the admin
-// flag) is fixed at registration - there is no "update-user" action server-side - so those are
-// shown read-only rather than as fields that would silently do nothing.
+// What EAM actually lets an admin change about an existing user: group membership, namespace
+// grants, and the password - the last through its own action rather than as a field, because
+// replacing a password is not editing a record. Everything else (email, region, home account, the
+// admin flag) is fixed at registration - there is no "update-user" action server-side - so those
+// are shown read-only rather than as fields that would silently do nothing.
 Item {
     id: root
     property bool loggedIn: false
@@ -109,15 +110,30 @@ Item {
                     subtitle: root.userErn
                 }
 
-                Button {
-                    text: "Delete User"
-                    highlighted: true
+                Row {
                     anchors.right: parent.right
                     anchors.verticalCenter: sectionHeader.verticalCenter
-                    Material.theme: Material.Dark
-                    Material.accent: "#ff6b6b"
-                    enabled: !root.deleting
-                    onClicked: deleteDialog.open()
+                    spacing: 12
+
+                    Button {
+                        text: "Change Password…"
+                        Material.theme: Material.Dark
+                        Material.accent: "#4f8cff"
+                        enabled: !root.deleting && root.userId.length > 0
+                        onClicked: {
+                            changePasswordDialog.userId = root.userId
+                            changePasswordDialog.open()
+                        }
+                    }
+
+                    Button {
+                        text: "Delete User"
+                        highlighted: true
+                        Material.theme: Material.Dark
+                        Material.accent: "#ff6b6b"
+                        enabled: !root.deleting
+                        onClicked: deleteDialog.open()
+                    }
                 }
             }
 
@@ -184,7 +200,8 @@ Item {
 
                     Text {
                         width: parent.width
-                        text: "Email, region, home account and password are set at registration and cannot be changed here."
+                        text: "Email, region and home account are set at registration and cannot be changed here. "
+                              + "The password can be replaced with \"Change Password\" above."
                         color: "#6b7280"
                         font.pixelSize: 11
                         wrapMode: Text.WordWrap
@@ -285,6 +302,10 @@ Item {
                 principalLabel: root.userId
             }
         }
+    }
+
+    ChangePasswordDialog {
+        id: changePasswordDialog
     }
 
     Dialog {

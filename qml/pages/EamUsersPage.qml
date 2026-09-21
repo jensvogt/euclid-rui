@@ -86,6 +86,12 @@ Item {
         }
     }
 
+    // Not reset between openings beyond what the dialog does itself: the row menu sets userId
+    // before every open(), so it always describes the row it was opened from.
+    ChangePasswordDialog {
+        id: changePasswordDialog
+    }
+
     Dialog {
         id: createUserDialog
         modal: true
@@ -352,6 +358,13 @@ Item {
                         text: "Details",
                         action: function(row) {
                             root.openUserDetails(row.ern, row.userId, row)
+                        }
+                    },
+                    {
+                        text: "Change Password…",
+                        action: function(row) {
+                            changePasswordDialog.userId = row.userId
+                            changePasswordDialog.open()
                         }
                     },
                     {

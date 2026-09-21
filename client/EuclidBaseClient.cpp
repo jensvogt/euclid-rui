@@ -158,6 +158,7 @@ void EuclidBaseClient::clearSession(const bool forgetAccessKey) {
     const bool hadSession = !m_token.isEmpty() || (forgetAccessKey && !m_accessKeyId.isEmpty());
     m_token.clear();
     m_sessionRefreshTimer.stop();
+    m_refreshingSession = false;
     m_namespace.clear();
     if (forgetAccessKey) {
         // In this process only. What is on disk belongs to the settings page, and wiping a
@@ -454,7 +455,6 @@ void EuclidBaseClient::login(const QString &userId, const QString &password) {
              scheduleSessionRefresh();
 
              emit isAdminChanged();
-             emit userIdChanged();
              emit accountIdChanged();
              emit regionChanged();
              emit loginSucceeded();
