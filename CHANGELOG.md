@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.1.16](https://github.com/jensvogt/euclid-rui/compare/1.1.15...v1.1.16) (2026-09-21)
+
+
+### Bug Fixes
+
+* new icon for windows installer ([a10884a](https://github.com/jensvogt/euclid-rui/commit/a10884af365a88406cb39236ba499451ce3a5768))
+* new icon for windows installer ([3d6067c](https://github.com/jensvogt/euclid-rui/commit/3d6067cd05f80c61a5fa11dd3cc9225488e2a83b))
+
 ## [1.1.15](https://github.com/jensvogt/euclid-rui/compare/1.1.14...v1.1.15) (2026-09-18)
 
 
