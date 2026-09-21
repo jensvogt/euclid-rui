@@ -159,6 +159,31 @@ qt_add_qml_module(euclid-rui
 # /CMakeLists.txt:1569-1581 - so the two have to be turned on together, and are.
 set_target_properties(euclid-rui PROPERTIES WIN32_EXECUTABLE TRUE)
 
+# The icon and version metadata Windows reads off the executable itself. Compiled in rather than
+# attached to the shortcuts, because that is where the shell looks: a .lnk with no icon of its own
+# takes the one in the binary it points at, so this single resource covers Explorer, the taskbar,
+# Alt-Tab and both shortcuts the installer creates. Without it Windows falls back to the generic
+# "unknown application" icon, which is what an unadorned Qt executable gets.
+if(WIN32)
+    # Absolute, because the .rc is compiled from the build directory and rc.exe resolves a relative
+    # resource path against the .rc file's own location rather than the source tree.
+    set(ICON_FILE "${CMAKE_SOURCE_DIR}/dist/branding/euclid-rui.ico")
+    configure_file("${CMAKE_SOURCE_DIR}/dist/win32/euclid-rui.rc.in"
+            "${CMAKE_CURRENT_BINARY_DIR}/euclid-rui.rc" @ONLY)
+    target_sources(euclid-rui PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/euclid-rui.rc")
+
+    # The Qt Installer Framework resolves the icons named in config.xml against the config
+    # directory, so the same file is placed there rather than reached for with a relative path out
+    # of the installer tree - which older binarycreator versions do not follow. Copied at configure
+    # time alongside the generated config.xml, and gitignored for the same reason.
+    configure_file("${ICON_FILE}"
+            "${CMAKE_SOURCE_DIR}/dist/win32/installer/config/euclid-rui.ico" COPYONLY)
+    # InstallerWindowIcon is the one icon IFW wants as a PNG rather than a platform icon, so it
+    # cannot share the .ico above.
+    configure_file("${CMAKE_SOURCE_DIR}/dist/branding/euclid-256.png"
+            "${CMAKE_SOURCE_DIR}/dist/win32/installer/config/euclid-rui.png" COPYONLY)
+endif()
+
 # version.txt is already the single source of the version (release-please updates it, and the
 # Windows installer templates are filled from it above); this hands the same string to the app so
 # the window title cannot drift from what was shipped.

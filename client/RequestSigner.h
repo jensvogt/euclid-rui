@@ -1,8 +1,15 @@
 #pragma once
 
 #include <QByteArray>
+#include <QLoggingCategory>
 #include <QMap>
 #include <QString>
+
+// Off unless asked for: a signature base names every covered component and their values, which is
+// most of the request. Turn it on with QT_LOGGING_RULES="euclid.rui.auth.debug=true". Shared with
+// EuclidBaseClient so one rule covers both halves of the story - what went on the request, and what
+// was signed over it.
+Q_DECLARE_LOGGING_CATEGORY(lcAuth)
 
 // Signs a euclid gateway request with an EAM access key, so requests can authenticate by key
 // instead of by the JWT a password login hands out. The gateway accepts three schemes

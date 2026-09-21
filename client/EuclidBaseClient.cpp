@@ -207,10 +207,15 @@ void EuclidBaseClient::authorize(QNetworkRequest &request, const QByteArray &bod
     const int port = url.port(defaultPort);
     const QString authority = port == defaultPort ? url.host() : url.host() + ":" + QString::number(port);
 
-    // Signed either way, so they go on the request before the signature is computed. account-id
-    // and user-id are informational to the server - it resolves the caller from the key - but
-    // RFC 9421 refuses to build a signature base over a component that is missing or empty.
-    request.setRawHeader("x-euclid-region", m_region.toUtf8());
+    // Signed either way, so they go on the request before the signature is computed. region,
+    // account-id and user-id are informational to the server - it resolves the caller from the key
+    // - but RFC 9421 refuses to build a signature base over a component that is missing or empty
+    // (see RequestSigner::rfc9421Components()), so all three carry a placeholder rather than
+    // nothing. region was the one that did not, and a login whose metadata carries no region left
+    // every signed request unverifiable: the server cannot build the base, falls through to the
+    // next scheme, and reports the one it ended on - "Missing or invalid bearer token", for a
+    // request that never claimed to have a token.
+    request.setRawHeader("x-euclid-region", m_region.isEmpty() ? QByteArrayLiteral("-") : m_region.toUtf8());
     request.setRawHeader("x-euclid-account-id", m_accountId.isEmpty() ? QByteArrayLiteral("-") : m_accountId.toUtf8());
     request.setRawHeader("x-euclid-user-id", m_userId.isEmpty() ? QByteArrayLiteral("-") : m_userId.toUtf8());
     if (!m_namespace.isEmpty())
@@ -218,8 +223,29 @@ void EuclidBaseClient::authorize(QNetworkRequest &request, const QByteArray &bod
 
     const bool signing = m_authMode == QLatin1String("rfc9421")
                          && !m_accessKeyId.isEmpty() && !m_secretAccessKey.isEmpty();
+
+    // Which scheme this request ended up on, and the state that decided it. Worth saying out loud
+    // because the choice is silent otherwise: a signature mode with no key configured sends a
+    // bearer token instead, and the server's refusal names the scheme it checked last rather than
+    // the one that was meant.
+    qCDebug(lcAuth).noquote() << (signing ? "rfc9421" : "bearer")
+                              << QStringLiteral("target=%1 action=%2 authority=%3")
+                                         .arg(QString::fromUtf8(request.rawHeader("x-euclid-target")),
+                                              QString::fromUtf8(request.rawHeader("x-euclid-action")), authority);
+    qCDebug(lcAuth).noquote() << QStringLiteral("  authMode=%1 region=%2 account=%3 user=%4 namespace=%5")
+                                         .arg(m_authMode, m_region.isEmpty() ? QStringLiteral("(empty)") : m_region,
+                                              m_accountId.isEmpty() ? QStringLiteral("(empty)") : m_accountId,
+                                              m_userId.isEmpty() ? QStringLiteral("(empty)") : m_userId,
+                                              m_namespace.isEmpty() ? QStringLiteral("(empty)") : m_namespace);
+
     if (!signing) {
         request.setRawHeader("Authorization", "Bearer " + m_token.toUtf8());
+        // The token itself is a credential and stays out of the log; its length and how much life
+        // it has left are what distinguish "not sent" from "expired", which is the whole question
+        // when a bearer request comes back refused.
+        qCDebug(lcAuth).noquote() << QStringLiteral("  token=%1 bytes, expires in %2 s")
+                                             .arg(m_token.size())
+                                             .arg(secondsUntilExpiry(m_token));
         return;
     }
 
@@ -246,6 +272,12 @@ void EuclidBaseClient::authorize(QNetworkRequest &request, const QByteArray &bod
     const auto signed_ = RequestSigner::signRfc9421(signable, credentials);
     for (auto it = signed_.constBegin(); it != signed_.constEnd(); ++it)
         request.setRawHeader(it.key().toUtf8(), it.value().toUtf8());
+
+    // The key id is public - it is sent in the clear as `keyid` - so it is named here: a signature
+    // refused because the key belongs to another installation looks exactly like one refused for a
+    // bad base, and this is what tells the two apart.
+    qCDebug(lcAuth).noquote() << QStringLiteral("  keyid=%1").arg(credentials.accessKeyId);
+    qCDebug(lcAuth).noquote() << QStringLiteral("  signature-input=%1").arg(signed_.value(QStringLiteral("Signature-Input")));
 }
 
 void EuclidBaseClient::setBusy(const bool busy) {
