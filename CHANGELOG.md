@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.17](https://github.com/jensvogt/euclid-rui/compare/1.1.16...v1.1.17) (2026-09-21)
+
+
+### Bug Fixes
+
+* change password ([58acbbb](https://github.com/jensvogt/euclid-rui/commit/58acbbbd254ad4f1e4359ba029789fc7a2293b88))
+
 ## [1.1.16](https://github.com/jensvogt/euclid-rui/compare/1.1.15...v1.1.16) (2026-09-21)
 
 
