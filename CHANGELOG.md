@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.1.18](https://github.com/jensvogt/euclid-rui/compare/1.1.17...v1.1.18) (2026-09-22)
+
+
+### Bug Fixes
+
+* system load, remove unnecessary logging ([5d2a5c1](https://github.com/jensvogt/euclid-rui/commit/5d2a5c1a909cb43823a3a0abd04d1e21517cf162))
+* system load, remove unnecessary logging ([2d0f082](https://github.com/jensvogt/euclid-rui/commit/2d0f0828284d20d0a8e43999b9cdbf01147e44f6))
+
 ## [1.1.17](https://github.com/jensvogt/euclid-rui/compare/1.1.16...v1.1.17) (2026-09-21)
 
 
