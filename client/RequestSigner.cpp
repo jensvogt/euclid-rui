@@ -4,7 +4,7 @@
 #include <QDateTime>
 #include <QMessageAuthenticationCode>
 
-Q_LOGGING_CATEGORY(lcAuth, "euclid.rui.auth")
+Q_LOGGING_CATEGORY(lcAuth, "euclid.rui.auth", QtWarningMsg)
 
 namespace {
 
