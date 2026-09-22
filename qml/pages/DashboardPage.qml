@@ -14,6 +14,18 @@ Item {
     property real cpuPercent: -1
     property real memoryPercent: -1
 
+    // The run queue per CPU: emo divides the kernel's one-minute load average by the machine's
+    // core count ("system-load-per-core"), which is the form of the figure that means the same
+    // thing on every host - 1 is saturation whatever the hardware, where a raw load of 8 is a
+    // third of a 24-core machine and four times a two-core one. Not a percentage and not bounded
+    // by 1 either: a machine with work queued behind every core reads well above it, and that is
+    // the reading worth seeing, so the number is shown as it is and only the arc stops at full.
+    //
+    // Beside CPU usage rather than instead of it, because they disagree in the way that matters:
+    // a host can sit at 100% CPU with nothing waiting (busy, keeping up) or below it with a long
+    // run queue behind slow disks (not keeping up). Neither figure says that on its own.
+    property real loadPerCore: -1
+
     // The module registry: what euclid-mgr is meant to be running, and what actually is.
     property var modules: []
     property string modulesError: ""
@@ -182,6 +194,7 @@ Item {
         }
         emoClient.fetchAverage("system-cpu-usage")
         emoClient.fetchAverage("system-memory-usage-percent")
+        emoClient.fetchAverage("system-load-per-core")
         emoClient.fetchAverage("database-total-size")
         emoClient.fetchAverage("database-collections")
         emoClient.fetchAverage("database-objects")
@@ -220,6 +233,7 @@ Item {
         function onAverageLoaded(name, value) {
             if (name === "system-cpu-usage") root.cpuPercent = value
             else if (name === "system-memory-usage-percent") root.memoryPercent = value
+            else if (name === "system-load-per-core") root.loadPerCore = value
             else if (name === "database-total-size") root.databaseSize = value
             else if (name === "database-collections") root.databaseCollections = value
             else if (name === "database-objects") root.databaseObjects = value
@@ -231,6 +245,10 @@ Item {
         }
         function onAverageFailed(name, message) {
             if (name === "system-cpu-usage") root.cpuPercent = -1
+            // Also the answer on a host emo cannot read a core count from: it records nothing at
+            // all rather than a per-core figure it would have to guess the divisor for, so this
+            // reads as "—" instead of as a load of zero.
+            else if (name === "system-load-per-core") root.loadPerCore = -1
             else if (name === "system-memory-usage-percent") root.memoryPercent = -1
             else if (name === "database-total-size") root.databaseSize = -1
             else if (name === "database-collections") root.databaseCollections = -1
@@ -396,6 +414,7 @@ Item {
                 spacing: 18
 
                 Rectangle {
+                    id: systemLoadTile
                     width: parent.width * 0.42
                     height: 280
                     radius: 14
@@ -415,14 +434,51 @@ Item {
                         }
 
                         Row {
+                            id: systemLoadGauges
                             spacing: 24
+
+                            // Sized to the tile rather than left at the gauge's own 160: this tile
+                            // is a fraction of the window's width, and three gauges at their
+                            // natural size overflow it on a narrow one - where two used to fit.
+                            // Everything inside a Gauge scales with its width, so they only get
+                            // smaller. The floor is where the labels stop being readable; below
+                            // that the tile is narrower than the dashboard is usable at anyway.
+                            readonly property real gaugeSize: Math.max(96, Math.min(160,
+                                (systemLoadTile.width - 40 - systemLoadGauges.spacing * 2) / 3))
+
                             Gauge {
+                                width: systemLoadGauges.gaugeSize
+                                height: width
                                 value: Math.min(1, Math.max(0, root.cpuPercent) / 100)
                                 valueText: root.cpuPercent >= 0 ? Math.round(root.cpuPercent) + "%" : "—"
                                 label: "CPU"
                                 progressColor: "#4f8cff"
                             }
                             Gauge {
+                                width: systemLoadGauges.gaugeSize
+                                height: width
+                                // The arc fills at one core's worth of queued work per core and
+                                // goes no further, while the figure below it carries on: past
+                                // saturation the question is no longer how full the machine is but
+                                // how far over, and an arc cannot say that.
+                                value: Math.min(1, Math.max(0, root.loadPerCore))
+                                // Two decimals, unlike the percentages either side: the whole range
+                                // that matters here sits between 0 and about 2, and rounded to
+                                // whole numbers an idle machine and a half-loaded one both read 0.
+                                valueText: root.loadPerCore >= 0
+                                           ? root.loadPerCore.toLocaleString(Qt.locale(), "f", 2)
+                                           : "—"
+                                label: "Load / core"
+                                // Amber from the point where the machine has no headroom left and
+                                // red once work is waiting for a core rather than running on one -
+                                // the two readings an operator is meant to act on, and neither is
+                                // visible in a number that is drawn the same colour at 0.2 and 2.0.
+                                progressColor: root.loadPerCore >= 1 ? "#ff6b6b"
+                                             : (root.loadPerCore >= 0.8 ? "#ffb545" : "#4f8cff")
+                            }
+                            Gauge {
+                                width: systemLoadGauges.gaugeSize
+                                height: width
                                 value: Math.min(1, Math.max(0, root.memoryPercent) / 100)
                                 valueText: root.memoryPercent >= 0 ? Math.round(root.memoryPercent) + "%" : "—"
                                 label: "Memory"
