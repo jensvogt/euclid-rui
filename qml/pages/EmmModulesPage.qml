@@ -91,23 +91,6 @@ Item {
         return row.desiredMaxInstances >= 0 ? row.desiredMaxInstances : row.maxInstances
     }
 
-    // What the dialog opens on. Scaling moves the floor, not the ceiling: the floor is what the
-    // manager guarantees to run, so raising it starts an instance while raising the ceiling only
-    // permits one. Nothing is sent until the dialog is confirmed - these are only the numbers it
-    // starts with, and both fields are editable.
-    function scaleUpSuggestion(row) {
-        const min = root.pendingMin(row) + 1
-        // The server refuses a floor above the ceiling, so the ceiling comes along when pushed.
-        return { min: min, max: Math.max(root.pendingMax(row), min) }
-    }
-
-    // Floors at one rather than zero, for the reason the menu item gives: a module scaled to zero
-    // cannot be reached or restarted, so this view does not offer a way there.
-    function scaleDownSuggestion(row) {
-        // Suggests one, not zero - see the warning in the dialog for what a floor of zero means.
-        return { min: Math.max(1, root.pendingMin(row) - 1), max: root.pendingMax(row) }
-    }
-
     function refresh() {
         if (!root.loggedIn) {
             root.error = "Sign in to view modules."
@@ -213,11 +196,16 @@ Item {
             return ""
         }
 
-        function openFor(row, suggestion) {
+        // Opens on the bounds the module has, not on a proposal one either side of them. A dialog
+        // that started at the floor plus one read as though the module were already there, and
+        // scaling the other way meant correcting the field back to where it began. These are the
+        // numbers in force - or the ones asked for, while a change is still pending - and both
+        // fields are editable in either direction from there.
+        function openFor(row) {
             scaleDialog.module = row
             scaleDialog.open()
-            minField.text = String(suggestion.min)
-            maxField.text = String(suggestion.max)
+            minField.text = String(scaleDialog.currentMin)
+            maxField.text = String(scaleDialog.currentMax)
             minField.forceActiveFocus()
             minField.selectAll()
         }
@@ -547,14 +535,13 @@ Item {
                         action: function(row) { emmClient.restartModule(row.name) }
                     },
                     {
-                        text: "Scale Up…",
+                        // One entry rather than an up and a down. They opened the same dialog on
+                        // different proposals; now that it opens on the module's own bounds, both
+                        // directions are the same two editable fields and the split only made the
+                        // menu say there were two operations.
+                        text: "Scale…",
                         enabled: function(row) { return !!row && !row.desiredStopped },
-                        action: function(row) { scaleDialog.openFor(row, root.scaleUpSuggestion(row)) }
-                    },
-                    {
-                        text: "Scale Down…",
-                        enabled: function(row) { return !!row && !row.desiredStopped && root.pendingMin(row) > 1 },
-                        action: function(row) { scaleDialog.openFor(row, root.scaleDownSuggestion(row)) }
+                        action: function(row) { scaleDialog.openFor(row) }
                     },
                     {
                         text: "Set threads…",

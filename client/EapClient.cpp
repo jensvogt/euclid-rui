@@ -169,6 +169,32 @@ void EapClient::redeployApplication(const QString &applicationId, const QString 
          });
 }
 
+void EapClient::scaleApplication(const QString &applicationId, const int minInstances, const int maxInstances) {
+    QJsonObject body;
+    body["applicationId"] = applicationId;
+    // Left out rather than sent as -1: an absent bound is what tells EAP to keep the stored one,
+    // and it checks the pair against whatever the other one then is - so naming only the ceiling
+    // is still refused if it would fall below the floor already in the definition.
+    if (minInstances >= 0)
+        body["minInstances"] = minInstances;
+    if (maxInstances >= 0)
+        body["maxInstances"] = maxInstances;
+
+    m_base->post("eap", "scale-application", body, true,
+         [this, applicationId](const QJsonObject &response) {
+             // What is stored now, read back from the definition the server answered with, rather
+             // than what was asked for: both bounds come back even when one was sent.
+             emit applicationScaled(applicationId, response.value("minInstances").toInt(),
+                                    response.value("maxInstances").toInt());
+             // The bounds are not the pool. The manager reconciles it on its next pass, so a
+             // listing re-read now still shows the instance count it had.
+             emit applicationsReload();
+         },
+         [this](const QString &message) {
+             emit applicationScaleFailed(message);
+         });
+}
+
 void EapClient::startApplication(const QString &applicationId) {
     QJsonObject body;
     body["applicationId"] = applicationId;

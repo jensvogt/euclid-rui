@@ -16,6 +16,7 @@ Item {
     property string error: ""
     property bool deleting: false
     property bool savingEnvironment: false
+    property bool savingRuntime: false
 
     // The processes actually running this application, from EMM rather than EAP: the manager runs
     // an application as a module pool named after its *runtime* name, and only that pool knows
@@ -179,6 +180,23 @@ Item {
         { title: "Started", key: "created", formatter: function (v) { return DateFormat.format(v) } }
     ]
 
+    // What EAP accepts, in the order its own error message lists them. Java is the only one that
+    // is versioned, and deliberately: a host runs several JDKs, a class file built for 25 will not
+    // start on 21 at all, and leaving it to whichever "java" comes first on the manager's PATH
+    // made the version an accident of the host. JAVA still means exactly that - whichever java
+    // this machine calls java - and is what every application deployed before the versioned ones
+    // existed still runs under, so it stays on the list rather than being quietly replaced.
+    readonly property var runtimeOptions: ["JAVA", "JAVA21", "JAVA25", "PYTHON", "NODEJS", "BINARY"]
+
+    // Changed through update-application, which touches only the field it is given. The manager
+    // reads the changed definition as a new revision and restarts the pool onto it within a few
+    // seconds - so this is a restart, not just a note about one.
+    function setRuntime(runtime) {
+        root.error = ""
+        root.savingRuntime = true
+        eapClient.updateApplication(root.applicationId, { runtime: runtime })
+    }
+
     // "update-application" replaces each field it is given, so adding or removing one variable
     // means sending the resulting map - EAP has no per-variable call.
     function setEnvironment(environment) {
@@ -255,15 +273,34 @@ Item {
         function onApplicationStateFailed(message) {
             root.deleting = false
             root.savingEnvironment = false
+            root.savingRuntime = false
             if (environmentDialog.opened) environmentDialog.errorText = message
+            else if (runtimeDialog.opened) runtimeDialog.errorText = message
             else root.error = message
         }
         function onApplicationStateChanged(applicationId, desiredState) {
             if (applicationId !== root.applicationId) return
             root.savingEnvironment = false
+            root.savingRuntime = false
+            // Both are modal, so only the one that was open can have sent this.
             environmentDialog.close()
+            runtimeDialog.close()
             // Stored already; re-reading is what puts the new map on screen.
             root.refresh()
+        }
+        function onApplicationScaled(applicationId, minInstances, maxInstances) {
+            if (applicationId !== root.applicationId) return
+            scaleDialog.scaling = false
+            scaleDialog.close()
+            // The bounds on this page come from the definition, so it is re-read rather than
+            // patched: the pool below it has not moved yet either way, and will not until the
+            // manager's next pass.
+            root.refresh()
+        }
+        function onApplicationScaleFailed(message) {
+            scaleDialog.scaling = false
+            if (scaleDialog.opened) scaleDialog.errorText = message
+            else root.error = message
         }
     }
 
@@ -323,6 +360,14 @@ Item {
                     anchors.right: parent.right
                     anchors.verticalCenter: sectionHeader.verticalCenter
                     spacing: 8
+
+                    Button {
+                        text: "Runtime…"
+                        flat: true
+                        Material.theme: Material.Dark
+                        Material.accent: "#4f8cff"
+                        onClicked: runtimeDialog.open()
+                    }
 
                     Button {
                         text: "Scale…"
@@ -767,6 +812,127 @@ Item {
         }
     }
 
+    // Which interpreter the manager starts the artifact with. A change here is a change to the
+    // definition like any other, so the pool restarts onto it - which is the point when the
+    // version is what is being changed, and worth saying before it happens.
+    Dialog {
+        id: runtimeDialog
+        modal: true
+        anchors.centerIn: parent
+        width: 420
+        padding: 28
+        topPadding: 24
+        bottomPadding: 24
+        standardButtons: Dialog.NoButton
+
+        property string errorText: ""
+        readonly property string currentRuntime: root.detail("runtime", "")
+        readonly property string wantedRuntime: runtimeCombo.currentText
+
+        background: Rectangle {
+            radius: 16
+            color: "#1b1e25"
+            border.color: "#2c313c"
+            border.width: 1
+        }
+
+        onOpened: {
+            runtimeDialog.errorText = ""
+            // Assigned rather than bound, so the page's own refresh cannot move the selection
+            // while it is being chosen. An application whose runtime is not on the list - one
+            // stored as UNKNOWN, or a value from a newer server - leaves the box on the first
+            // entry rather than on nothing, and the line below still says what it is now.
+            runtimeCombo.currentIndex = Math.max(0, root.runtimeOptions.indexOf(runtimeDialog.currentRuntime))
+        }
+
+        contentItem: Column {
+            width: runtimeDialog.availableWidth
+            spacing: 18
+
+            Column {
+                width: parent.width
+                spacing: 4
+                Text { text: "Runtime"; color: "white"; font.pixelSize: 18; font.bold: true }
+                Text {
+                    text: root.applicationId + "  ·  currently "
+                          + (runtimeDialog.currentRuntime.length > 0 ? runtimeDialog.currentRuntime : "—")
+                    color: "#9aa1ac"
+                    font.pixelSize: 12
+                    elide: Text.ElideRight
+                    width: parent.width
+                }
+            }
+
+            ComboBox {
+                id: runtimeCombo
+                width: parent.width
+                model: root.runtimeOptions
+                Material.theme: Material.Dark
+                Material.accent: "#4f8cff"
+            }
+
+            Text {
+                width: parent.width
+                wrapMode: Text.WordWrap
+                color: "#6b7280"
+                font.pixelSize: 11
+                // Said here because the difference is invisible in the row: all three run jars.
+                text: "JAVA is whichever java the host calls java. JAVA21 and JAVA25 ask for that version by "
+                      + "name, which is what a jar built for one of them needs - a class file built for 25 does "
+                      + "not start under 21 at all. The installation has to have that runtime configured, or the "
+                      + "application fails to start with the name it was looking for."
+            }
+
+            Text {
+                width: parent.width
+                wrapMode: Text.WordWrap
+                color: "#ffb545"
+                font.pixelSize: 12
+                // Only when it is about to do nothing, which is not obvious from this dialog: the
+                // runtime decides the interpreter, and an application that spells out its own
+                // command is not started through one.
+                visible: String(root.detail("command", "")).length > 0
+                text: "⚠  This application starts with its own command (" + root.detail("command", "")
+                      + "), which the runtime does not decide. Changing it here still restarts the pool."
+            }
+
+            Text {
+                width: parent.width
+                wrapMode: Text.WordWrap
+                color: "#ff6b6b"
+                font.pixelSize: 12
+                visible: runtimeDialog.errorText.length > 0
+                text: runtimeDialog.errorText
+            }
+
+            Item {
+                width: parent.width
+                height: 40
+
+                Button {
+                    text: "Cancel"
+                    flat: true
+                    anchors.left: parent.left
+                    anchors.verticalCenter: parent.verticalCenter
+                    Material.theme: Material.Dark
+                    enabled: !root.savingRuntime
+                    onClicked: runtimeDialog.close()
+                }
+
+                Button {
+                    text: root.savingRuntime ? "Saving…" : "Apply"
+                    highlighted: true
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    Material.theme: Material.Dark
+                    Material.accent: "#4f8cff"
+                    enabled: !root.savingRuntime && runtimeDialog.wantedRuntime !== runtimeDialog.currentRuntime
+                    onClicked: root.setRuntime(runtimeDialog.wantedRuntime)
+                }
+            }
+        }
+    }
+
     Dialog {
         id: environmentDialog
         modal: true
@@ -917,9 +1083,10 @@ Item {
         }
     }
 
-    // The autoscaler's bounds. Sent through update-application, which changes only the fields it is
-    // given, so the rest of the definition is untouched - and like every other change to a
-    // definition, the manager restarts the pool onto it within a few seconds.
+    // The autoscaler's bounds, sent through "scale-application" - the one call that changes them,
+    // and the only one that will refuse a pair it cannot write instead of correcting it. Nothing
+    // else about the definition is touched, and the manager reconciles the pool against the new
+    // bounds on its next pass rather than here.
     Dialog {
         id: scaleDialog
         modal: true
@@ -930,14 +1097,21 @@ Item {
         bottomPadding: 24
         standardButtons: Dialog.NoButton
 
+        // Held open until the server answers, so a refusal lands beside the fields it is about.
+        property bool scaling: false
+        property string errorText: ""
+
         readonly property int wantedMin: parseInt(minField.text, 10)
         readonly property int wantedMax: parseInt(maxField.text, 10)
         readonly property bool valid: !isNaN(scaleDialog.wantedMin) && !isNaN(scaleDialog.wantedMax)
-                                      && scaleDialog.wantedMin >= 0 && scaleDialog.wantedMax >= 1
+                                      && scaleDialog.wantedMin >= 1 && scaleDialog.wantedMax >= 1
                                       && scaleDialog.wantedMin <= scaleDialog.wantedMax
 
+        // The same three EAP checks before it writes, said here first so they are read before the
+        // request rather than after it.
         readonly property string problem: {
             if (isNaN(scaleDialog.wantedMin) || isNaN(scaleDialog.wantedMax)) return ""
+            if (scaleDialog.wantedMin < 1) return "An application's floor is at least 1 - stop it to take it off the air."
             if (scaleDialog.wantedMax < 1) return "The ceiling has to be at least 1."
             if (scaleDialog.wantedMin > scaleDialog.wantedMax)
                 return "The floor (" + scaleDialog.wantedMin + ") cannot be above the ceiling (" + scaleDialog.wantedMax + ")."
@@ -952,6 +1126,8 @@ Item {
         }
 
         onOpened: {
+            scaleDialog.scaling = false
+            scaleDialog.errorText = ""
             minField.text = String(root.minInstances)
             maxField.text = String(root.maxInstances)
             minField.forceActiveFocus()
@@ -998,7 +1174,12 @@ Item {
                         width: parent.width
                         Material.accent: "#4f8cff"
                         selectByMouse: true
-                        validator: IntValidator { bottom: 0; top: 999 }
+                        // Bottom of 1: EAP refuses a floor of zero outright and names the way to
+                        // take an application out of service, which is stopping it. This field
+                        // used to accept 0 and update-application quietly stored 1 instead - so
+                        // the pool that was meant to drain when idle never did, and nothing said
+                        // so. Scaling to nothing is not a thing an application does here.
+                        validator: IntValidator { bottom: 1; top: 999 }
                         Keys.onReturnPressed: maxField.forceActiveFocus()
                     }
                 }
@@ -1018,26 +1199,16 @@ Item {
                 }
             }
 
-            // A floor of zero is accepted here, unlike the module page's: an application pool that
-            // scales away when idle is reached through EAP rather than the gateway's module
-            // routing, so nothing about it depends on an instance being up to bring it back.
-            Text {
-                width: parent.width
-                wrapMode: Text.WordWrap
-                color: "#ffb545"
-                font.pixelSize: 12
-                visible: scaleDialog.wantedMin === 0
-                text: "⚠  With a floor of 0 the pool drains to nothing when idle. Whatever the application does on "
-                      + "its own - polling a queue, watching a bucket - stops while it has no instances."
-            }
-
             Text {
                 width: parent.width
                 wrapMode: Text.WordWrap
                 color: "#ff6b6b"
                 font.pixelSize: 12
-                visible: scaleDialog.problem.length > 0
-                text: scaleDialog.problem
+                // What this page worked out, or - once it has been sent - what EAP answered. The
+                // server's wording wins: it is the side that decides, and the two only ever
+                // disagree about a case this dialog did not think of.
+                visible: scaleDialog.problem.length > 0 || scaleDialog.errorText.length > 0
+                text: scaleDialog.errorText.length > 0 ? scaleDialog.errorText : scaleDialog.problem
             }
 
             Item {
@@ -1055,22 +1226,21 @@ Item {
 
                 Button {
                     id: applyScaleButton
-                    text: "Apply"
+                    text: scaleDialog.scaling ? "Scaling…" : "Apply"
                     highlighted: true
                     anchors.right: parent.right
                     anchors.verticalCenter: parent.verticalCenter
                     Material.theme: Material.Dark
                     Material.accent: "#4f8cff"
-                    enabled: scaleDialog.valid
+                    enabled: scaleDialog.valid && !scaleDialog.scaling
                              && (scaleDialog.wantedMin !== root.minInstances
                                  || scaleDialog.wantedMax !== root.maxInstances)
                     onClicked: {
                         root.error = ""
-                        eapClient.updateApplication(root.applicationId, {
-                            minInstances: scaleDialog.wantedMin,
-                            maxInstances: scaleDialog.wantedMax
-                        })
-                        scaleDialog.close()
+                        scaleDialog.scaling = true
+                        scaleDialog.errorText = ""
+                        eapClient.scaleApplication(root.applicationId,
+                                                   scaleDialog.wantedMin, scaleDialog.wantedMax)
                     }
                 }
             }

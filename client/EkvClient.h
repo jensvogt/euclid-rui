@@ -34,7 +34,7 @@ public:
 
     // One table, with a freshly counted item count. What the details page re-reads: the count is
     // the only thing about a table that moves.
-    Q_INVOKABLE void describeTable(const QString &name);
+    Q_INVOKABLE void fetchTable(const QString &name);
 
     // The key schema is fixed at creation - there is no call to change it, because every item is
     // stored under it. An empty sortKey makes a table whose partition key alone identifies an item.
@@ -78,8 +78,8 @@ signals:
     void tablesFailed(const QString &message);
     void tablesReload();
 
-    void tableDescribed(const QString &name, const QVariantMap &table);
-    void tableDescribeFailed(const QString &name, const QString &message);
+    void tableLoaded(const QString &name, const QVariantMap &table);
+    void tableFailed(const QString &name, const QString &message);
     void tableCreated(const QString &name, const QVariantMap &table);
     void tableCreateFailed(const QString &message);
     void tableDeleted(const QString &name, int deletedItems);

@@ -62,6 +62,19 @@ public:
     // afterwards. Deploying either on purpose is what updateApplication() is for.
     Q_INVOKABLE void redeployApplication(const QString &applicationId, const QString &artifact, const QString &version);
 
+    // The autoscaler's bounds, and the call to change them. Either may be left as it stands by
+    // passing -1, which is what lets a ceiling be raised without naming the floor it has to clear.
+    //
+    // Not updateApplication(), which takes the same two fields and corrects them without saying
+    // so: it clamps a floor to at least 1 and lifts a ceiling to meet the floor, so a request
+    // nobody could have meant came back as a success carrying numbers nobody asked for.
+    // scale-application refuses those instead and says why - a floor of 0 is stop-application's
+    // job, and a floor above the ceiling is a mistake worth hearing about rather than a pool
+    // silently scaled to something else.
+    //
+    // Administrators only, unlike the reads on this client.
+    Q_INVOKABLE void scaleApplication(const QString &applicationId, int minInstances = -1, int maxInstances = -1);
+
     // Both only write desiredState; the reconciler is what acts on it.
     Q_INVOKABLE void startApplication(const QString &applicationId);
     Q_INVOKABLE void stopApplication(const QString &applicationId);
@@ -83,6 +96,11 @@ signals:
     // revision to restart onto.
     void applicationRedeployed(const QString &applicationId, const QString &artifact, const QString &version);
     void applicationRedeployFailed(const QString &message);
+    // The bounds as the server stored them, which is both of them even when only one was sent.
+    void applicationScaled(const QString &applicationId, int minInstances, int maxInstances);
+    // Carries the server's own wording: it is the side that decides what a bound may be, and it
+    // names the way out - stopping the application rather than scaling it to nothing.
+    void applicationScaleFailed(const QString &message);
 
 private:
     EuclidBaseClient *m_base;
