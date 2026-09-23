@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.19](https://github.com/jensvogt/euclid-rui/compare/1.1.18...v1.1.19) (2026-09-23)
+
+
+### Bug Fixes
+
+* JAVA21/25 ([f502a33](https://github.com/jensvogt/euclid-rui/commit/f502a334ded9f7ca470b25f9249d9ee7725ce466))
+
 ## [1.1.18](https://github.com/jensvogt/euclid-rui/compare/1.1.17...v1.1.18) (2026-09-22)
 
 
