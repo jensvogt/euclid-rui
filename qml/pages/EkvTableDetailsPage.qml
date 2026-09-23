@@ -115,7 +115,7 @@ Item {
 
     readonly property var itemColumns: {
         // Rebuilt when the key schema arrives: the columns of an item table are the table's own key
-        // attributes, which are not known until "describe-table" has answered.
+        // attributes, which are not known until "get-table" has answered.
         const columns = [{
             title: root.partitionKey.length > 0 ? root.partitionKey : "Partition key",
             key: root.partitionKey,
@@ -177,8 +177,8 @@ Item {
             return
         root.error = ""
         // The count is the only thing about a table that moves, and it is counted rather than kept -
-        // so the description is re-read here rather than carried over from the row that was clicked.
-        ekvClient.describeTable(root.tableName)
+        // so the table is re-read here rather than carried over from the row that was clicked.
+        ekvClient.fetchTable(root.tableName)
         root.loadItems()
     }
 
@@ -209,12 +209,12 @@ Item {
     Connections {
         target: ekvClient
 
-        function onTableDescribed(name, table) {
+        function onTableLoaded(name, table) {
             if (name !== root.tableName) return
             root.details = table
             root.error = ""
         }
-        function onTableDescribeFailed(name, message) {
+        function onTableFailed(name, message) {
             if (name !== root.tableName) return
             root.error = message
         }

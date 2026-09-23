@@ -6,7 +6,7 @@
 
 namespace {
 
-// Turns one "list-tables"/"describe-table"/"create-table" entry into the map the QML pages read.
+// Turns one "list-tables"/"get-table"/"create-table" entry into the map the QML pages read.
 // The key schema is flattened into four fields rather than nested, because that is how a table is
 // read: which attribute, of which type.
 QVariantMap tableToMap(const QJsonObject &table) {
@@ -69,16 +69,16 @@ void EkvClient::fetchTables(const QString &prefix, const int pageIndex, const in
          });
 }
 
-void EkvClient::describeTable(const QString &name) {
+void EkvClient::fetchTable(const QString &name) {
     QJsonObject body;
     body["name"] = name;
 
-    m_base->post("ekv", "describe-table", body, true,
+    m_base->post("ekv", "get-table", body, true,
          [this, name](const QJsonObject &response) {
-             emit tableDescribed(name, tableToMap(response));
+             emit tableLoaded(name, tableToMap(response));
          },
          [this, name](const QString &message) {
-             emit tableDescribeFailed(name, message);
+             emit tableFailed(name, message);
          });
 }
 

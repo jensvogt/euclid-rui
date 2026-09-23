@@ -271,10 +271,15 @@ Item {
                 lastUpdatedText: root.lastUpdatedText
                 searchPlaceholder: "Filter by key ID prefix..."
                 emptyText: "No keys found in this namespace."
-                rowsClickable: false
+                rowsClickable: true
                 sortKey: root.sortColumn
                 sortAscending: root.sortAscending
 
+                // The same page the row menu's "Details" opens. A key has nothing under it to
+                // drill into - unlike a bucket or a queue, whose rows open what they hold - so
+                // its details are what a click on the row can usefully mean, which is how every
+                // other leaf listing here behaves, EKM's own certificates included.
+                onRowClicked: (row) => root.openKeyDetails(row.ern, row.name, row)
                 onSearchChanged: (text) => {
                     root.prefix = text
                     root.pageIndex = 0

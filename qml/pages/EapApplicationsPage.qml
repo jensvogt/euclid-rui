@@ -188,6 +188,19 @@ Item {
         function onApplicationStateFailed(message) {
             root.error = message
         }
+        function onApplicationScaled(applicationId, minInstances, maxInstances) {
+            if (applicationId !== scaleDialog.applicationId) return
+            scaleDialog.scaling = false
+            scaleDialog.close()
+        }
+        function onApplicationScaleFailed(message) {
+            scaleDialog.scaling = false
+            // In the dialog while it is up, since that is where the numbers it is about are. The
+            // page's own error line is for a refusal that arrives after it was closed - which is
+            // not the way this one is used, but is the way the page reports everything else.
+            if (scaleDialog.opened) scaleDialog.errorText = message
+            else root.error = message
+        }
         function onApplicationRedeployed(applicationId, artifact, version) {
             redeployDialog.deploying = false
             redeployDialog.close()
@@ -216,16 +229,6 @@ Item {
     // "eap redeploy-application" as a dialog: upload the new build into the application's own
     // bucket under the key it already uses, then stamp the definition with the new version - which
     // is what the manager reads as a new revision and restarts the pool onto.
-    // What the scale dialog opens on. Scaling moves the floor, not the ceiling: the floor is what
-    // the manager guarantees to run, so raising it starts an instance, while raising the ceiling
-    // only permits the autoscaler to add one under load. Nothing is sent until the dialog is
-    // confirmed - these are the numbers it starts with, and both fields are editable.
-    function scaleUpSuggestion(row) {
-        const min = Number(row.minInstances) + 1
-        // EAP refuses a floor above the ceiling, so the ceiling comes along when pushed.
-        return { min: min, max: Math.max(Number(row.maxInstances), min) }
-    }
-
     Dialog {
         id: redeployDialog
         modal: true
@@ -493,6 +496,11 @@ Item {
 
         // The row the menu was opened on, which carries the bounds already - nothing is re-read.
         property var application: null
+        // Held open until the server answers, like the create and redeploy dialogs above: EAP
+        // refuses a bound it will not write rather than correcting it quietly, and the refusal
+        // belongs beside the fields it is about.
+        property bool scaling: false
+        property string errorText: ""
         readonly property string applicationId: application ? application.applicationId : ""
         readonly property int currentMin: application ? Number(application.minInstances) : 1
         readonly property int currentMax: application ? Number(application.maxInstances) : 1
@@ -513,11 +521,18 @@ Item {
             return ""
         }
 
-        function openFor(row, suggestion) {
+        // Opens on the bounds the application has, not on a proposal. A dialog that started one
+        // above the floor answered a question nobody asked: it read as though the application were
+        // already at 2-8 when it is at 1-8, and scaling down meant correcting the field back to
+        // where it started. The numbers on screen are the ones in the definition, and Apply stays
+        // disabled until they are changed.
+        function openFor(row) {
             scaleDialog.application = row
+            scaleDialog.scaling = false
+            scaleDialog.errorText = ""
             scaleDialog.open()
-            scaleMinField.text = String(suggestion.min)
-            scaleMaxField.text = String(suggestion.max)
+            scaleMinField.text = String(scaleDialog.currentMin)
+            scaleMaxField.text = String(scaleDialog.currentMax)
             scaleMinField.forceActiveFocus()
             scaleMinField.selectAll()
         }
@@ -600,8 +615,11 @@ Item {
                 wrapMode: Text.WordWrap
                 color: "#ff6b6b"
                 font.pixelSize: 12
-                visible: scaleDialog.problem.length > 0
-                text: scaleDialog.problem
+                // What this page worked out, or - once it has been sent - what EAP answered. The
+                // server's wording wins: it is the side that decides, and the two only ever
+                // disagree about a case this dialog did not think of.
+                visible: scaleDialog.problem.length > 0 || scaleDialog.errorText.length > 0
+                text: scaleDialog.errorText.length > 0 ? scaleDialog.errorText : scaleDialog.problem
             }
 
             Item {
@@ -619,24 +637,28 @@ Item {
 
                 Button {
                     id: applyScaleButton
-                    text: "Apply"
+                    text: scaleDialog.scaling ? "Scaling…" : "Apply"
                     highlighted: true
                     anchors.right: parent.right
                     anchors.verticalCenter: parent.verticalCenter
                     Material.theme: Material.Dark
                     Material.accent: "#4f8cff"
-                    enabled: scaleDialog.valid
+                    enabled: scaleDialog.valid && !scaleDialog.scaling
                              && (scaleDialog.wantedMin !== scaleDialog.currentMin
                                  || scaleDialog.wantedMax !== scaleDialog.currentMax)
                     onClicked: {
-                        // Through EAP rather than EMM's set-instances: the application's own
-                        // definition is what the manager reconciles the pool against, so a bound
-                        // written onto the module row alone would be undone on its next pass.
-                        eapClient.updateApplication(scaleDialog.applicationId, {
-                            minInstances: scaleDialog.wantedMin,
-                            maxInstances: scaleDialog.wantedMax
-                        })
-                        scaleDialog.close()
+                        // "scale-application", not update-application carrying the same two
+                        // fields: that one clamps a bound it does not like and reports success,
+                        // this one refuses and says what is wrong with it.
+                        //
+                        // Through EAP either way rather than EMM's set-instances: the
+                        // application's own definition is what the manager reconciles the pool
+                        // against, so a bound written onto the module row alone would be undone on
+                        // its next pass.
+                        scaleDialog.scaling = true
+                        scaleDialog.errorText = ""
+                        eapClient.scaleApplication(scaleDialog.applicationId,
+                                                   scaleDialog.wantedMin, scaleDialog.wantedMax)
                     }
                 }
             }
@@ -741,7 +763,12 @@ Item {
                 ComboBox {
                     id: runtimeCombo
                     width: runtimeColumn.width
-                    model: [ "JAVA", "PYTHON", "NODEJS", "BINARY" ]
+                    // Java is the only versioned one, and deliberately: a host runs several JDKs
+                    // and a jar built for 25 does not start under 21 at all, so the version is
+                    // asked for by name rather than left to whichever java the manager finds
+                    // first. JAVA still means exactly that, and is what everything deployed
+                    // before the versioned ones runs under.
+                    model: [ "JAVA", "JAVA21", "JAVA25", "PYTHON", "NODEJS", "BINARY" ]
                     Material.theme: Material.Dark
                     Material.accent: "#4f8cff"
                 }
@@ -981,15 +1008,17 @@ Item {
                         }
                     },
                     {
-                        text: "Scale Up…",
-                        // Only while it is meant to be running: raising the floor of a stopped
-                        // application records a number the manager will not act on until it is
-                        // started, which reads as a scale-up that did nothing.
+                        // Both directions, which is what the dialog does: it opens on the
+                        // application's own bounds and either of them can be moved either way.
+                        text: "Scale…",
+                        // Only while it is meant to be running: a bound written onto a stopped
+                        // application is a number the manager will not act on until it is started,
+                        // which reads as a scaling that did nothing.
                         enabled: function(row) {
                             return !!row && row.desiredState === "RUNNING"
                         },
                         action: function(row) {
-                            scaleDialog.openFor(row, root.scaleUpSuggestion(row))
+                            scaleDialog.openFor(row)
                         }
                     },
                     {
