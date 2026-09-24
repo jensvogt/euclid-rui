@@ -58,10 +58,27 @@ Item {
     // has to act on and nothing else will tell them again.
     property string encryptionNote: ""
 
+    // The priority this bucket's notifications are sent at: "LOW", "MEDIUM", "HIGH", or empty for
+    // a bucket that states none. Empty is not MEDIUM - it leaves the priority to the queue the
+    // notification is delivered to, which is how every bucket behaved before this existed.
+    readonly property string priority: detail("priority", "")
+    // "None" first, because clearing is a real choice and the only way back to the queue's own
+    // default. The combo's index is this list's, and index 0 sends an empty priority.
+    readonly property var priorityOptions: ["None", "LOW", "MEDIUM", "HIGH"]
+    property string priorityNote: ""
+    property string priorityError: ""
+
+    // Nothing re-reads the bucket after this call either - see addTagLocally() above.
+    function setPriorityLocally(priority) {
+        root.details = Object.assign({}, root.details, { priority: priority })
+    }
+
     // One instance of this page serves every bucket, so a note about the last one must not follow
     // the user to the next.
     onBucketErnChanged: {
         root.encryptionNote = ""
+        root.priorityNote = ""
+        root.priorityError = ""
         root.purgeNote = ""
     }
 
@@ -91,6 +108,22 @@ Item {
         function onBucketEncryptionFailed(message) {
             encryptionDialog.saving = false
             encryptionDialog.errorText = message
+        }
+        function onBucketPriorityChanged(bucketErn, name, priority) {
+            if (bucketErn !== root.bucketErn) return
+            root.setPriorityLocally(priority)
+            root.priorityError = ""
+            root.priorityNote = priority.length > 0
+                    ? "Notifications from this bucket are sent at " + priority + " priority. Objects that name "
+                      + "their own keep it, and nothing already delivered changes."
+                    : "This bucket no longer states a priority. Its notifications take the default of the queue "
+                      + "they are delivered to."
+        }
+        function onBucketPriorityFailed(message) {
+            // The combo is bound to what is stored, so it has already snapped back to the setting
+            // the bucket still has - this says why it did.
+            root.priorityNote = ""
+            root.priorityError = message
         }
         function onBucketTagAdded(bucketErn, key, value) {
             if (bucketErn !== root.bucketErn) return
@@ -304,6 +337,86 @@ Item {
 
             Rectangle {
                 width: parent.width
+                height: priorityCol.implicitHeight + 40
+                radius: 14
+                color: "#20242e"
+                border.color: "#2c313c"
+                border.width: 1
+
+                Column {
+                    id: priorityCol
+                    anchors.top: parent.top
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.margins: 20
+                    spacing: 14
+
+                    Text { text: "Notification Priority"; color: "white"; font.pixelSize: 15; font.bold: true }
+
+                    ComboBox {
+                        id: priorityCombo
+                        width: 220
+                        model: root.priorityOptions
+                        Material.theme: Material.Dark
+                        Material.accent: "#4f8cff"
+                        // Bound to what is stored, so it shows the bucket's actual setting and
+                        // snaps back if the server refuses. A value from a newer server that this
+                        // list does not have leaves it on "None" - the line below still says what
+                        // the bucket is actually set to.
+                        currentIndex: Math.max(0, root.priorityOptions.indexOf(root.priority))
+                        // Only a user's choice, never the binding above reasserting itself.
+                        onActivated: (index) => {
+                            // Picking replaced the binding; this puts it back, the same way the
+                            // encryption checkbox does - the request is what changes the setting,
+                            // and until it is answered the box goes on showing what is stored.
+                            currentIndex = Qt.binding(function () {
+                                return Math.max(0, root.priorityOptions.indexOf(root.priority))
+                            })
+                            root.priorityNote = ""
+                            root.priorityError = ""
+                            esmClient.setBucketPriority(root.bucketErn,
+                                                        index <= 0 ? "" : root.priorityOptions[index])
+                        }
+                    }
+
+                    Text {
+                        width: parent.width
+                        wrapMode: Text.WordWrap
+                        color: "#9aa1ac"
+                        font.pixelSize: 12
+                        text: root.priority.length > 0
+                              ? "Notifications about objects in this bucket are sent at " + root.priority
+                                + " priority. The bucket itself is stored and served no differently - the priority "
+                                + "travels with the messages a subscription of this bucket produces, and the queue "
+                                + "they are delivered to is where it decides anything. An object that names its own "
+                                + "priority keeps it."
+                              : "This bucket states no priority, so each notification takes the default of the queue "
+                                + "it is delivered to. That is not the same as MEDIUM: nothing here overrides the "
+                                + "queue's own setting."
+                    }
+
+                    Text {
+                        width: parent.width
+                        wrapMode: Text.WordWrap
+                        color: "#e0a458"
+                        font.pixelSize: 12
+                        visible: root.priorityNote.length > 0
+                        text: root.priorityNote
+                    }
+
+                    Text {
+                        width: parent.width
+                        wrapMode: Text.WordWrap
+                        color: "#ff6b6b"
+                        font.pixelSize: 12
+                        visible: root.priorityError.length > 0
+                        text: root.priorityError
+                    }
+                }
+            }
+
+            Rectangle {
+                width: parent.width
                 height: tagsCol.implicitHeight + 40
                 radius: 14
                 color: "#20242e"
@@ -405,6 +518,10 @@ Item {
         bottomPadding: 24
         standardButtons: Dialog.NoButton
 
+        // Announcing is what a purge has always done, so silence is asked for each time rather
+        // than remembered - see the buckets page, which offers the same choice.
+        onOpened: notifyCheck.checked = true
+
         background: Rectangle {
             radius: 16
             color: "#1b1e25"
@@ -449,6 +566,37 @@ Item {
                       + "which for a bucket this size can outlast the request's own timeout."
             }
 
+            // The CLI's --no-notify, put the way round it is actually decided: announcing is what
+            // a purge does, and this is the box that stops it.
+            Column {
+                width: parent.width
+                spacing: 6
+
+                CheckBox {
+                    id: notifyCheck
+                    text: "Announce each removed object to subscribers"
+                    checked: true
+                    Material.theme: Material.Dark
+                    Material.accent: "#4f8cff"
+                }
+
+                Text {
+                    width: parent.width
+                    wrapMode: Text.WordWrap
+                    color: notifyCheck.checked ? "#6b7280" : "#e0a458"
+                    font.pixelSize: 11
+                    text: notifyCheck.checked
+                          ? "One esm.object.deleted event per object, which is what a subscriber keeping an index "
+                            + "of keys needs - \"the bucket was purged\" does not say which ones went. For "
+                            + root.objects + " objects that is " + root.objects + " deliveries, and they are not "
+                            + "free at either end."
+                          : "\u26a0  The objects are removed in silence. Right for test data; wrong wherever something "
+                            + "keeps its own record of this bucket, which then goes quietly stale - there is no "
+                            + "later event to reconcile it, and touching the bucket re-announces only what is "
+                            + "still there, never what was removed."
+                }
+            }
+
             Item {
                 width: parent.width
                 height: 40
@@ -473,7 +621,7 @@ Item {
                         Material.theme: Material.Dark
                         Material.accent: "#ff6b6b"
                         onClicked: {
-                            esmClient.purgeBucket(root.bucketErn, false)
+                            esmClient.purgeBucket(root.bucketErn, false, notifyCheck.checked)
                             purgeDialog.close()
                         }
                     }
@@ -483,7 +631,7 @@ Item {
                         Material.theme: Material.Dark
                         Material.accent: "#4f8cff"
                         onClicked: {
-                            esmClient.purgeBucket(root.bucketErn, true)
+                            esmClient.purgeBucket(root.bucketErn, true, notifyCheck.checked)
                             purgeDialog.close()
                         }
                     }

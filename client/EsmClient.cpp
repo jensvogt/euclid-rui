@@ -46,6 +46,9 @@ void EsmClient::fetchBuckets(const QString &prefix, const int pageIndex, const i
                  // as objects made a transfer bucket read "5 objects, 0 B" for one file.
                  entry["directories"] = bucket.value("directories").toInteger();
                  entry["tags"] = bucket.value("tags").toObject().toVariantMap();
+                 // "LOW", "MEDIUM", "HIGH", or empty for a bucket that states none - which is not
+                 // the same as MEDIUM, and is why this stays a string rather than being defaulted.
+                 entry["priority"] = bucket.value("priority").toString();
                  entry["encrypted"] = bucket.value("encrypted").toBool();
                  // Only ever true in a listing an administrator asked to include them in, so a row
                  // can be marked as euclid's own rather than sitting unexplained among the user's.
@@ -62,9 +65,14 @@ void EsmClient::fetchBuckets(const QString &prefix, const int pageIndex, const i
          });
 }
 
-void EsmClient::createBucket(const QString &name) {
+void EsmClient::createBucket(const QString &name, const QString &priority) {
     QJsonObject body;
     body["name"] = name;
+    // Only when there is one. create-bucket refuses a priority it does not recognise rather than
+    // ignoring it, and an empty string is not one of the three it knows - a bucket that states
+    // none simply says nothing here.
+    if (!priority.isEmpty())
+        body["priority"] = priority;
 
     m_base->post("esm", "create-bucket", body, true,
          [this, name](const QJsonObject &response) {
@@ -76,11 +84,15 @@ void EsmClient::createBucket(const QString &name) {
          });
 }
 
-void EsmClient::purgeBucket(const QString &bucketErn, const bool async) {
+void EsmClient::purgeBucket(const QString &bucketErn, const bool async, const bool notify) {
     QJsonObject body;
     body["ern"] = bucketErn;
     body["prefix"] = "";
     body["async"] = async;
+    // Only when silence was asked for. The server reads an absent "notify" as true, so this says
+    // nothing about the normal case - the same way the CLI's --no-notify sends it.
+    if (!notify)
+        body["notify"] = false;
 
     m_base->post("esm", "purge-bucket", body, true,
          [this, bucketErn, async](const QJsonObject &response) {
@@ -148,6 +160,28 @@ void EsmClient::deleteBucket(const QString &bucketErn) {
          },
          [this](const QString &message) {
              emit bucketsFailed(message);
+         });
+}
+
+void EsmClient::setBucketPriority(const QString &bucketErn, const QString &priority) {
+    QJsonObject body;
+    body["ern"] = bucketErn;
+    // Sent even when empty, which is what clears it: an absent priority would be read as "no
+    // change" and there would be no way back to a bucket that states nothing.
+    body["priority"] = priority;
+
+    m_base->post("esm", "set-bucket-priority", body, true,
+         [this, bucketErn](const QJsonObject &response) {
+             // What the server stored rather than what was asked for: it uppercases, so a bucket
+             // set to "high" reads back "HIGH" and matches what a queue or a message would say.
+             emit bucketPriorityChanged(bucketErn, response.value("name").toString(),
+                                        response.value("priority").toString());
+             // No bucketsReload(): the priority is the only thing this changed and the page it was
+             // changed from writes it into the row, so a re-read would re-sort the listing under
+             // whoever is reading it for nothing. Same reasoning as purgeBucket().
+         },
+         [this](const QString &message) {
+             emit bucketPriorityFailed(message);
          });
 }
 
@@ -466,6 +500,19 @@ QJsonObject variantValue(const QString &type, const QVariant &value) {
         encoded = QJsonValue(value.toString());
     return QJsonObject{{"type", type}, {"value", encoded}};
 }
+
+// The "x-euclid-system-attributes" header carrying an object's priority, or empty when there is
+// none to carry - an upload that says nothing leaves the bucket's own setting to stand, and an
+// empty attribute would be a statement rather than the absence of one.
+//
+// The same {"type", "value"} Variant shape the user's attributes use, since the server reads both
+// headers through one parser. "priority" is the name EQS resolves against - see kPriorityAttribute.
+QString priorityAttributeHeader(const QString &priority) {
+    if (priority.isEmpty())
+        return {};
+    const QJsonObject attributes{{"priority", variantValue(QStringLiteral("string"), priority)}};
+    return QString::fromUtf8(QJsonDocument(attributes).toJson(QJsonDocument::Compact));
+}
 }
 
 void EsmClient::fetchObjectAttributes(const QString &objectErn) {
@@ -525,7 +572,8 @@ void EsmClient::deleteObjectAttribute(const QString &objectErn, const QString &n
          });
 }
 
-void EsmClient::uploadObject(const QString &bucketErn, const QString &key, const QUrl &fileUrl) {
+void EsmClient::uploadObject(const QString &bucketErn, const QString &key, const QUrl &fileUrl,
+                             const QString &priority) {
     const QString path = fileUrl.isLocalFile() ? fileUrl.toLocalFile() : fileUrl.toString();
     const qint64 fileSize = QFileInfo(path).size();
 
@@ -535,11 +583,11 @@ void EsmClient::uploadObject(const QString &bucketErn, const QString &key, const
             emit objectUploadFailed("Could not open file: " + path);
             return;
         }
-        uploadSinglePart(bucketErn, key, file.readAll());
+        uploadSinglePart(bucketErn, key, file.readAll(), priority);
         return;
     }
 
-    beginMultipartUpload(bucketErn, key, path, fileSize);
+    beginMultipartUpload(bucketErn, key, path, fileSize, priority);
 }
 
 void EsmClient::saveObjectContent(const QString &bucketErn, const QString &key, const QString &text,
@@ -577,10 +625,14 @@ void EsmClient::saveObjectContent(const QString &bucketErn, const QString &key, 
          });
 }
 
-void EsmClient::uploadSinglePart(const QString &bucketErn, const QString &key, const QByteArray &data) {
+void EsmClient::uploadSinglePart(const QString &bucketErn, const QString &key, const QByteArray &data,
+                                 const QString &priority) {
     QVariantMap headers;
     headers["x-euclid-bucket-ern"] = bucketErn;
     headers["x-euclid-key"] = key;
+    const QString systemAttributes = priorityAttributeHeader(priority);
+    if (!systemAttributes.isEmpty())
+        headers["x-euclid-system-attributes"] = systemAttributes;
 
     m_base->postRaw("esm", "put-object", headers, data,
          [this, bucketErn, key](const QJsonObject &response) {
@@ -592,14 +644,15 @@ void EsmClient::uploadSinglePart(const QString &bucketErn, const QString &key, c
          });
 }
 
-void EsmClient::beginMultipartUpload(const QString &bucketErn, const QString &key, const QString &path, const qint64 fileSize) {
+void EsmClient::beginMultipartUpload(const QString &bucketErn, const QString &key, const QString &path,
+                                     const qint64 fileSize, const QString &priority) {
     QJsonObject body;
     body["bucketErn"] = bucketErn;
     body["key"] = key;
 
     m_base->post("esm", "create-upload", body, true,
-         [this, bucketErn, key, path, fileSize](const QJsonObject &response) {
-             uploadNextPart(bucketErn, key, path, fileSize, response.value("uploadId").toString(), 1, 0);
+         [this, bucketErn, key, path, fileSize, priority](const QJsonObject &response) {
+             uploadNextPart(bucketErn, key, path, fileSize, response.value("uploadId").toString(), 1, 0, priority);
          },
          [this](const QString &message) {
              emit objectUploadFailed(message);
@@ -607,7 +660,8 @@ void EsmClient::beginMultipartUpload(const QString &bucketErn, const QString &ke
 }
 
 void EsmClient::uploadNextPart(const QString &bucketErn, const QString &key, const QString &path, const qint64 fileSize,
-                                const QString &uploadId, const long partNumber, const qint64 bytesSent) {
+                                const QString &uploadId, const long partNumber, const qint64 bytesSent,
+                                const QString &priority) {
     QFile file(path);
     if (!file.open(QIODevice::ReadOnly) || !file.seek(bytesSent)) {
         emit objectUploadFailed("Could not read file to upload part " + QString::number(partNumber));
@@ -617,7 +671,7 @@ void EsmClient::uploadNextPart(const QString &bucketErn, const QString &key, con
     file.close();
 
     if (chunk.isEmpty()) {
-        completeMultipartUpload(bucketErn, key, uploadId);
+        completeMultipartUpload(bucketErn, key, uploadId, priority);
         return;
     }
 
@@ -627,18 +681,26 @@ void EsmClient::uploadNextPart(const QString &bucketErn, const QString &key, con
 
     const qint64 newBytesSent = bytesSent + chunk.size();
     m_base->postRaw("esm", "upload-part", headers, chunk,
-         [this, bucketErn, key, path, fileSize, uploadId, partNumber, newBytesSent](const QJsonObject &response) {
+         [this, bucketErn, key, path, fileSize, uploadId, partNumber, newBytesSent, priority](const QJsonObject &response) {
              emit uploadProgress(bucketErn, key, newBytesSent, fileSize);
-             uploadNextPart(bucketErn, key, path, fileSize, uploadId, partNumber + 1, newBytesSent);
+             uploadNextPart(bucketErn, key, path, fileSize, uploadId, partNumber + 1, newBytesSent, priority);
          },
          [this](const QString &message) {
              emit objectUploadFailed(message);
          });
 }
 
-void EsmClient::completeMultipartUpload(const QString &bucketErn, const QString &key, const QString &uploadId) {
+void EsmClient::completeMultipartUpload(const QString &bucketErn, const QString &key, const QString &uploadId,
+                                        const QString &priority) {
     QJsonObject body;
     body["uploadId"] = uploadId;
+
+    // On the completion rather than on the parts: a part is bytes, and there is no object to say
+    // anything about until they have been assembled here.
+    QVariantMap headers;
+    const QString systemAttributes = priorityAttributeHeader(priority);
+    if (!systemAttributes.isEmpty())
+        headers["x-euclid-system-attributes"] = systemAttributes;
 
     // complete-upload returns as soon as every part is in, but assembly/hashing/content-type
     // detection for a large file runs afterwards in a detached thread server-side (see
@@ -653,5 +715,6 @@ void EsmClient::completeMultipartUpload(const QString &bucketErn, const QString 
          },
          [this](const QString &message) {
              emit objectUploadFailed(message);
-         });
+         },
+         0, headers);
 }

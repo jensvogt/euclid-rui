@@ -34,6 +34,15 @@ Item {
     // nothing a listing displays at all.
     property string actionNote: ""
 
+    // The priority this bucket states for its notifications, or empty for one that states none.
+    // Read out of the bucket list the page already holds rather than asked for on its own: there
+    // is no "get bucket" action, and the listing carries it.
+    readonly property string bucketPriority: {
+        if (root.bucketErn.length === 0) return ""
+        const bucket = root.bucketChoices.find(b => b.ern === root.bucketErn)
+        return bucket ? String(bucket.priority || "") : ""
+    }
+
     signal back()
     signal openObjectDetails(string objectErn, string objectKey, string bucketName, var details)
 
@@ -165,7 +174,15 @@ Item {
                     : "Announced " + objects + " object(s) under \"" + prefix + "\". Nothing about them was modified."
         }
 
-        function onObjectsReload() {
+        // Named for the bucket it is about, and only that bucket's page re-reads. Two things were
+        // wrong with refreshing on any of them: a purge started from the bucket list reloaded this
+        // page while it was not even on screen - and in the aggregate view that means a listing of
+        // every bucket followed by an object fetch per bucket, for something the user is not
+        // looking at. Worse, that listing arrived at the bucket page as though it had asked for
+        // it, and replaced the page it was showing.
+        function onObjectsReload(bucketErn) {
+            if (!root.visible) return
+            if (root.bucketErn.length > 0 && bucketErn !== root.bucketErn) return
             refresh()
         }
 
@@ -227,6 +244,10 @@ Item {
         readonly property int objectCount: root.totalCount
         readonly property bool large: purgeDialog.objectCount > root.asyncPurgeThreshold
 
+        // Announcing is what a purge has always done, so silence is asked for each time rather
+        // than remembered - see the buckets page, which offers the same choice.
+        onOpened: notifyCheck.checked = true
+
         background: Rectangle {
             radius: 16
             color: "#1b1e25"
@@ -273,6 +294,37 @@ Item {
                       + "bucket this size can outlast the request's own timeout."
             }
 
+            // The CLI's --no-notify, put the way round it is actually decided: announcing is what
+            // a purge does, and this is the box that stops it.
+            Column {
+                width: parent.width
+                spacing: 6
+
+                CheckBox {
+                    id: notifyCheck
+                    text: "Announce each removed object to subscribers"
+                    checked: true
+                    Material.theme: Material.Dark
+                    Material.accent: "#4f8cff"
+                }
+
+                Text {
+                    width: parent.width
+                    wrapMode: Text.WordWrap
+                    color: notifyCheck.checked ? "#6b7280" : "#e0a458"
+                    font.pixelSize: 11
+                    text: notifyCheck.checked
+                          ? "One esm.object.deleted event per object, which is what a subscriber keeping an index "
+                            + "of keys needs - \"the bucket was purged\" does not say which ones went. For "
+                            + purgeDialog.objectCount + " objects that is " + purgeDialog.objectCount
+                            + " deliveries, and they are not free at either end."
+                          : "⚠  The objects are removed in silence. Right for test data; wrong wherever something "
+                            + "keeps its own record of this bucket, which then goes quietly stale - there is no "
+                            + "later event to reconcile it, and touching the bucket re-announces only what is "
+                            + "still there, never what was removed."
+                }
+            }
+
             Item {
                 width: parent.width
                 height: 40
@@ -301,7 +353,7 @@ Item {
                         Material.accent: "#ff6b6b"
                         onClicked: {
                             root.actionNote = ""
-                            esmClient.purgeBucket(root.bucketErn, false)
+                            esmClient.purgeBucket(root.bucketErn, false, notifyCheck.checked)
                             purgeDialog.close()
                         }
                     }
@@ -313,7 +365,7 @@ Item {
                         Material.accent: "#4f8cff"
                         onClicked: {
                             root.actionNote = ""
-                            esmClient.purgeBucket(root.bucketErn, true)
+                            esmClient.purgeBucket(root.bucketErn, true, notifyCheck.checked)
                             purgeDialog.close()
                         }
                     }
@@ -351,6 +403,12 @@ Item {
         property real bytesSent: 0
         property real bytesTotal: 0
 
+        // What this one object's notifications are sent at. The first entry hands the decision back
+        // to the bucket, which is the normal case and the default - the other three are this object
+        // saying something narrower than the bucket does, which is why they outrank it.
+        readonly property var options: ["Bucket default", "LOW", "MEDIUM", "HIGH"]
+        readonly property string wantedPriority: priorityCombo.currentIndex <= 0 ? "" : priorityCombo.currentText
+
         background: Rectangle {
             radius: 16
             color: "#1b1e25"
@@ -364,6 +422,12 @@ Item {
             uploading = false
             bytesSent = 0
             bytesTotal = 0
+            priorityCombo.currentIndex = 0
+            // The bucket's own priority, to name it on the first entry. In single-bucket mode
+            // nothing has fetched the bucket list yet - the same reason the transfer dialog
+            // refreshes it on the way in - and the label fills itself in when the answer arrives.
+            if (root.bucketPriority.length === 0)
+                esmClient.fetchBuckets("", 0, 100)
             keyField.forceActiveFocus()
         }
 
@@ -422,6 +486,43 @@ Item {
             Column {
                 width: parent.width
                 spacing: 6
+                Text { text: "Notification priority"; color: "#9aa1ac"; font.pixelSize: 12 }
+                ComboBox {
+                    id: priorityCombo
+                    width: parent.width
+                    model: addObjectDialog.options
+                    // The bucket's setting is named on the closed box rather than built into the
+                    // model, so choosing to leave it alone does not mean guessing what is being
+                    // left alone - and the bucket list arriving mid-dialog cannot rebuild the
+                    // model under a selection that has already been made.
+                    displayText: currentIndex <= 0
+                                 ? (root.bucketPriority.length > 0
+                                    ? "Bucket default (" + root.bucketPriority + ")"
+                                    : "Bucket default (none set)")
+                                 : currentText
+                    Material.theme: Material.Dark
+                    Material.accent: "#4f8cff"
+                }
+                Text {
+                    width: parent.width
+                    wrapMode: Text.WordWrap
+                    color: "#6b7280"
+                    font.pixelSize: 11
+                    text: priorityCombo.currentIndex <= 0
+                          ? (root.bucketPriority.length > 0
+                             ? "Notifications about this object are sent at the bucket's priority, "
+                               + root.bucketPriority + "."
+                             : "The bucket states no priority, so notifications about this object take the "
+                               + "default of the queue they are delivered to.")
+                          : "This object's own priority, which outranks the bucket's - a bucket speaks for "
+                            + "everything in it, this speaks for one object. It travels with the notifications "
+                            + "a subscription produces; the object itself is stored no differently."
+                }
+            }
+
+            Column {
+                width: parent.width
+                spacing: 6
                 visible: addObjectDialog.uploading && addObjectDialog.bytesTotal > 0
 
                 ProgressBar {
@@ -474,7 +575,8 @@ Item {
                     onClicked: {
                         addObjectDialog.errorText = ""
                         addObjectDialog.uploading = true
-                        esmClient.uploadObject(root.bucketErn, keyField.text.trim(), addObjectDialog.selectedFileUrl)
+                        esmClient.uploadObject(root.bucketErn, keyField.text.trim(),
+                                               addObjectDialog.selectedFileUrl, addObjectDialog.wantedPriority)
                     }
                 }
             }
