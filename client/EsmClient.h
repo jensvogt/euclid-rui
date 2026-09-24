@@ -22,12 +22,22 @@ public:
                                   const QString &sortColumn = QStringLiteral("name"),
                                   const QString &sortDirection = QStringLiteral("asc"),
                                   bool includeInternal = false);
-    Q_INVOKABLE void createBucket(const QString &name);
+    // `priority` is what the bucket's notifications are sent at, and empty - the default - is a
+    // bucket that states none. See setBucketPriority(), which is how it is changed afterwards.
+    Q_INVOKABLE void createBucket(const QString &name, const QString &priority = QString());
     // Deletes every object in the bucket. `async` hands the work to the server's background
     // purge, which answers "accepted" and keeps deleting after the reply - the only workable way
     // for a bucket holding more objects than a request can get through before timing out. The
     // counts catch up on later refreshes rather than being right in the answer.
-    Q_INVOKABLE void purgeBucket(const QString &bucketErn, bool async = false);
+    //
+    // `notify` is whether each removed object is announced to the bucket's subscribers as its own
+    // esm.object.deleted event, which is what a purge has always done and stays the default: a
+    // subscriber keeping an index of keys has to be told which ones went, and "the bucket was
+    // purged" does not say. Asking for silence suits test data, where the announcing is not free
+    // at either end - a purge of 1.3 million objects fed a listener's queue for hours - and is
+    // wrong wherever something keeps its own record of the bucket, which then goes quietly stale
+    // with no later event to reconcile it.
+    Q_INVOKABLE void purgeBucket(const QString &bucketErn, bool async = false, bool notify = true);
 
     // Announces objects already in the bucket, as though each had just been uploaded: the same
     // esm.object.created event and the same subscription deliveries an upload would have produced.
@@ -51,6 +61,20 @@ public:
     // mid-session against the old ERN.
     Q_INVOKABLE void renameBucket(const QString &bucketErn, const QString &newName);
     Q_INVOKABLE void deleteBucket(const QString &bucketErn);
+
+    // The priority the bucket's notifications carry: "LOW", "MEDIUM", "HIGH", or empty to clear it.
+    //
+    // Nothing about the bucket itself behaves differently - a bucket is not consumed from and has
+    // no queue of its own. It is a statement handed on to the messages a subscription of this
+    // bucket turns object events into, and the queue on the far side is where it has an effect.
+    //
+    // Empty is not MEDIUM. A bucket that says nothing leaves the target queue's own default in
+    // force, which is how every bucket behaved before this existed - so clearing is a distinct
+    // thing to ask for and not a synonym for the middle setting.
+    //
+    // Outranked by an object's own: a priority in an object's system attributes is a statement
+    // about that object where this is one about all of them, so that one wins.
+    Q_INVOKABLE void setBucketPriority(const QString &bucketErn, const QString &priority);
     // Upserts the tag unconditionally (unlike set-bucket-tag, this doesn't require the key to
     // already exist), matching an "Add" button's semantics.
     Q_INVOKABLE void addBucketTag(const QString &bucketErn, const QString &key, const QString &value);
@@ -134,7 +158,18 @@ public:
     // under the given key. Files under kMultipartThreshold go through "put-object" in one request;
     // larger files are split into kMultipartThreshold-sized parts and sent through the
     // create-upload/upload-part/complete-upload flow instead, matching the CLI's upload-file.
-    Q_INVOKABLE void uploadObject(const QString &bucketErn, const QString &key, const QUrl &fileUrl);
+    //
+    // `priority` is this one object's: "LOW", "MEDIUM", "HIGH", or empty to say nothing about it
+    // and let the bucket's own setting stand. It travels as the "priority" system attribute, which
+    // is euclid's own envelope rather than the caller's metadata - kept apart from the object's
+    // attributes, and not returned by list-object-attributes.
+    //
+    // More specific than the bucket's, and that is the order it is applied in: a bucket says
+    // "everything from here is urgent", this says "this one is", so this wins. The queue a
+    // subscription delivers the notification to is where either of them decides anything; the
+    // object itself is stored and served the same whatever it says.
+    Q_INVOKABLE void uploadObject(const QString &bucketErn, const QString &key, const QUrl &fileUrl,
+                                  const QString &priority = QString());
 
     // Replaces an object's content with `text`, encoded UTF-8, through the same "put-object" an
     // upload uses. This rewrites the object rather than patching it: size, checksum and content
@@ -172,6 +207,10 @@ signals:
     // background thread is working through them and `objects` is how many there were when it
     // started. Nothing in any listing changes either way.
     void objectsTouched(const QString &bucketErn, const QString &prefix, bool async, int objects);
+    // The priority as the server stored it - uppercased, or empty for a bucket that now says
+    // nothing. `name` comes back with it because the answer is about the bucket, not the ERN.
+    void bucketPriorityChanged(const QString &bucketErn, const QString &name, const QString &priority);
+    void bucketPriorityFailed(const QString &message);
     void bucketTagAdded(const QString &bucketErn, const QString &key, const QString &value);
     void bucketTagAddFailed(const QString &message);
     void bucketTagDeleted(const QString &bucketErn, const QString &key);
@@ -245,11 +284,17 @@ private:
                           const QString &downloadId, qint64 fileSize, long partNumber, qint64 bytesReceived);
     void completeDownload(const QString &bucketErn, const QString &key, const QString &path, const QString &downloadId);
 
-    void uploadSinglePart(const QString &bucketErn, const QString &key, const QByteArray &data);
-    void beginMultipartUpload(const QString &bucketErn, const QString &key, const QString &path, qint64 fileSize);
+    // The object's priority rides along the whole way down: a single-part upload carries it on
+    // "put-object", a multipart one on "complete-upload", which is where the parts become an
+    // object and the only point in that flow with an object to attach it to.
+    void uploadSinglePart(const QString &bucketErn, const QString &key, const QByteArray &data,
+                          const QString &priority = QString());
+    void beginMultipartUpload(const QString &bucketErn, const QString &key, const QString &path, qint64 fileSize,
+                              const QString &priority = QString());
     void uploadNextPart(const QString &bucketErn, const QString &key, const QString &path, qint64 fileSize,
-                         const QString &uploadId, long partNumber, qint64 bytesSent);
-    void completeMultipartUpload(const QString &bucketErn, const QString &key, const QString &uploadId);
+                         const QString &uploadId, long partNumber, qint64 bytesSent, const QString &priority);
+    void completeMultipartUpload(const QString &bucketErn, const QString &key, const QString &uploadId,
+                                 const QString &priority);
 
     EuclidBaseClient *m_base;
 };

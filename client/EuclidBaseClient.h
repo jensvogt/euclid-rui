@@ -90,10 +90,13 @@ public:
     // that long-polls has to be willing to wait longer than a normal call ever should.
     // Returns the reply, for the caller that has to be able to abort a long one; ignoring it is
     // the normal case - the callbacks own the outcome either way.
+    // extraHeaders is for the few actions that read something out of the request's headers as well
+    // as its body - ESM's "complete-upload" takes the object's attributes that way, because the
+    // path it shares with "put-object" has the body occupied by the object itself.
     QNetworkReply *post(const QString &target, const QString &action, const QJsonObject &body, bool authorized,
                         const std::function<void(const QJsonObject &)> &onSuccess,
                         const std::function<void(const QString &)> &onError,
-                        int timeoutMs = 0);
+                        int timeoutMs = 0, const QVariantMap &extraHeaders = QVariantMap());
 
     // Like post(), but sends a raw binary body (e.g. file contents) with extra raw headers, instead
     // of a JSON body. Always authorized - every raw-upload action needs a session. Used for actions

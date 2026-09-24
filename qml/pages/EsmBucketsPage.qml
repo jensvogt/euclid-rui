@@ -63,11 +63,42 @@ Item {
                 formatter: function (v) { return v ? "Yes" : "No" },
                 colorFor: function (v) { return v ? "#4cd97b" : "#6b7280" }
             },
+            // What the bucket's notifications are sent at, not anything about the bucket itself:
+            // a bucket is not consumed from, so this is a statement handed on to the messages a
+            // subscription turns object events into. "—" is a bucket that states nothing, which
+            // leaves the target queue's own default in force - deliberately not shown as MEDIUM,
+            // since that would read as an override the bucket is not making.
+            {
+                title: "Priority",
+                key: "priority",
+                formatter: function (v) { return String(v).length > 0 ? String(v) : "—" },
+                colorFor: function (v) { return root.priorityColor(String(v)) }
+            },
             { title: "Created", key: "created", formatter: function (v) { return DateFormat.format(v) } },
             { title: "Modified", key: "modified", formatter: function (v) { return DateFormat.format(v) } },
             { title: "Ern", key: "ern", hidden: true }
         ]
         return cols
+    }
+
+    // The colours EQS gives the same three words, so a bucket's priority and the priority of the
+    // messages it ends up producing read as the one scale they are.
+    function priorityColor(priority) {
+        if (priority === "HIGH") return "#d94c4c"
+        if (priority === "MEDIUM") return "#ffb545"
+        if (priority === "LOW") return "#4f8cff"
+        return "#6b7280"
+    }
+
+    // Applies a stored priority to the row it was set from rather than re-reading the page, for
+    // the reason emptyBucketLocally() does it: a re-read re-sorts the listing under whoever is
+    // reading it, and the server has already said what it stored.
+    function setPriorityLocally(bucketErn, priority) {
+        root.buckets = root.buckets.map(function (bucket) {
+            return bucket.ern === bucketErn
+                    ? Object.assign({}, bucket, { priority: priority })
+                    : bucket
+        })
     }
 
     // Above this many objects a purge is handed to the server's background worker instead of being
@@ -132,7 +163,18 @@ Item {
 
     Connections {
         target: esmClient
+        // Only a listing this page asked for. "bucketsLoaded" carries no trace of who wanted it,
+        // and this page is not the only caller: the ESM module page's summary counts buckets with
+        // fetchBuckets("", 0, 100), and the object tree does the same to fill its copy targets and
+        // to name a bucket it is showing. Taken as an answer here, any of those replaced this
+        // table's page - ten rows sorted by object count - with a hundred sorted by name, while
+        // the page size and sort indicator went on describing the query that had been asked for.
+        //
+        // This page only ever asks while it is on screen, so that is the test. A refresh whose
+        // answer arrives after the user has navigated away is dropped, and onVisibleChanged asks
+        // again on the way back.
         function onBucketsLoaded(list, total) {
+            if (!root.visible) return
             root.loading = false
             root.error = ""
             root.buckets = list
@@ -140,11 +182,17 @@ Item {
             root.lastUpdatedText = Qt.formatDateTime(new Date(), "hh:mm:ss")
         }
         function onBucketsFailed(message) {
+            // Same rule: another page's failed listing is not this page's error to show.
+            if (!root.visible) return
             root.loading = false
             root.error = message
         }
 
         function onBucketsReload() {
+            // A tag added from the details page reloads the listing too, and this page is not on
+            // screen for that: asking for a listing whose answer is then dropped is a request for
+            // nothing. onVisibleChanged re-reads on the way back, which is when it is needed.
+            if (!root.visible) return
             refresh()
         }
 
@@ -191,6 +239,151 @@ Item {
             renameBucketDialog.renaming = false
             renameBucketDialog.errorText = message
         }
+        function onBucketPriorityChanged(bucketErn, name, priority) {
+            // The row is corrected whether or not this page is on screen; the note is only taken
+            // while it is, for the reason onBucketPurged gives.
+            root.setPriorityLocally(bucketErn, priority)
+            priorityDialog.saving = false
+            priorityDialog.close()
+            if (!root.visible) return
+            root.actionNote = priority.length > 0
+                    ? "Notifications from '" + name + "' are now sent at " + priority + " priority."
+                    : "'" + name + "' no longer sets a priority. Its notifications take the priority of the "
+                      + "queue they are delivered to."
+        }
+        function onBucketPriorityFailed(message) {
+            priorityDialog.saving = false
+            if (priorityDialog.opened) priorityDialog.errorText = message
+            else root.error = message
+        }
+    }
+
+    // What the bucket's notifications are sent at. Nothing here changes the bucket's own behaviour
+    // - see EsmClient::setBucketPriority - so the dialog says where the setting actually lands.
+    Dialog {
+        id: priorityDialog
+        modal: true
+        anchors.centerIn: parent
+        width: 440
+        padding: 28
+        topPadding: 24
+        bottomPadding: 24
+        standardButtons: Dialog.NoButton
+
+        property var bucket: null
+        property bool saving: false
+        property string errorText: ""
+        readonly property string bucketName: bucket ? String(bucket.name) : ""
+        readonly property string currentPriority: bucket ? String(bucket.priority || "") : ""
+        // "None" is a real choice rather than a blank entry: clearing is the only way back to
+        // letting the target queue decide, and a bucket that has never had one has to be able to
+        // tell that state from MEDIUM.
+        readonly property var options: ["None", "LOW", "MEDIUM", "HIGH"]
+        readonly property string wanted: priorityCombo.currentIndex <= 0 ? "" : priorityCombo.currentText
+
+        function openFor(row) {
+            priorityDialog.bucket = row
+            priorityDialog.saving = false
+            priorityDialog.errorText = ""
+            priorityDialog.open()
+            // Assigned rather than bound, so a refresh arriving mid-edit cannot move the selection.
+            priorityCombo.currentIndex = Math.max(0, priorityDialog.options.indexOf(priorityDialog.currentPriority))
+        }
+
+        background: Rectangle {
+            radius: 16
+            color: "#1b1e25"
+            border.color: "#2c313c"
+            border.width: 1
+        }
+
+        contentItem: Column {
+            width: priorityDialog.availableWidth
+            spacing: 18
+
+            Column {
+                width: parent.width
+                spacing: 4
+                Text { text: "Notification Priority"; color: "white"; font.pixelSize: 18; font.bold: true }
+                Text {
+                    text: priorityDialog.bucketName + "  ·  currently "
+                          + (priorityDialog.currentPriority.length > 0 ? priorityDialog.currentPriority : "none")
+                    color: "#9aa1ac"
+                    font.pixelSize: 12
+                    elide: Text.ElideRight
+                    width: parent.width
+                }
+            }
+
+            Text {
+                width: parent.width
+                wrapMode: Text.WordWrap
+                color: "#6b7280"
+                font.pixelSize: 11
+                text: "Nothing about the bucket is stored or served differently. This is the priority the "
+                      + "messages carry that a subscription of this bucket turns object events into, and the "
+                      + "queue they are delivered to is where it has an effect. An object that names its own "
+                      + "priority keeps it - one object's statement outranks the bucket's about all of them."
+            }
+
+            ComboBox {
+                id: priorityCombo
+                width: parent.width
+                model: priorityDialog.options
+                Material.theme: Material.Dark
+                Material.accent: "#4f8cff"
+            }
+
+            Text {
+                width: parent.width
+                wrapMode: Text.WordWrap
+                color: "#9aa1ac"
+                font.pixelSize: 11
+                visible: priorityCombo.currentIndex <= 0
+                text: "With none set, each notification takes the default of the queue it is delivered to - "
+                      + "which is how every bucket behaved before buckets could state one."
+            }
+
+            Text {
+                width: parent.width
+                wrapMode: Text.WordWrap
+                color: "#ff6b6b"
+                font.pixelSize: 12
+                visible: priorityDialog.errorText.length > 0
+                text: priorityDialog.errorText
+            }
+
+            Item {
+                width: parent.width
+                height: 40
+
+                Button {
+                    text: "Cancel"
+                    flat: true
+                    anchors.left: parent.left
+                    anchors.verticalCenter: parent.verticalCenter
+                    Material.theme: Material.Dark
+                    enabled: !priorityDialog.saving
+                    onClicked: priorityDialog.close()
+                }
+
+                Button {
+                    text: priorityDialog.saving ? "Saving…" : "Apply"
+                    highlighted: true
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    Material.theme: Material.Dark
+                    Material.accent: "#4f8cff"
+                    enabled: !priorityDialog.saving && priorityDialog.wanted !== priorityDialog.currentPriority
+                    onClicked: {
+                        priorityDialog.saving = true
+                        priorityDialog.errorText = ""
+                        root.actionNote = ""
+                        esmClient.setBucketPriority(priorityDialog.bucket.ern, priorityDialog.wanted)
+                    }
+                }
+            }
+        }
     }
 
     // Asked rather than assumed: a background purge answers immediately and keeps deleting, so the
@@ -212,6 +405,10 @@ Item {
 
         function openFor(row) {
             purgeDialog.bucket = row
+            // Announcing is what a purge has always done, so silence is asked for each time rather
+            // than remembered: it is the choice that leaves a subscriber's own index wrong, and
+            // carrying it over from the last bucket is not a decision anybody made about this one.
+            notifyCheck.checked = true
             purgeDialog.open()
         }
 
@@ -259,6 +456,38 @@ Item {
                       + "bucket this size can outlast the request's own timeout."
             }
 
+            // The CLI's --no-notify, put the way round it is actually decided: announcing is what
+            // a purge does, and this is the box that stops it.
+            Column {
+                width: parent.width
+                spacing: 6
+
+                CheckBox {
+                    id: notifyCheck
+                    text: "Announce each removed object to subscribers"
+                    checked: true
+                    Material.theme: Material.Dark
+                    Material.accent: "#4f8cff"
+                }
+
+                Text {
+                    width: parent.width
+                    wrapMode: Text.WordWrap
+                    color: notifyCheck.checked ? "#6b7280" : "#e0a458"
+                    font.pixelSize: 11
+                    // Both halves of the trade, because neither is the safe default in every case.
+                    text: notifyCheck.checked
+                          ? "One esm.object.deleted event per object, which is what a subscriber keeping an index "
+                            + "of keys needs - \"the bucket was purged\" does not say which ones went. For "
+                            + purgeDialog.objectCount + " objects that is " + purgeDialog.objectCount
+                            + " deliveries, and they are not free at either end."
+                          : "⚠  The objects are removed in silence. Right for test data; wrong wherever something "
+                            + "keeps its own record of this bucket, which then goes quietly stale - there is no "
+                            + "later event to reconcile it, and touching the bucket re-announces only what is "
+                            + "still there, never what was removed."
+                }
+            }
+
             Item {
                 width: parent.width
                 height: 40
@@ -283,7 +512,7 @@ Item {
                         Material.theme: Material.Dark
                         Material.accent: "#ff6b6b"
                         onClicked: {
-                            esmClient.purgeBucket(purgeDialog.bucket.ern, false)
+                            esmClient.purgeBucket(purgeDialog.bucket.ern, false, notifyCheck.checked)
                             purgeDialog.close()
                         }
                     }
@@ -293,7 +522,7 @@ Item {
                         Material.theme: Material.Dark
                         Material.accent: "#4f8cff"
                         onClicked: {
-                            esmClient.purgeBucket(purgeDialog.bucket.ern, true)
+                            esmClient.purgeBucket(purgeDialog.bucket.ern, true, notifyCheck.checked)
                             purgeDialog.close()
                         }
                     }
@@ -608,6 +837,7 @@ Item {
 
         onOpened: {
             nameField.text = ""
+            createPriorityCombo.currentIndex = 0
             createBucketDialog.errorText = ""
             createBucketDialog.creating = false
             nameField.forceActiveFocus()
@@ -652,6 +882,30 @@ Item {
                 }
             }
 
+            Column {
+                width: parent.width
+                spacing: 6
+                Text { text: "Notification priority"; color: "#9aa1ac"; font.pixelSize: 12 }
+                ComboBox {
+                    id: createPriorityCombo
+                    width: parent.width
+                    // The same list the priority dialog offers, "None" first and the default: a
+                    // new bucket states nothing unless somebody says otherwise, which leaves the
+                    // priority to the queue its notifications are delivered to.
+                    model: priorityDialog.options
+                    Material.theme: Material.Dark
+                    Material.accent: "#4f8cff"
+                }
+                Text {
+                    text: "What the bucket's object notifications are sent at. Nothing about the bucket itself "
+                          + "changes, and it can be set or cleared afterwards."
+                    color: "#6b7280"
+                    font.pixelSize: 11
+                    wrapMode: Text.WordWrap
+                    width: parent.width
+                }
+            }
+
             Item {
                 width: parent.width
                 height: 40
@@ -687,7 +941,10 @@ Item {
                     onClicked: {
                         createBucketDialog.errorText = ""
                         createBucketDialog.creating = true
-                        esmClient.createBucket(nameField.text.trim())
+                        // Index 0 is "None", which is sent as no priority at all.
+                        esmClient.createBucket(nameField.text.trim(),
+                                               createPriorityCombo.currentIndex <= 0
+                                               ? "" : createPriorityCombo.currentText)
                     }
                 }
             }
@@ -816,6 +1073,12 @@ Item {
                         text: "Rename…",
                         action: function(row) {
                             renameBucketDialog.openFor(row)
+                        }
+                    },
+                    {
+                        text: "Priority…",
+                        action: function(row) {
+                            priorityDialog.openFor(row)
                         }
                     },
                     {

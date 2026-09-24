@@ -291,11 +291,14 @@ void EuclidBaseClient::setBusy(const bool busy) {
 QNetworkReply *EuclidBaseClient::post(const QString &target, const QString &action, const QJsonObject &body, const bool authorized,
                              const std::function<void(const QJsonObject &)> &onSuccess,
                              const std::function<void(const QString &)> &onError,
-                             const int timeoutMs) {
+                             const int timeoutMs, const QVariantMap &extraHeaders) {
     QNetworkRequest request{QUrl(m_baseUrl)};
     request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
     request.setRawHeader("x-euclid-target", target.toUtf8());
     request.setRawHeader("x-euclid-action", action.toUtf8());
+    // Before authorize(), where postRaw() sets its own.
+    for (auto it = extraHeaders.constBegin(); it != extraHeaders.constEnd(); ++it)
+        request.setRawHeader(it.key().toUtf8(), it.value().toString().toUtf8());
 
     // Listing something is the UI describing the system, not asking it to do work, and every page
     // here re-lists on a timer for as long as it is open. Counted as load, a browser left on the
