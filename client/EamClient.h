@@ -48,6 +48,29 @@ public:
     // Admin-only; deletes unconditionally (no check for group membership).
     Q_INVOKABLE void deleteUser(const QString &userId);
 
+    // Gives a user a different user ID. Wire action is "change-userid". Admin-only, and it names
+    // both ids outright rather than reading an omitted one as the caller's own the way
+    // changePassword() does - a rename that could mean you by saying nothing is one keystroke from
+    // renaming the wrong account.
+    //
+    // A userId is not only a label: the ERN is built from it, so the ERN changes too, and the
+    // grants hanging off it and the group memberships listing it follow the rename server-side (see
+    // IEamRepository::renameUser). Anything holding a user ERN has to take the new one out of
+    // userRenamed()'s map rather than keep the one it navigated in with. What does not follow: the
+    // audit history and the owner recorded on a bucket, queue or object - those name who acted, not
+    // who exists now - and the access keys, which keep their ids and go on signing.
+    //
+    // Three refusals worth telling apart in the UI: the new id is already taken (409), the user is
+    // the identity an application runs as (409, naming the application - it has to be pointed at
+    // another user first, or it would keep running and be refused everything it calls), and the two
+    // ids are the same (400, rather than a success that changed nothing).
+    //
+    // Note what it does not do, which is what change-password does not do either: a session already
+    // holding a token keeps it, because the token is a JWT checked against the signing secret. It
+    // goes on working until it expires - and then cannot be refreshed, the subject no longer
+    // resolving.
+    Q_INVOKABLE void renameUser(const QString &userId, const QString &newUserId);
+
     // Replaces a password. Which of the two things this is - somebody changing their own, or an
     // administrator resetting somebody else's - is decided server-side by the userId alone and not
     // by what the request carries, so a caller cannot reach the reset path just by omitting the old
@@ -184,6 +207,12 @@ signals:
     void usersReload();
     void userCreated(const QString &userId);
     void userCreateFailed(const QString &message);
+    // The user as they are now, under the new id: {userId, ern, email, accountId, region, created,
+    // modified} - the same shape usersLoaded() carries. Both ids are named so a page showing the
+    // old one can tell this rename was the one it asked for, and the map is sent rather than just
+    // the new id because the ERN changed with it and the page needs that too.
+    void userRenamed(const QString &userId, const QString &newUserId, const QVariantMap &user);
+    void userRenameFailed(const QString &message);
     // Carries the userId back so a dialog can tell its own result from one belonging to another
     // open on the same client - these signals reach every listener, not just the caller.
     void passwordChanged(const QString &userId);

@@ -282,6 +282,25 @@ void EamClient::deleteNamespace(const QString &accountId, const QString &name) {
          });
 }
 
+namespace {
+// Turns one user into the map the QML pages read. Shared by the listing and by the single user
+// "change-userid" answers with, because those are one model server-side (GetUserResponse carries
+// the same User that list-users fills its array with) and reading them in two places is two shapes
+// that can drift.
+QVariantMap userToMap(const QJsonObject &user) {
+    QVariantMap entry;
+    // Deliberately not mapping "password" (a hash, but still no reason to ship it to the UI layer).
+    entry["userId"] = user.value("userId").toString();
+    entry["ern"] = user.value("ern").toString();
+    entry["email"] = user.value("email").toString();
+    entry["accountId"] = user.value("accountId").toString();
+    entry["region"] = user.value("region").toString();
+    entry["created"] = user.value("created").toString();
+    entry["modified"] = user.value("modified").toString();
+    return entry;
+}
+}// namespace
+
 void EamClient::fetchUsers(const QString &prefix, const int pageIndex, const int pageSize, const QString &sortColumn, const QString &sortDirection) {
     QJsonObject body;
     body["prefix"] = prefix;
@@ -304,21 +323,9 @@ void EamClient::fetchUsers(const QString &prefix, const int pageIndex, const int
              const int total = response.value("total").toInt();
 
              QVariantList users;
-             for (const QJsonArray array = response.value("users").toArray(); const auto &value : array) {
-                 const QJsonObject user = value.toObject();
+             for (const QJsonArray array = response.value("users").toArray(); const auto &value : array)
+                 users << userToMap(value.toObject());
 
-                 QVariantMap entry;
-                 // Deliberately not mapping "password" (a hash, but still no reason to ship
-                 // it to the UI layer).
-                 entry["userId"] = user.value("userId").toString();
-                 entry["ern"] = user.value("ern").toString();
-                 entry["email"] = user.value("email").toString();
-                 entry["accountId"] = user.value("accountId").toString();
-                 entry["region"] = user.value("region").toString();
-                 entry["created"] = user.value("created").toString();
-                 entry["modified"] = user.value("modified").toString();
-                 users << entry;
-             }
              emit usersLoaded(users, total);
          },
          [this](const QString &message) {
@@ -356,6 +363,23 @@ void EamClient::deleteUser(const QString &userId) {
          },
          [this](const QString &message) {
              emit usersFailed(message);
+         });
+}
+
+void EamClient::renameUser(const QString &userId, const QString &newUserId) {
+    QJsonObject body;
+    body["userId"] = userId;
+    body["newUserId"] = newUserId;
+
+    m_base->post("eam", "change-userid", body, true,
+         [this, userId, newUserId](const QJsonObject &response) {
+             // The renamed user rather than the two ids alone: the ERN was rebuilt from the new id,
+             // and a page still holding the old one would ask about a principal that is gone.
+             emit userRenamed(userId, newUserId, userToMap(response.value("user").toObject()));
+             emit usersReload();
+         },
+         [this](const QString &message) {
+             emit userRenameFailed(message);
          });
 }
 

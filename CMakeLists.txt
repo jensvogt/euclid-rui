@@ -140,6 +140,7 @@ qt_add_qml_module(euclid-rui
         qml/components/ImportExportDialog.qml
         qml/components/CertificateImportDialog.qml
         qml/components/ChangePasswordDialog.qml
+        qml/components/RenameUserDialog.qml
         qml/components/ServiceModuleTile.qml
         qml/components/Breadcrumb.qml
         qml/components/RoleGrants.qml
