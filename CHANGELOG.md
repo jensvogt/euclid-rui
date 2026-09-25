@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.1.21](https://github.com/jensvogt/euclid-rui/compare/1.1.20...v1.1.21) (2026-09-25)
+
+
+### Bug Fixes
+
+* add change userid command ([1abca6e](https://github.com/jensvogt/euclid-rui/commit/1abca6e5ede7bdc482d8dab6e295dab5372f047b))
+* add change userid command ([445362c](https://github.com/jensvogt/euclid-rui/commit/445362cee9207a575bece1a4b65ece1f62578822))
+
 ## [1.1.20](https://github.com/jensvogt/euclid-rui/compare/1.1.19...v1.1.20) (2026-09-24)
 
 
