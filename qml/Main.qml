@@ -1072,6 +1072,15 @@ ApplicationWindow {
                     userId: window.selectedUserId
                     details: window.selectedUserDetails
                     onBack: window.currentRoute = "modules-eam-users"
+                    // Stay on the user that was renamed rather than dropping back to the list: the
+                    // page is looking at the same person, only under another name and another ERN.
+                    // Setting these re-points the page, and the Roles tile re-reads the grants for
+                    // the new ERN off the change.
+                    onRenamed: (newUserId, newUserErn, user) => {
+                        window.selectedUserErn = newUserErn
+                        window.selectedUserId = newUserId
+                        window.selectedUserDetails = user
+                    }
                 }
                 EamUserGroupsPage {
                     anchors.fill: parent

@@ -22,6 +22,11 @@ Item {
     property string error: ""
     property bool loading: false
 
+    // Off the tile's own implicit height, which is the content's - a Rectangle does not take one
+    // from its children, so binding this to a plain "height:" expression on the tile left root
+    // sizeless. The pages put this in a Column, and a Column reads implicitHeight: at zero the tile
+    // was laid out on top of whatever came next, and fell outside the scrollable area entirely when
+    // it came last.
     implicitHeight: tile.implicitHeight
 
     readonly property bool ready: root.loggedIn && root.principalErn.length > 0
@@ -39,6 +44,10 @@ Item {
 
     onPrincipalErnChanged: refresh()
     onLoggedInChanged: refresh()
+    // The detail pages are built once and shown and hidden by route, so opening the same principal
+    // twice does not change principalErn and would otherwise leave the grants from the first visit
+    // on screen - including any granted from a different window since.
+    onVisibleChanged: if (visible) refresh()
     Component.onCompleted: refresh()
 
     // "*" is every namespace of the account, and every resource - said in words, because a lone
@@ -98,7 +107,8 @@ Item {
     Rectangle {
         id: tile
         width: parent.width
-        height: grantsCol.implicitHeight + 40
+        implicitHeight: grantsCol.implicitHeight + 40
+        height: implicitHeight
         radius: 14
         color: "#20242e"
         border.color: "#2c313c"

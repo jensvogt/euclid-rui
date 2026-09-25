@@ -92,6 +92,13 @@ Item {
         id: changePasswordDialog
     }
 
+    // Nothing to do with the result here: the rename emits usersReload(), which this page already
+    // acts on, so the row comes back under its new id by itself. The details page is the one that
+    // has to take the new ERN, because it is showing that one user.
+    RenameUserDialog {
+        id: renameUserDialog
+    }
+
     Dialog {
         id: createUserDialog
         modal: true
@@ -358,6 +365,13 @@ Item {
                         text: "Details",
                         action: function(row) {
                             root.openUserDetails(row.ern, row.userId, row)
+                        }
+                    },
+                    {
+                        text: "Rename…",
+                        action: function(row) {
+                            renameUserDialog.userId = row.userId
+                            renameUserDialog.open()
                         }
                     },
                     {

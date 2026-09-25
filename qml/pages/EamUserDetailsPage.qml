@@ -28,6 +28,12 @@ Item {
 
     signal back()
 
+    // A rename changes what this page is about: the ERN is rebuilt from the user ID, so the one it
+    // was opened with names nobody afterwards. Passed up rather than assigned here because userId,
+    // userErn and details are bound to properties of the window - see Main.qml - and writing to
+    // them from inside would break those bindings for good.
+    signal renamed(string newUserId, string newUserErn, var user)
+
     function detail(key, fallback) {
         return root.details && root.details[key] !== undefined ? root.details[key] : fallback
     }
@@ -45,6 +51,10 @@ Item {
 
     onVisibleChanged: if (visible) refresh()
     onLoggedInChanged: if (loggedIn && visible) refresh()
+    // Opening a user goes through hidden-to-visible, so this is about the id changing underneath a
+    // page already on screen - which is what a rename does. A group's membership is a list of user
+    // IDs, so the memberships have to be read again under the new one.
+    onUserIdChanged: if (visible) refresh()
 
     Connections {
         target: eamClient
@@ -114,6 +124,17 @@ Item {
                     anchors.right: parent.right
                     anchors.verticalCenter: sectionHeader.verticalCenter
                     spacing: 12
+
+                    Button {
+                        text: "Rename…"
+                        Material.theme: Material.Dark
+                        Material.accent: "#4f8cff"
+                        enabled: !root.deleting && root.userId.length > 0
+                        onClicked: {
+                            renameUserDialog.userId = root.userId
+                            renameUserDialog.open()
+                        }
+                    }
 
                     Button {
                         text: "Change Password…"
@@ -306,6 +327,11 @@ Item {
 
     ChangePasswordDialog {
         id: changePasswordDialog
+    }
+
+    RenameUserDialog {
+        id: renameUserDialog
+        onRenamed: (oldUserId, newUserId, user) => root.renamed(newUserId, user.ern, user)
     }
 
     Dialog {

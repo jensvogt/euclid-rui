@@ -5,7 +5,10 @@
     <Title>Euclid Rich UI Installer</Title>
     <Publisher>Dr. Jens Vogt</Publisher>
     <StartMenuDir>euclid</StartMenuDir>
-    <TargetDir>@ApplicationsDir@/euclid</TargetDir>
+    <!-- @ApplicationsDir@ is "C:\Program Files" on Windows, so this is the requested
+         C:\Program Files\euclid-rui - taken from the variable rather than spelled out so a Windows
+         installed on a drive other than C: still lands in its own Program Files. -->
+    <TargetDir>@ApplicationsDir@/euclid-rui</TargetDir>
     <!-- Deliberately without the extension: IFW appends the platform's own (.ico here, .icns on
          macOS, .png on Linux), so naming euclid-rui.ico would have it look for euclid-rui.ico.ico.
          This is what the installer and the maintenance tool it leaves behind are shown as. -->
