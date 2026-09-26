@@ -56,11 +56,16 @@ public:
     // few seconds. Upload the artifact first (EsmClient::uploadObject), since EAP refuses a build
     // it cannot find.
     //
-    // Refused server-side unless this is genuinely a new build: the version has to differ from the
-    // deployed one, and so do the artifact's bytes. A version bump shipping identical bytes, or new
-    // bytes under the version already running, are both deployments nobody could account for
-    // afterwards. Deploying either on purpose is what updateApplication() is for.
-    Q_INVOKABLE void redeployApplication(const QString &applicationId, const QString &artifact, const QString &version);
+    // Refused server-side unless the artifact's bytes differ from the deployed ones: a build that
+    // is byte for byte the one already running is a restart that changes nothing, and a deployment
+    // nobody could account for afterwards.
+    //
+    // force overrides that refusal, for when redeploying the same bytes is the point - an artifact
+    // that was deleted and is being put back, or a host that lost its copy of the build. The server
+    // logs the reason it was told to ignore, so a pool that restarted onto the same build is still
+    // answerable for afterwards.
+    Q_INVOKABLE void redeployApplication(const QString &applicationId, const QString &artifact, const QString &version,
+                                         bool force = false);
 
     // The autoscaler's bounds, and the call to change them. Either may be left as it stands by
     // passing -1, which is what lets a ceiling be raised without naming the floor it has to clear.

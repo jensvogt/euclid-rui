@@ -43,7 +43,20 @@ Item {
         },
         { title: "Runtime", key: "runtime" },
         { title: "Version", key: "version" },
-        { title: "Runs as", key: "userId" },
+        {
+            title: "Runs as",
+            key: "userId",
+            // Marked where the principal is not there any more. An application whose identity does
+            // not exist runs and is refused everything it calls, and what it reports is the first
+            // call it made - a secret it could not read, a queue it could not reach - so the one
+            // place this is worth saying is next to the name that is wrong.
+            formatter: function (v, row) {
+                return row && row.userExists === false ? String(v) + "  (no such user)" : String(v)
+            },
+            colorFor: function (v, row) {
+                return row && row.userExists === false ? "#ff6b6b" : "#c4c9d1"
+            }
+        },
         { title: "State", key: "state", colorFor: function (v) { return root.stateColor(v) } },
         { title: "Desired", key: "desiredState", colorFor: function (v) { return root.stateColor(v) } },
         // Running against the ceiling the pool may grow to, which is the pair that says whether
@@ -265,6 +278,10 @@ Item {
 
         function openFor(row) {
             redeployDialog.application = row
+            // Off every time: forcing is a decision about one deployment, not a setting the dialog
+            // remembers on somebody's behalf.
+            redeployForce.checked = false
+            redeployDialog.errorText = ""
             redeployDialog.open()
         }
 
@@ -282,7 +299,8 @@ Item {
         function submit() {
             eapClient.redeployApplication(redeployDialog.applicationId,
                                           redeployArtifactField.text.trim(),
-                                          redeployVersionField.text.trim())
+                                          redeployVersionField.text.trim(),
+                                          redeployForce.checked)
         }
 
         background: Rectangle {
@@ -421,6 +439,26 @@ Item {
                          ? "Uploading… " + SizeFormat.format(redeployDialog.bytesSent) + " of " + SizeFormat.format(redeployDialog.bytesTotal)
                          : "Uploading…")
                       : "Deploying…"
+            }
+
+            CheckBox {
+                id: redeployForce
+                text: "Deploy even if the build is unchanged"
+                font.pixelSize: 12
+                Material.theme: Material.Dark
+                Material.accent: "#4f8cff"
+            }
+
+            Text {
+                // What it is for, said where the decision is made rather than in a manual: the
+                // refusal it overrides reads as "nothing would change", and the cases where that is
+                // untrue are not obvious from it.
+                text: "For putting a deleted artifact back, or restarting a pool whose host lost its copy - "
+                      + "the bytes are the same, and deploying them again is the point."
+                color: "#6b7280"
+                font.pixelSize: 11
+                wrapMode: Text.WordWrap
+                width: parent.width
             }
 
             Text {

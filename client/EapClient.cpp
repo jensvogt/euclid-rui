@@ -38,6 +38,13 @@ QVariantMap applicationToMap(const QJsonObject &application) {
     // its own account.
     entry["resources"] = application.value("resources").toArray().toVariantList();
     entry["userId"] = application.value("userId").toString();
+    // Whether that identity still exists. EAP checks it when an application is created and
+    // never again, and a principal can be deleted or renamed underneath a definition that goes
+    // on naming it - after which the application runs, authenticates as nobody and is refused
+    // everything it calls, reporting whatever it happened to ask for first rather than who it
+    // was asking as. Absent from a server older than the field, where true is the right guess:
+    // it is what was assumed before anybody could ask.
+    entry["userExists"] = application.value("userExists").toBool(true);
     entry["minInstances"] = application.value("minInstances").toInt();
     entry["maxInstances"] = application.value("maxInstances").toInt();
     entry["readyTimeoutMs"] = application.value("readyTimeoutMs").toInt();
@@ -153,11 +160,15 @@ void EapClient::deleteApplication(const QString &applicationId) {
          });
 }
 
-void EapClient::redeployApplication(const QString &applicationId, const QString &artifact, const QString &version) {
+void EapClient::redeployApplication(const QString &applicationId, const QString &artifact, const QString &version,
+                                    const bool force) {
     QJsonObject body;
     body["applicationId"] = applicationId;
     body["artifact"] = artifact;
     body["version"] = version;
+    // Sent always rather than only when set: an absent field and a false one mean the same thing to
+    // EAP, and a request that always carries it is one whose intent can be read off the wire.
+    body["force"] = force;
 
     m_base->post("eap", "redeploy-application", body, true,
          [this, applicationId, artifact, version](const QJsonObject &response) {
