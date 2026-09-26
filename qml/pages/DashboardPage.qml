@@ -26,6 +26,32 @@ Item {
     // run queue behind slow disks (not keeping up). Neither figure says that on its own.
     property real loadPerCore: -1
 
+    // What a Windows-hosted euclid records instead, and why this gauge reads two metrics rather
+    // than one. Windows keeps no 1-, 5- and 15-minute run-queue averages, so emo does not record a
+    // "system-load-average" there at all - it reads "\System\Processor Queue Length" through PDH
+    // and records "system-processor-queue-per-core" under a deliberately different name, so that
+    // nothing reading a load average is handed an instantaneous count averaged over nothing. See
+    // EmoServer::collectSystemLoad().
+    //
+    // The same quantity in the same units - threads waiting per processor - on a different scale:
+    // the guidance for Windows is that a sustained two per processor is a CPU bottleneck, where a
+    // Linux load average saturates at one.
+    property real queuePerCore: -1
+
+    // Which of the two the host euclid runs on has figures for. Exactly one answers: emo records
+    // one or the other depending on the platform it was built for, and asking for the absent one
+    // comes back "No data available yet" - so neither the page nor the client has to know, or
+    // guess, which operating system is at the other end.
+    readonly property bool loadIsQueue: root.loadPerCore < 0 && root.queuePerCore >= 0
+    readonly property real loadValue: root.loadPerCore >= 0 ? root.loadPerCore : root.queuePerCore
+    // Where the arc fills and the colours turn. Not cosmetic: on Windows a reading of 1.2 is a
+    // machine with headroom, and drawn against the Linux scale it would be reported as saturated.
+    readonly property real loadSaturation: root.loadIsQueue ? 2 : 1
+    // Named for what it is on each platform, because the two are not interchangeable enough to
+    // share a label - somebody comparing this against a load average they read elsewhere has to be
+    // able to tell that the Windows figure is not one.
+    readonly property string loadLabel: root.loadIsQueue ? "Queue / CPU" : "Load / core"
+
     // The module registry: what euclid-mgr is meant to be running, and what actually is.
     property var modules: []
     property string modulesError: ""
@@ -194,7 +220,11 @@ Item {
         }
         emoClient.fetchAverage("system-cpu-usage")
         emoClient.fetchAverage("system-memory-usage-percent")
+        // Both, every refresh: whichever the host does not have comes back as a failure and leaves
+        // its figure at -1. One wasted request against a metric that does not exist is cheaper than
+        // teaching the client to ask what the server was built for.
         emoClient.fetchAverage("system-load-per-core")
+        emoClient.fetchAverage("system-processor-queue-per-core")
         emoClient.fetchAverage("database-total-size")
         emoClient.fetchAverage("database-collections")
         emoClient.fetchAverage("database-objects")
@@ -234,6 +264,7 @@ Item {
             if (name === "system-cpu-usage") root.cpuPercent = value
             else if (name === "system-memory-usage-percent") root.memoryPercent = value
             else if (name === "system-load-per-core") root.loadPerCore = value
+            else if (name === "system-processor-queue-per-core") root.queuePerCore = value
             else if (name === "database-total-size") root.databaseSize = value
             else if (name === "database-collections") root.databaseCollections = value
             else if (name === "database-objects") root.databaseObjects = value
@@ -248,7 +279,12 @@ Item {
             // Also the answer on a host emo cannot read a core count from: it records nothing at
             // all rather than a per-core figure it would have to guess the divisor for, so this
             // reads as "—" instead of as a load of zero.
+            //
+            // And the ordinary answer for whichever of these two the platform does not keep - on
+            // Linux there is no processor-queue counter and on Windows no load average, so one of
+            // them fails on every refresh and is meant to.
             else if (name === "system-load-per-core") root.loadPerCore = -1
+            else if (name === "system-processor-queue-per-core") root.queuePerCore = -1
             else if (name === "system-memory-usage-percent") root.memoryPercent = -1
             else if (name === "database-total-size") root.databaseSize = -1
             else if (name === "database-collections") root.databaseCollections = -1
@@ -457,24 +493,28 @@ Item {
                             Gauge {
                                 width: systemLoadGauges.gaugeSize
                                 height: width
-                                // The arc fills at one core's worth of queued work per core and
-                                // goes no further, while the figure below it carries on: past
-                                // saturation the question is no longer how full the machine is but
-                                // how far over, and an arc cannot say that.
-                                value: Math.min(1, Math.max(0, root.loadPerCore))
+                                // The arc fills at saturation - one core's worth of queued work per
+                                // core, or two per processor on Windows - and goes no further,
+                                // while the figure below it carries on: past that point the
+                                // question is no longer how full the machine is but how far over,
+                                // and an arc cannot say that.
+                                value: Math.min(1, Math.max(0, root.loadValue) / root.loadSaturation)
                                 // Two decimals, unlike the percentages either side: the whole range
-                                // that matters here sits between 0 and about 2, and rounded to
-                                // whole numbers an idle machine and a half-loaded one both read 0.
-                                valueText: root.loadPerCore >= 0
-                                           ? root.loadPerCore.toLocaleString(Qt.locale(), "f", 2)
+                                // that matters here sits between 0 and a small handful, and rounded
+                                // to whole numbers an idle machine and a half-loaded one both read
+                                // 0.
+                                valueText: root.loadValue >= 0
+                                           ? root.loadValue.toLocaleString(Qt.locale(), "f", 2)
                                            : "—"
-                                label: "Load / core"
+                                label: root.loadLabel
                                 // Amber from the point where the machine has no headroom left and
                                 // red once work is waiting for a core rather than running on one -
                                 // the two readings an operator is meant to act on, and neither is
                                 // visible in a number that is drawn the same colour at 0.2 and 2.0.
-                                progressColor: root.loadPerCore >= 1 ? "#ff6b6b"
-                                             : (root.loadPerCore >= 0.8 ? "#ffb545" : "#4f8cff")
+                                // Both taken off the scale in play, so they mean the same thing on
+                                // either platform rather than the same number.
+                                progressColor: root.loadValue >= root.loadSaturation ? "#ff6b6b"
+                                             : (root.loadValue >= root.loadSaturation * 0.8 ? "#ffb545" : "#4f8cff")
                             }
                             Gauge {
                                 width: systemLoadGauges.gaugeSize
