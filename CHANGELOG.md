@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.22](https://github.com/jensvogt/euclid-rui/compare/1.1.21...v1.1.22) (2026-09-26)
+
+
+### Bug Fixes
+
+* add load on windows ([3423799](https://github.com/jensvogt/euclid-rui/commit/3423799dc1bda3acbf2589743a846d626252fbd7))
+
 ## [1.1.21](https://github.com/jensvogt/euclid-rui/compare/1.1.20...v1.1.21) (2026-09-25)
 
 
