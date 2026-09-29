@@ -763,7 +763,31 @@ Item {
                     anchors.margins: 20
                     spacing: 14
 
-                    Text { text: "Resources"; color: "white"; font.pixelSize: 15; font.bold: true }
+                    Item {
+                        width: parent.width
+                        height: resourcesHeader.implicitHeight
+
+                        Text {
+                            id: resourcesHeader
+                            text: "Resources"
+                            color: "white"
+                            font.pixelSize: 15
+                            font.bold: true
+                        }
+
+                        // The other half of the same subject, and the reason it sits here: this
+                        // tile lists what may be reached, and the declaration behind the button
+                        // says which of it the application owns and which belongs to somebody else.
+                        Button {
+                            text: "Connections…"
+                            flat: true
+                            anchors.right: parent.right
+                            anchors.verticalCenter: resourcesHeader.verticalCenter
+                            Material.theme: Material.Dark
+                            Material.accent: "#4f8cff"
+                            onClicked: connectionsDialog.open()
+                        }
+                    }
 
                     Text {
                         width: parent.width
@@ -810,6 +834,14 @@ Item {
                 }
             }
         }
+    }
+
+    // Reads the declaration itself when it is opened, rather than on every visit to the page: most
+    // of them are never looked at, and it is a second round trip - to ESM rather than to EAP.
+    ApplicationConnectionsDialog {
+        id: connectionsDialog
+        applicationId: root.applicationId
+        bucketErn: root.detail("bucketErn", "")
     }
 
     // Which interpreter the manager starts the artifact with. A change here is a change to the

@@ -1,5 +1,6 @@
 #include "EnsClient.h"
 #include "EuclidBaseClient.h"
+#include "VariantAttributes.h"
 
 #include <QJsonArray>
 #include <QJsonObject>
@@ -248,9 +249,14 @@ void EnsClient::fetchMessages(const QString &topicErn, const int pageIndex, cons
                  entry["topicErn"] = message.value("topicErn").toString();
                  entry["status"] = message.value("status").toString();
                  entry["body"] = message.value("body").toString();
-                 entry["md5Body"] = message.value("md5Body").toString();
-                 entry["md5Attributes"] = message.value("md5Attributes").toString();
                  entry["contentType"] = message.value("contentType").toString();
+                 // What the publisher attached. Only theirs: ENS stores euclid's own attributes on
+                 // the message too - Entity::ENS::Message::systemAttributes - but EnsMapper::toDto
+                 // does not copy them and the DTO has no field for them, so "list-messages" never
+                 // sends them and there is nothing here to read. The details page says so rather
+                 // than showing an empty list that would read as "this message has none".
+                 entry["attributes"] = attributesToList(message.value("attributes").toObject());
+                 entry["lastReceived"] = message.value("lastReceived").toString();
                  entry["created"] = message.value("created").toString();
                  entry["modified"] = message.value("modified").toString();
                  messages << entry;
