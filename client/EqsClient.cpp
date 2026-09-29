@@ -1,5 +1,6 @@
 #include "EqsClient.h"
 #include "EuclidBaseClient.h"
+#include "VariantAttributes.h"
 
 #include <QJsonArray>
 #include <QJsonObject>
@@ -294,10 +295,19 @@ void EqsClient::fetchMessages(const QString &queueErn, const int pageIndex, cons
                  entry["priority"] = message.value("priority").toString();
                  entry["body"] = message.value("body").toString();
                  entry["receiptHandle"] = message.value("receiptHandle").toString();
-                 entry["md5Body"] = message.value("md5Body").toString();
-                 entry["md5Attributes"] = message.value("md5Attributes").toString();
                  entry["size"] = message.value("size").toInteger();
                  entry["contentType"] = message.value("contentType").toString();
+                 // What the sender attached, and what euclid attached on top. Kept apart all the way
+                 // to the screen because the server keeps them apart - see
+                 // Entity::EQS::Message::systemAttributes - and a reader debugging their own message
+                 // needs to know which of the two they are looking at.
+                 entry["attributes"] = attributesToList(message.value("attributes").toObject());
+                 entry["systemAttributes"] = attributesToList(message.value("systemAttributes").toObject());
+                 // How many times it has been handed out, which is what separates a first delivery
+                 // from a redelivery of one that failed - and what maxReceiveCount is counted against
+                 // before the message goes to the dead letter queue.
+                 entry["receivedCount"] = message.value("receivedCount").toInteger();
+                 entry["lastReceived"] = message.value("lastReceived").toString();
                  entry["created"] = message.value("created").toString();
                  entry["modified"] = message.value("modified").toString();
                  messages << entry;

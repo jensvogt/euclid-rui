@@ -43,6 +43,13 @@ Item {
     readonly property string priority: detail("priority", "")
     readonly property string queueErn: detail("queueErn", "")
 
+    // The two attribute maps, each already flattened to [{name, type, value}] by EqsClient and in
+    // key order. Two properties rather than one, because EQS keeps them apart: "attributes" is
+    // whatever the sender attached and "systemAttributes" is what euclid attached on top, and a
+    // reader debugging their own message has to be able to tell which is which.
+    readonly property var attributes: detail("attributes", [])
+    readonly property var systemAttributes: detail("systemAttributes", [])
+
     // Qt Quick's Text layout is O(n) in a way that becomes very noticeably slow (multi-second UI
     // freeze) on bodies in the hundreds-of-KB range, which SQS message bodies can legitimately
     // reach (maxMessageLength defaults to 1 MB) - so only ever hand it a bounded preview.
@@ -218,20 +225,38 @@ Item {
                             // message is served sooner but a LOW one is not starved.
                             value: root.priority.length > 0 ? root.priority : "—"
                         }
+                        DetailField {
+                            width: (techCol.width - 24) / 2
+                            label: "Received Count"
+                            // What separates a first delivery from a redelivery of one that failed
+                            // or timed out, and what the queue's maxReceiveCount is counted against
+                            // before the message is moved to the dead letter queue.
+                            value: String(root.detail("receivedCount", 0))
+                        }
+                        DetailField {
+                            width: (techCol.width - 24) / 2
+                            label: "Last Received"
+                            value: root.detail("lastReceived", "").length > 0
+                                   ? DateFormat.format(root.detail("lastReceived", "")) : "Never"
+                        }
                     }
                 }
             }
 
+            // Body, attributes and system attributes as three tabs of one tile rather than three
+            // tiles down the page: they are the three halves of "what was actually sent", and each
+            // is read on its own. The panel keeps one height across all three so that switching
+            // tabs does not move the tile - and with it everything under it - up and down.
             Rectangle {
                 width: parent.width
-                height: bodyCol.implicitHeight + 40
+                height: payloadCol.implicitHeight + 40
                 radius: 14
                 color: "#20242e"
                 border.color: "#2c313c"
                 border.width: 1
 
                 Column {
-                    id: bodyCol
+                    id: payloadCol
                     anchors.top: parent.top
                     anchors.left: parent.left
                     anchors.right: parent.right
@@ -240,48 +265,102 @@ Item {
 
                     Item {
                         width: parent.width
-                        height: bodyHeaderRow.implicitHeight
+                        height: payloadTabs.implicitHeight
+
+                        TabBar {
+                            id: payloadTabs
+                            // Sized to its tabs rather than to the tile: a three-tab bar stretched
+                            // across a wide window puts "Body" a third of the way along it.
+                            width: Math.min(parent.width, implicitWidth)
+                            Material.theme: Material.Dark
+                            Material.accent: "#4f8cff"
+
+                            TabButton { text: "Body" }
+                            // Counted in the tab, so an empty one does not have to be opened to
+                            // find out it is empty.
+                            TabButton { text: "Attributes (" + root.attributes.length + ")" }
+                            TabButton { text: "System (" + root.systemAttributes.length + ")" }
+                        }
 
                         Row {
-                            id: bodyHeaderRow
-                            spacing: 10
-                            Text { text: "Body"; color: "white"; font.pixelSize: 15; font.bold: true }
+                            anchors.right: parent.right
+                            anchors.verticalCenter: payloadTabs.verticalCenter
+                            spacing: 12
+
                             Text {
-                                visible: root.bodyTruncated
+                                visible: payloadTabs.currentIndex === 0 && root.bodyTruncated
                                 anchors.verticalCenter: parent.verticalCenter
                                 text: "showing first " + SizeFormat.format(root.bodyPreviewLimit) + " of " + SizeFormat.format(root.fullBody.length)
                                 color: "#ffb545"
                                 font.pixelSize: 11
                             }
-                        }
 
-                        Button {
-                            text: "Full Content"
-                            flat: true
-                            visible: root.fullBody.length > 0
-                            anchors.right: parent.right
-                            anchors.verticalCenter: bodyHeaderRow.verticalCenter
-                            Material.theme: Material.Dark
-                            Material.accent: "#4f8cff"
-                            onClicked: fullBodyDialog.open()
+                            Button {
+                                text: "Full Content"
+                                flat: true
+                                visible: payloadTabs.currentIndex === 0 && root.fullBody.length > 0
+                                anchors.verticalCenter: parent.verticalCenter
+                                Material.theme: Material.Dark
+                                Material.accent: "#4f8cff"
+                                onClicked: fullBodyDialog.open()
+                            }
                         }
                     }
 
-                    // Read-only: a message that has been sent is what it is, and EQS has no action
-                    // that would write a changed body back.
-                    EditableText {
-                        id: bodyView
+                    Item {
                         width: parent.width
-                        // Grows with the body up to the cap the plain text view had, so a two-line
-                        // message does not sit in a panel sized for a hundred.
-                        height: Math.max(120, Math.min(300, bodyView.implicitContentHeight))
-                        readOnly: true
-                        contentType: root.bodyContentType
-                        content: root.bodyPreview
-                        // A message body is as often one long line as it is code, so it is wrapped
-                        // rather than scrolled sideways - which is what the plain view did too.
-                        wrapMode: TextArea.Wrap
-                        emptyText: "(empty body)"
+                        height: 300
+
+                        EditableText {
+                            id: bodyView
+                            anchors.fill: parent
+                            visible: payloadTabs.currentIndex === 0
+                            // Editable, so the body can be selected, searched and worked on in
+                            // place. Nothing here writes it back: EQS has no action that replaces a
+                            // sent message's body - see the action list in EqsServer.cpp - so an
+                            // edit lives in this editor and nowhere else. The component's own
+                            // "· edited" badge and Reset link say so while it is happening, and the
+                            // line below says what it means.
+                            //
+                            // Except on a body too large to show whole: what is in the editor then
+                            // is the first 16 KB of it, and editing a fragment of a document is not
+                            // an edit of the document. Read the whole thing through "Full Content".
+                            readOnly: root.bodyTruncated
+                            contentType: root.bodyContentType
+                            content: root.bodyPreview
+                            // A message body is as often one long line as it is code, so it is
+                            // wrapped rather than scrolled sideways - which is what the plain view
+                            // did too.
+                            wrapMode: TextArea.Wrap
+                            emptyText: "(empty body)"
+                        }
+
+                        MessageAttributes {
+                            anchors.fill: parent
+                            visible: payloadTabs.currentIndex === 1
+                            attributes: root.attributes
+                            emptyText: "This message carries no attributes of its own."
+                        }
+
+                        MessageAttributes {
+                            anchors.fill: parent
+                            visible: payloadTabs.currentIndex === 2
+                            attributes: root.systemAttributes
+                            emptyText: "euclid attached no system attributes to this message."
+                        }
+                    }
+
+                    // Only once there is an edit to explain. Said here rather than in the tab
+                    // header because it is the answer to "where did my change go", which is a
+                    // question nobody has until they have made one.
+                    Text {
+                        width: parent.width
+                        visible: payloadTabs.currentIndex === 0 && bodyView.modified
+                        wrapMode: Text.WordWrap
+                        color: "#e0a458"
+                        font.pixelSize: 11
+                        text: "This edit is local to this editor. EQS has no action that replaces the body of a message "
+                              + "already sent, so nothing saves it - use Reset above to put the stored body back."
                     }
                 }
             }
@@ -318,9 +397,10 @@ Item {
                 }
             }
 
-            // The whole body, in the same viewer the tile behind this dialog uses - so a JSON
-            // message is indented here too, and is selectable rather than merely readable. Read-
-            // only for the same reason as the tile: EQS has no action that writes a body back.
+            // The whole body, in the same viewer the Body tab uses - so a JSON message is indented
+            // here too, and is selectable rather than merely readable. Read-only where the tab is
+            // not: this is the view for reading a body too large for the tab to show whole, and an
+            // editor over a megabyte of text is slow in a way a reader has no use for.
             EditableText {
                 width: parent.width
                 height: 420

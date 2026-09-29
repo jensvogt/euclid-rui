@@ -50,6 +50,7 @@ qt_policy(SET QTP0004 NEW)
 qt_add_executable(euclid-rui main.cpp
         AppSettings.h AppSettings.cpp
         client/EuclidBaseClient.h client/EuclidBaseClient.cpp
+        client/VariantAttributes.h
         client/RequestSigner.h client/RequestSigner.cpp
         client/EamClient.h client/EamClient.cpp
         client/EmmClient.h client/EmmClient.cpp
@@ -141,6 +142,9 @@ qt_add_qml_module(euclid-rui
         qml/components/CertificateImportDialog.qml
         qml/components/ChangePasswordDialog.qml
         qml/components/RenameUserDialog.qml
+        qml/components/MessageAttributes.qml
+        qml/components/ConnectionGraph.qml
+        qml/components/ApplicationConnectionsDialog.qml
         qml/components/ServiceModuleTile.qml
         qml/components/Breadcrumb.qml
         qml/components/RoleGrants.qml
