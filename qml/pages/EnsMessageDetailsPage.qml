@@ -49,6 +49,16 @@ Item {
     // without having to look the topic up.
     readonly property string topicErn: detail("topicErn", "")
 
+    // What the publisher attached, already flattened to [{name, type, value}] by EnsClient and in
+    // key order.
+    //
+    // There is no companion for euclid's own attributes, unlike the EQS message page: ENS stores
+    // them on the message (Entity::ENS::Message::systemAttributes) but EnsMapper::toDto leaves them
+    // behind and the DTO has no field to carry them, so nothing reaches this client. The System tab
+    // is kept and says that outright - dropping it would make the gap look like a decision, and an
+    // empty list would claim the message has none when what is true is that ENS does not send them.
+    readonly property var attributes: detail("attributes", [])
+
     // Qt Quick's Text layout is O(n) in a way that becomes very noticeably slow (multi-second UI
     // freeze) on bodies in the hundreds-of-KB range, which message bodies can legitimately reach -
     // so only ever hand it a bounded preview.
@@ -163,46 +173,20 @@ Item {
                 }
             }
 
+            // Body, attributes and system attributes as three tabs of one tile rather than three
+            // tiles down the page - the same arrangement as the EQS message page, since it is the
+            // same question being asked of a message. The panel keeps one height across all three
+            // so that switching tabs does not move the tile up and down.
             Rectangle {
                 width: parent.width
-                height: techCol.implicitHeight + 40
+                height: payloadCol.implicitHeight + 40
                 radius: 14
                 color: "#20242e"
                 border.color: "#2c313c"
                 border.width: 1
 
                 Column {
-                    id: techCol
-                    anchors.top: parent.top
-                    anchors.left: parent.left
-                    anchors.right: parent.right
-                    anchors.margins: 20
-                    spacing: 14
-
-                    Text { text: "Technical Details"; color: "white"; font.pixelSize: 15; font.bold: true }
-
-                    Grid {
-                        width: parent.width
-                        columns: 2
-                        columnSpacing: 24
-                        rowSpacing: 16
-
-                        DetailField { width: (techCol.width - 24) / 2; label: "MD5 (Body)"; value: root.detail("md5Body", "—"); copyable: true }
-                        DetailField { width: (techCol.width - 24) / 2; label: "MD5 (Attributes)"; value: root.detail("md5Attributes", "—"); copyable: true }
-                    }
-                }
-            }
-
-            Rectangle {
-                width: parent.width
-                height: bodyCol.implicitHeight + 40
-                radius: 14
-                color: "#20242e"
-                border.color: "#2c313c"
-                border.width: 1
-
-                Column {
-                    id: bodyCol
+                    id: payloadCol
                     anchors.top: parent.top
                     anchors.left: parent.left
                     anchors.right: parent.right
@@ -211,48 +195,107 @@ Item {
 
                     Item {
                         width: parent.width
-                        height: bodyHeaderRow.implicitHeight
+                        height: payloadTabs.implicitHeight
+
+                        TabBar {
+                            id: payloadTabs
+                            // Sized to its tabs rather than to the tile: a three-tab bar stretched
+                            // across a wide window puts "Body" a third of the way along it.
+                            width: Math.min(parent.width, implicitWidth)
+                            Material.theme: Material.Dark
+                            Material.accent: "#4f8cff"
+
+                            TabButton { text: "Body" }
+                            // Counted in the tab, so an empty one does not have to be opened to
+                            // find out it is empty. No count on the third: nothing is sent, so a
+                            // "(0)" would be reporting a number this client never received.
+                            TabButton { text: "Attributes (" + root.attributes.length + ")" }
+                            TabButton { text: "System" }
+                        }
 
                         Row {
-                            id: bodyHeaderRow
-                            spacing: 10
-                            Text { text: "Body"; color: "white"; font.pixelSize: 15; font.bold: true }
+                            anchors.right: parent.right
+                            anchors.verticalCenter: payloadTabs.verticalCenter
+                            spacing: 12
+
                             Text {
-                                visible: root.bodyTruncated
+                                visible: payloadTabs.currentIndex === 0 && root.bodyTruncated
                                 anchors.verticalCenter: parent.verticalCenter
                                 text: "showing first " + SizeFormat.format(root.bodyPreviewLimit) + " of " + SizeFormat.format(root.fullBody.length)
                                 color: "#ffb545"
                                 font.pixelSize: 11
                             }
-                        }
 
-                        Button {
-                            text: "Full Content"
-                            flat: true
-                            visible: root.fullBody.length > 0
-                            anchors.right: parent.right
-                            anchors.verticalCenter: bodyHeaderRow.verticalCenter
-                            Material.theme: Material.Dark
-                            Material.accent: "#4f8cff"
-                            onClicked: fullBodyDialog.open()
+                            Button {
+                                text: "Full Content"
+                                flat: true
+                                visible: payloadTabs.currentIndex === 0 && root.fullBody.length > 0
+                                anchors.verticalCenter: parent.verticalCenter
+                                Material.theme: Material.Dark
+                                Material.accent: "#4f8cff"
+                                onClicked: fullBodyDialog.open()
+                            }
                         }
                     }
 
-                    // Read-only: a published message is what it is, and ENS has no action that
-                    // would write a changed body back.
-                    EditableText {
-                        id: bodyView
+                    Item {
                         width: parent.width
-                        // Grows with the body up to the same cap the plain text view had, so a
-                        // two-line message does not sit in a panel sized for a hundred.
-                        height: Math.max(120, Math.min(300, bodyView.implicitContentHeight))
-                        readOnly: true
-                        contentType: root.bodyContentType
-                        content: root.bodyPreview
-                        // A message body is as often one long line as it is code, so it is wrapped
-                        // rather than scrolled sideways - which is what the plain view did too.
-                        wrapMode: TextArea.Wrap
-                        emptyText: "(empty body)"
+                        height: 300
+
+                        EditableText {
+                            id: bodyView
+                            anchors.fill: parent
+                            visible: payloadTabs.currentIndex === 0
+                            // Editable, so the body can be selected, searched and worked on in
+                            // place. Nothing here writes it back: ENS has no action that replaces a
+                            // published message's body, and a published message has already gone to
+                            // its subscribers in any case - so an edit lives in this editor and
+                            // nowhere else. The component's own "· edited" badge and Reset link say
+                            // so while it is happening, and the line below says what it means.
+                            //
+                            // Except on a body too large to show whole: what is in the editor then
+                            // is the first 16 KB of it, and editing a fragment of a document is not
+                            // an edit of the document. Read the whole thing through "Full Content".
+                            readOnly: root.bodyTruncated
+                            contentType: root.bodyContentType
+                            content: root.bodyPreview
+                            // A message body is as often one long line as it is code, so it is
+                            // wrapped rather than scrolled sideways - which is what the plain view
+                            // did too.
+                            wrapMode: TextArea.Wrap
+                            emptyText: "(empty body)"
+                        }
+
+                        MessageAttributes {
+                            anchors.fill: parent
+                            visible: payloadTabs.currentIndex === 1
+                            attributes: root.attributes
+                            emptyText: "This message carries no attributes of its own."
+                        }
+
+                        MessageAttributes {
+                            anchors.fill: parent
+                            visible: payloadTabs.currentIndex === 2
+                            // Always empty, and the text says why rather than letting it read as an
+                            // answer about this message. See the note on root.attributes.
+                            attributes: []
+                            emptyText: "ENS does not send system attributes. It records euclid's own attributes on the "
+                                       + "message, but list-messages leaves them out, so whether this message carries "
+                                       + "any cannot be told from here."
+                        }
+                    }
+
+                    // Only once there is an edit to explain. Said here rather than in the tab
+                    // header because it is the answer to "where did my change go", which is a
+                    // question nobody has until they have made one.
+                    Text {
+                        width: parent.width
+                        visible: payloadTabs.currentIndex === 0 && bodyView.modified
+                        wrapMode: Text.WordWrap
+                        color: "#e0a458"
+                        font.pixelSize: 11
+                        text: "This edit is local to this editor. ENS has no action that replaces the body of a message "
+                              + "already published, so nothing saves it - use Reset above to put the stored body back."
                     }
                 }
             }
@@ -289,9 +332,10 @@ Item {
                 }
             }
 
-            // The whole body, in the same viewer the tile behind this dialog uses - so a JSON
-            // message is indented here too, and is selectable rather than merely readable. Read-
-            // only for the same reason as the tile: a published message is what it is.
+            // The whole body, in the same viewer the Body tab uses - so a JSON message is indented
+            // here too, and is selectable rather than merely readable. Read-only where the tab is
+            // not: this is the view for reading a body too large for the tab to show whole, and an
+            // editor over a megabyte of text is slow in a way a reader has no use for.
             EditableText {
                 width: parent.width
                 height: 420
