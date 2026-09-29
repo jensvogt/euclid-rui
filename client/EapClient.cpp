@@ -1,6 +1,12 @@
 #include "EapClient.h"
 #include "EuclidBaseClient.h"
 
+#include <QDir>
+#include <QFile>
+#include <QFileInfo>
+#include <QJsonDocument>
+#include <QJsonParseError>
+
 namespace {
 // Turns one "list-applications"/"get-application" entry into the map the QML pages read.
 QVariantMap applicationToMap(const QJsonObject &application) {
@@ -69,6 +75,162 @@ QJsonObject toJsonObject(const QVariantMap &values) {
         object[it.key()] = it.value().toString();
     return object;
 }
+
+// ── Infrastructure declarations ──────────────────────────────────────────────
+// A mirror of Database::Entity::EAP::Infrastructure in the euclid backend, as far as merging goes.
+// The server is still the authority: it re-reads this document when it applies it and refuses what
+// it does not accept. What is done here is what only the client can do - reading local files and
+// putting them together - plus the errors worth having before an upload rather than after one.
+
+// Spelled plural, the way they appear in the file. A kind that is not one of these is an error
+// rather than an ignored section: the silent no-op is how somebody's queues never get created.
+const QStringList kResourceKinds{QStringLiteral("queues"), QStringLiteral("topics"), QStringLiteral("buckets")};
+
+struct DeclaredResource {
+    QString kind;
+    QString name;
+    QString owner;
+    QStringList access;
+};
+
+struct Declaration {
+    QString applicationId;
+    QList<DeclaredResource> creates;
+    QList<DeclaredResource> uses;
+};
+
+// One entry of one section. `error` non-empty means the rest is meaningless.
+QString readResource(const QString &kind, const QJsonValue &value, DeclaredResource &resource) {
+    if (!value.isObject())
+        return kind + " entry is not an object";
+    const QJsonObject object = value.toObject();
+
+    resource.kind = kind;
+    resource.name = object.value("name").toString();
+    if (resource.name.isEmpty())
+        return kind + " entry has no name";
+    resource.owner = object.value("owner").toString();
+
+    // A string or an array of them, because one level is the common case and writing it as a
+    // one-element array would be noise.
+    const QJsonValue access = object.value("access");
+    if (access.isString()) {
+        resource.access << access.toString();
+    } else if (access.isArray()) {
+        for (const QJsonArray array = access.toArray(); const auto &entry: array) {
+            if (!entry.isString())
+                return resource.name + ": access entries have to be strings";
+            resource.access << entry.toString();
+        }
+    } else if (!access.isUndefined() && !access.isNull()) {
+        return resource.name + ": access has to be a string or an array of strings";
+    }
+    return {};
+}
+
+// One file. The version is refused rather than defaulted: a file that does not say which schema it
+// is written against is not one to guess at and apply to somebody's installation.
+QString readDeclaration(const QJsonDocument &document, Declaration &declaration) {
+    if (!document.isObject())
+        return "declaration is not a JSON object";
+    const QJsonObject object = document.object();
+
+    if (object.value("version").toInt(0) != 1)
+        return "version has to be 1";
+    declaration.applicationId = object.value("applicationId").toString();
+
+    for (const auto &section: {QStringLiteral("creates"), QStringLiteral("uses")}) {
+        const QJsonValue sectionValue = object.value(section);
+        if (sectionValue.isUndefined())
+            continue;
+        if (!sectionValue.isObject())
+            return section + " is not an object";
+
+        const QJsonObject kinds = sectionValue.toObject();
+        for (auto it = kinds.constBegin(); it != kinds.constEnd(); ++it) {
+            if (!kResourceKinds.contains(it.key()))
+                return section + ": unknown resource kind \"" + it.key() + "\"";
+            if (!it.value().isArray())
+                return it.key() + " has to be an array";
+
+            for (const QJsonArray entries = it.value().toArray(); const auto &entry: entries) {
+                DeclaredResource resource;
+                if (const auto error = readResource(it.key(), entry, resource); !error.isEmpty())
+                    return section + ": " + error;
+
+                if (section == QLatin1String("creates")) {
+                    // Not wrong so much as meaningless, and ignoring it would leave somebody
+                    // believing they had narrowed their own access to something they own outright.
+                    if (!resource.access.isEmpty())
+                        return "creates: " + resource.name + " names an access level; owning it is the access";
+                    declaration.creates << resource;
+                } else {
+                    // Which levels exist is the server's table, not this one's - but an entry that
+                    // names none cannot mean anything on any table.
+                    if (resource.access.isEmpty())
+                        return "uses: " + resource.name + " names no access";
+                    declaration.uses << resource;
+                }
+            }
+        }
+    }
+    return {};
+}
+
+// The document as the sidecar object holds it. Sorted by kind and then name so that the same files
+// produce the same bytes however they were listed.
+QJsonObject writeDeclaration(const Declaration &declaration) {
+    const auto section = [](QList<DeclaredResource> resources) {
+        std::sort(resources.begin(), resources.end(), [](const DeclaredResource &a, const DeclaredResource &b) {
+            return a.kind != b.kind ? a.kind < b.kind : a.name < b.name;
+        });
+        QJsonObject out;
+        for (const auto &resource: resources) {
+            QJsonObject entry{{"name", resource.name}};
+            if (!resource.owner.isEmpty())
+                entry["owner"] = resource.owner;
+            if (!resource.access.isEmpty())
+                entry["access"] = toJsonArray(resource.access);
+            QJsonArray kind = out.value(resource.kind).toArray();
+            kind.append(entry);
+            out[resource.kind] = kind;
+        }
+        return out;
+    };
+
+    QJsonObject out{{"version", 1}};
+    if (!declaration.applicationId.isEmpty())
+        out["applicationId"] = declaration.applicationId;
+    if (!declaration.creates.isEmpty())
+        out["creates"] = section(declaration.creates);
+    if (!declaration.uses.isEmpty())
+        out["uses"] = section(declaration.uses);
+    return out;
+}
+
+// The files to read: the *.json of a folder, or the files themselves. Name order either way, so
+// that a second run over the same selection reads them the same way and an error about one file
+// means the same file next time.
+QStringList declarationFiles(const QList<QUrl> &sources, QString &error) {
+    QStringList paths;
+    for (const QUrl &source: sources) {
+        const QString path = source.isLocalFile() ? source.toLocalFile() : source.toString();
+        if (QFileInfo(path).isDir()) {
+            const QDir folder(path);
+            const auto entries = folder.entryList({QStringLiteral("*.json")}, QDir::Files, QDir::Name);
+            if (entries.isEmpty()) {
+                error = "no .json files in " + folder.dirName();
+                return {};
+            }
+            for (const QString &entry: entries)
+                paths << folder.filePath(entry);
+        } else {
+            paths << path;
+        }
+    }
+    paths.sort();
+    return paths;
+}
 }
 
 EapClient::EapClient(EuclidBaseClient *baseClient, QObject *parent) : QObject(parent), m_base(baseClient) {}
@@ -115,7 +277,14 @@ void EapClient::createApplication(const QString &applicationId, const QString &r
 
     m_base->post("eap", "create-application", body, true,
          [this](const QJsonObject &response) {
-             emit applicationCreated(response.value("applicationId").toString());
+             const auto created = response.value("applicationId").toString();
+             emit applicationCreated(created);
+             // create-application applies the declaration beside the artifact as part of deploying,
+             // and reports what that did under "infrastructure". Worth passing on rather than
+             // dropping: a declaration that could not be applied does not fail the create - EAP
+             // refuses to stop a release over a JSON typo - so without this the application would
+             // appear with none of the queues it asked for and nothing would have said why.
+             reportInfrastructure(created, response.value("infrastructure").toObject());
              emit applicationsReload();
          },
          [this](const QString &message) {
@@ -203,6 +372,136 @@ void EapClient::scaleApplication(const QString &applicationId, const int minInst
          },
          [this](const QString &message) {
              emit applicationScaleFailed(message);
+         });
+}
+
+// The outcome of applying a declaration, as both actions that do it report it: apply-infrastructure
+// answers with the fields at the top level, create-application nests the same ones under
+// "infrastructure". An "error" there is a declaration that could not be read or applied - which
+// create-application reports without failing, so it has to reach a page as a failure of its own.
+void EapClient::reportInfrastructure(const QString &applicationId, const QJsonObject &infrastructure) {
+    if (infrastructure.isEmpty())
+        return;
+
+    const auto message = infrastructure.value("error").toString();
+    if (!message.isEmpty()) {
+        emit infrastructureApplyFailed(message);
+        return;
+    }
+
+    const auto ernList = [&infrastructure](const QString &name) {
+        QStringList erns;
+        for (const QJsonArray array = infrastructure.value(name).toArray(); const auto &value: array)
+            erns << value.toString();
+        return erns;
+    };
+    emit infrastructureApplied(applicationId, infrastructure.value("declared").toBool(),
+                               ernList("created"), ernList("deleted"),
+                               ernList("granted"), ernList("revoked"));
+}
+
+QVariantMap EapClient::mergeDeclaration(const QList<QUrl> &sources, const QString &applicationId) const {
+    const auto refuse = [](const QString &message) {
+        return QVariantMap{{"error", message}};
+    };
+
+    QString error;
+    const QStringList paths = declarationFiles(sources, error);
+    if (!error.isEmpty())
+        return refuse(error);
+    if (paths.isEmpty())
+        return refuse(QStringLiteral("no declaration files were picked"));
+
+    QList<Declaration> declarations;
+    QStringList fileNames;
+    for (const QString &path: paths) {
+        QFile file(path);
+        const QString name = QFileInfo(path).fileName();
+        if (!file.open(QIODevice::ReadOnly))
+            return refuse(name + " could not be read");
+
+        QJsonParseError parse{};
+        const QJsonDocument document = QJsonDocument::fromJson(file.readAll(), &parse);
+        if (parse.error != QJsonParseError::NoError)
+            return refuse(name + " is not JSON: " + parse.errorString());
+
+        Declaration declaration;
+        if (const auto message = readDeclaration(document, declaration); !message.isEmpty())
+            return refuse(name + ": " + message);
+
+        declarations << declaration;
+        fileNames << name;
+    }
+
+    Declaration merged;
+    // One claim, or none. Two files naming different applications is refused rather than settled by
+    // taking the last: picking one silently is how a declaration ends up attributed to an
+    // application that does not own it, which is what the field exists to prevent.
+    for (const auto &declaration: declarations) {
+        if (declaration.applicationId.isEmpty())
+            continue;
+        if (!merged.applicationId.isEmpty() && merged.applicationId != declaration.applicationId) {
+            return refuse("these files disagree about whose they are: \"" + merged.applicationId
+                          + "\" and \"" + declaration.applicationId + "\"");
+        }
+        merged.applicationId = declaration.applicationId;
+    }
+
+    QSet<QString> seen;
+    for (const auto &declaration: declarations) {
+        for (const auto &resources: {declaration.creates, declaration.uses}) {
+            for (const auto &resource: resources) {
+                // Across both sections: owning a queue and declaring that you use it are two
+                // statements about the same resource, and only one of them can be the one that
+                // counts.
+                if (seen.contains(resource.kind + '/' + resource.name))
+                    return refuse("declared twice: " + resource.kind + " \"" + resource.name + "\"");
+                seen.insert(resource.kind + '/' + resource.name);
+            }
+        }
+        merged.creates << declaration.creates;
+        merged.uses << declaration.uses;
+    }
+
+    // Stamped, so that from here on the document says which application it is for rather than
+    // relying on the key it happens to be stored under. A file that names another application is
+    // refused here as well as by the server: its resources would be recorded against this one, and
+    // this one's next reconcile would delete them.
+    //
+    // An empty applicationId asks for neither, which is what a dialog reading files before the
+    // application has been named needs: the merge is what it shows, and the stamped document is
+    // asked for again once there is a name to stamp it with.
+    if (!applicationId.isEmpty()) {
+        if (merged.applicationId.isEmpty())
+            merged.applicationId = applicationId;
+        if (merged.applicationId != applicationId) {
+            return refuse("these files declare \"" + merged.applicationId + "\", not \"" + applicationId + "\"");
+        }
+    }
+
+    return QVariantMap{{"error", QString()},
+                       {"document", QString::fromUtf8(QJsonDocument(writeDeclaration(merged)).toJson(QJsonDocument::Indented))},
+                       {"fileNames", fileNames},
+                       {"creates", static_cast<int>(merged.creates.size())},
+                       {"uses", static_cast<int>(merged.uses.size())}};
+}
+
+void EapClient::applyInfrastructure(const QString &applicationId) {
+    QJsonObject body;
+    body["applicationId"] = applicationId;
+
+    m_base->post("eap", "apply-infrastructure", body, true,
+         [this, applicationId](const QJsonObject &response) {
+             // The same fields, one level up: this action is about nothing else, so it answers with
+             // them directly rather than under a key.
+             reportInfrastructure(applicationId, response);
+             // The application's own definition is untouched - applying a declaration deliberately
+             // does not stamp it - but what it owns has just been created or deleted, and the
+             // resource list on the row is read from the grants this rewrote.
+             emit applicationsReload();
+         },
+         [this](const QString &message) {
+             emit infrastructureApplyFailed(message);
          });
 }
 

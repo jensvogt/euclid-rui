@@ -2,9 +2,11 @@
 
 #include <QJsonArray>
 #include <QJsonObject>
+#include <QList>
 #include <QObject>
 #include <QString>
 #include <QStringList>
+#include <QUrl>
 #include <QVariantList>
 #include <QVariantMap>
 
@@ -80,6 +82,49 @@ public:
     // Administrators only, unlike the reads on this client.
     Q_INVOKABLE void scaleApplication(const QString &applicationId, int minInstances = -1, int maxInstances = -1);
 
+    // Merges declaration files into the single document that is stored beside the artifact.
+    //
+    // `sources` is either the files themselves or one folder, in which case every *.json in it is
+    // read - the two ways the CLI's "eap deploy-infrastructure --dir" is reached from a dialog. How
+    // a declaration is split across files is the author's business, so they are merged by section
+    // and kind rather than by filename, and two files naming the same resource is refused rather
+    // than resolved: whichever a merge preferred, the other author would have been overruled
+    // without being told.
+    //
+    // Structure only. Whether "readwrite" is an access level queues have, and whether a "uses"
+    // entry names something that exists, are the server's to answer - it re-reads this document
+    // when it applies it, and mirroring its permission table here would be a copy that drifts.
+    //
+    // `applicationId` empty merges without stamping the document or checking whose it is, which is
+    // what a dialog needs to show a selection before the application has been named; the stamped
+    // document is asked for again with the name, once there is one.
+    //
+    // Returns {error, document, fileNames, creates, uses}: `error` empty means `document` is the
+    // JSON to store and `fileNames` the files it was made of - a folder expanded into them - and
+    // non-empty means nothing was merged and it says why, naming the file.
+    Q_INVOKABLE QVariantMap mergeDeclaration(const QList<QUrl> &sources, const QString &applicationId) const;
+
+    // Applies the declaration stored beside the application's artifact - the object called
+    // "<applicationId>.euclid.json" in the application's own bucket, which names the queues and
+    // topics the application owns and the resources somebody else owns that it has to reach.
+    //
+    // A full reconcile, not an addition: what the declaration names is created, what this
+    // application owned and no longer declares is *deleted* - with a queue's messages and a
+    // bucket's objects - and its access grants are replaced with exactly the ones the file asks
+    // for. That is why it answers with what it did rather than simply succeeding.
+    //
+    // Create, update and redeploy apply it in passing; this is the way to apply it on its own,
+    // after the declaration has been uploaded. Nothing about the running processes changes, and
+    // the definition is deliberately not stamped - the manager would read that as a new revision
+    // and restart the pool for a change that does not concern it.
+    //
+    // The RUI's half of the CLI's "eap deploy-infrastructure", which merges a folder of
+    // declaration files, uploads the result and then calls this. Uploading is ESM's job here too
+    // (EsmClient::uploadObject), so what is left is this.
+    //
+    // Administrators only.
+    Q_INVOKABLE void applyInfrastructure(const QString &applicationId);
+
     // Both only write desiredState; the reconciler is what acts on it.
     Q_INVOKABLE void startApplication(const QString &applicationId);
     Q_INVOKABLE void stopApplication(const QString &applicationId);
@@ -101,6 +146,16 @@ signals:
     // revision to restart onto.
     void applicationRedeployed(const QString &applicationId, const QString &artifact, const QString &version);
     void applicationRedeployFailed(const QString &message);
+    // What applying the declaration did. `declared` is false for an application that has no
+    // declaration stored at all, which is not an error - most do not - and the four lists are then
+    // empty. They are ERNs: what was created, what was deleted because the file no longer names
+    // it, and the resources access was granted on and revoked from.
+    void infrastructureApplied(const QString &applicationId, bool declared, const QStringList &created,
+                               const QStringList &deleted, const QStringList &granted, const QStringList &revoked);
+    // A declaration that could not be read or could not be applied: malformed JSON, an access level
+    // that is not one of the known ones, a "uses" entry naming something that does not exist, or a
+    // file that declares a different application than the one it is stored under.
+    void infrastructureApplyFailed(const QString &message);
     // The bounds as the server stored them, which is both of them even when only one was sent.
     void applicationScaled(const QString &applicationId, int minInstances, int maxInstances);
     // Carries the server's own wording: it is the side that decides what a bound may be, and it
@@ -108,5 +163,10 @@ signals:
     void applicationScaleFailed(const QString &message);
 
 private:
+    // Turns the "infrastructure" block of an answer into infrastructureApplied/
+    // infrastructureApplyFailed. Shared because two actions carry it: apply-infrastructure, which
+    // is about nothing else, and create-application, which applies the declaration in passing.
+    void reportInfrastructure(const QString &applicationId, const QJsonObject &infrastructure);
+
     EuclidBaseClient *m_base;
 };

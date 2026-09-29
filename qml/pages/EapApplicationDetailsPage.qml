@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Controls.Material
+import QtQuick.Dialogs
 import "../components"
 
 // One application definition. The two states are shown side by side on purpose: start and stop
@@ -17,6 +18,11 @@ Item {
     property bool deleting: false
     property bool savingEnvironment: false
     property bool savingRuntime: false
+
+    // The declaration that lives beside the artifact, under this key in the application's own
+    // bucket. Derived rather than configured - the same rule EAP reads it by, so nothing has to be
+    // told where to look.
+    readonly property string declarationKey: root.applicationId + ".euclid.json"
 
     // The processes actually running this application, from EMM rather than EAP: the manager runs
     // an application as a module pool named after its *runtime* name, and only that pool knows
@@ -302,6 +308,55 @@ Item {
             if (scaleDialog.opened) scaleDialog.errorText = message
             else root.error = message
         }
+        function onInfrastructureApplied(applicationId, declared, created, deleted, granted, revoked) {
+            if (applicationId !== root.applicationId) return
+            infrastructureDialog.applying = false
+            infrastructureDialog.answered = true
+            infrastructureDialog.declared = declared
+            infrastructureDialog.created = created
+            infrastructureDialog.deleted = deleted
+            infrastructureDialog.granted = granted
+            infrastructureDialog.revoked = revoked
+            // Left open on purpose, unlike the other dialogs here: what a reconcile deleted is the
+            // answer, and closing over it would be the one report nobody gets to read.
+            infrastructureDialog.sources = []
+            infrastructureDialog.fileNames = []
+            infrastructureDialog.mergedDocument = ""
+            infrastructureDialog.mergeSummary = ""
+            // The grants this rewrote are what the resource list on this page is made of.
+            root.refresh()
+        }
+        function onInfrastructureApplyFailed(message) {
+            // Creating an application applies its declaration too, and that failure belongs to the
+            // page it was started from - not here, waiting to be found on the next visit.
+            if (!root.visible) return
+            infrastructureDialog.applying = false
+            if (infrastructureDialog.opened) infrastructureDialog.errorText = message
+            else root.error = message
+        }
+    }
+
+    // The declaration goes into the bucket as an ordinary object, so the upload half of this runs
+    // through ESM like any other. Both signals are shared with every other upload in the
+    // application, so each handler only answers while this dialog is the one waiting.
+    Connections {
+        target: esmClient
+        // objectContentSaved rather than objectUploaded: put-object takes the merged document as
+        // text, and these two carry the bucket and key, so this only answers for its own object
+        // instead of for whatever upload happened to finish.
+        function onObjectContentSaved(bucketErn, key, object) {
+            if (!infrastructureDialog.uploading || key !== root.declarationKey) return
+            infrastructureDialog.uploading = false
+            infrastructureDialog.apply()
+        }
+        function onObjectContentSaveFailed(bucketErn, key, message) {
+            if (!infrastructureDialog.uploading || key !== root.declarationKey) return
+            infrastructureDialog.uploading = false
+            // Nothing was applied, so the application still has whatever the previous declaration
+            // gave it - which is worth saying, since a failed deploy that changed nothing reads
+            // very differently from one that got halfway.
+            infrastructureDialog.errorText = "The declaration was not uploaded, so nothing was applied: " + message
+        }
     }
 
     Connections {
@@ -360,6 +415,14 @@ Item {
                     anchors.right: parent.right
                     anchors.verticalCenter: sectionHeader.verticalCenter
                     spacing: 8
+
+                    Button {
+                        text: "Infrastructure…"
+                        flat: true
+                        Material.theme: Material.Dark
+                        Material.accent: "#4f8cff"
+                        onClicked: infrastructureDialog.open()
+                    }
 
                     Button {
                         text: "Runtime…"
@@ -806,6 +869,388 @@ Item {
                                 }
                             }
                         }
+                    }
+                }
+            }
+        }
+    }
+
+    // Several files, because a declaration is usually several: one naming what the application
+    // owns, another what it reaches. How they are split is the author's business, so they are
+    // merged by section and kind rather than by filename.
+    FileDialog {
+        id: declarationFileDialog
+        title: "Select the declaration files"
+        fileMode: FileDialog.OpenFiles
+        nameFilters: ["Declaration files (*.json)", "All files (*)"]
+        // Opens where the last file dialog was left - see AppSettings::lastFileDialogFolder.
+        currentFolder: appSettings.lastFileDialogFolder
+        onAccepted: {
+            appSettings.lastFileDialogFolder = currentFolder
+            infrastructureDialog.addSources(selectedFiles.length > 0 ? selectedFiles : [selectedFile])
+        }
+    }
+
+    // The other way in, and the one the CLI takes: a folder, every *.json in it. Offered beside the
+    // file picker rather than instead of it - a folder is what a project has, a selection is what
+    // somebody deploying part of one has.
+    FolderDialog {
+        id: declarationFolderDialog
+        title: "Select the declaration folder"
+        currentFolder: appSettings.lastFileDialogFolder
+        onAccepted: {
+            appSettings.lastFileDialogFolder = selectedFolder
+            infrastructureDialog.setSources([selectedFolder])
+        }
+    }
+
+    // The RUI's "eap deploy-infrastructure": merge the declaration files, put the result beside the
+    // artifact, then ask EAP to apply it. The halves are offered separately because they are
+    // separately useful - a declaration already uploaded can be applied again without picking
+    // anything, which is what a reconcile after somebody deleted a queue by hand amounts to.
+    Dialog {
+        id: infrastructureDialog
+        modal: true
+        anchors.centerIn: parent
+        width: 560
+        padding: 28
+        topPadding: 24
+        bottomPadding: 24
+        standardButtons: Dialog.NoButton
+
+        // What was picked, and what merging them produced. The merge happens on picking rather than
+        // on pressing the button: a file that is not JSON, two files claiming the same queue or a
+        // folder belonging to another application are all worth hearing about while the selection
+        // is still on screen.
+        property var sources: []
+        property var fileNames: []
+        property string mergedDocument: ""
+        property string mergeSummary: ""
+        property bool uploading: false
+        property bool applying: false
+        property string errorText: ""
+        // Set once an answer has arrived, so the four lists below are told apart from "not asked
+        // yet" - an application with nothing declared answers with every list empty.
+        property bool answered: false
+        property bool declared: false
+        property var created: []
+        property var deleted: []
+        property var granted: []
+        property var revoked: []
+
+        readonly property bool hasDeclaration: infrastructureDialog.mergedDocument.length > 0
+        readonly property bool busy: infrastructureDialog.uploading || infrastructureDialog.applying
+
+        // Added rather than replaced, which is what makes picking several possible at all: this
+        // build falls back to Qt's own file dialog, which selects one file however "OpenFiles" is
+        // set. A platform dialog that can do better hands over everything at once and the same
+        // code takes it.
+        function addSources(picked) {
+            let sources = infrastructureDialog.sources.slice()
+            for (const source of picked) {
+                // The same file twice is a second click, not a declaration naming something twice.
+                if (sources.indexOf(source) < 0) sources.push(source)
+            }
+            infrastructureDialog.setSources(sources)
+        }
+
+        // Merged here and not on the way out, so that what is uploaded is what was described on
+        // screen. A refusal clears the selection: half a declaration is not one to deploy.
+        function setSources(picked) {
+            infrastructureDialog.errorText = ""
+            infrastructureDialog.answered = false
+            infrastructureDialog.sources = picked
+            infrastructureDialog.fileNames = []
+            infrastructureDialog.mergedDocument = ""
+            infrastructureDialog.mergeSummary = ""
+            if (picked.length === 0) return
+
+            const merged = eapClient.mergeDeclaration(picked, root.applicationId)
+            if (merged.error.length > 0) {
+                infrastructureDialog.sources = []
+                infrastructureDialog.errorText = merged.error
+                return
+            }
+            infrastructureDialog.fileNames = merged.fileNames
+            infrastructureDialog.mergedDocument = merged.document
+            infrastructureDialog.mergeSummary = merged.fileNames.length + " file(s)  ·  owns " + merged.creates
+                    + ", uses " + merged.uses
+        }
+
+        // Not "reset": Dialog already has a signal of that name, for the Reset standard button, and
+        // a function declared over it is an invalid override rather than a shadowing.
+        function clearState() {
+            infrastructureDialog.sources = []
+            infrastructureDialog.fileNames = []
+            infrastructureDialog.mergedDocument = ""
+            infrastructureDialog.mergeSummary = ""
+            infrastructureDialog.uploading = false
+            infrastructureDialog.applying = false
+            infrastructureDialog.errorText = ""
+            infrastructureDialog.answered = false
+            infrastructureDialog.declared = false
+            infrastructureDialog.created = []
+            infrastructureDialog.deleted = []
+            infrastructureDialog.granted = []
+            infrastructureDialog.revoked = []
+        }
+
+        onOpened: infrastructureDialog.clearState()
+
+        function apply() {
+            infrastructureDialog.errorText = ""
+            infrastructureDialog.answered = false
+            infrastructureDialog.applying = true
+            eapClient.applyInfrastructure(root.applicationId)
+        }
+
+        // The upload first, and the apply only once the bytes are actually in the bucket: EAP
+        // reads the declaration off the object, so applying before it has landed would apply the
+        // one that was there before - or none at all.
+        //
+        // The merged document is written straight out as the object's content rather than being
+        // put through a temporary file: it is JSON that this dialog is already holding, and
+        // put-object takes text.
+        function uploadAndApply() {
+            infrastructureDialog.errorText = ""
+            infrastructureDialog.answered = false
+            infrastructureDialog.uploading = true
+            esmClient.saveObjectContent(root.detail("bucketErn", ""), root.declarationKey,
+                                        infrastructureDialog.mergedDocument)
+        }
+
+        background: Rectangle {
+            radius: 16
+            color: "#1b1e25"
+            border.color: "#2c313c"
+            border.width: 1
+        }
+
+        contentItem: Column {
+            width: infrastructureDialog.availableWidth
+            spacing: 16
+
+            Column {
+                width: parent.width
+                spacing: 4
+                Text { text: "Infrastructure"; color: "white"; font.pixelSize: 18; font.bold: true }
+                Text {
+                    text: root.applicationId + "  ·  " + root.declarationKey
+                    color: "#9aa1ac"
+                    font.pixelSize: 12
+                    elide: Text.ElideMiddle
+                    width: parent.width
+                }
+            }
+
+            Text {
+                width: parent.width
+                wrapMode: Text.WordWrap
+                color: "#6b7280"
+                font.pixelSize: 11
+                text: "The declaration names the queues and topics this application owns, and the resources "
+                      + "somebody else owns that it has to reach. It is stored beside the artifact in the "
+                      + "application's own bucket, under the key above."
+            }
+
+            Text {
+                width: parent.width
+                wrapMode: Text.WordWrap
+                color: "#e0a458"
+                font.pixelSize: 12
+                // The half of this that is not obvious from the word "apply". Said before it is
+                // done rather than only reported afterwards.
+                text: "⚠  Applying is a full reconcile, not an addition. What the file names is created, what "
+                      + "this application owned and no longer declares is deleted - a queue takes its messages "
+                      + "with it and a bucket its objects - and its access grants are replaced with exactly the "
+                      + "ones the file asks for. Nothing running is restarted."
+            }
+
+            Column {
+                width: parent.width
+                spacing: 6
+                Text { text: "Declaration files"; color: "#9aa1ac"; font.pixelSize: 12 }
+                Row {
+                    width: parent.width
+                    spacing: 8
+
+                    Button {
+                        text: "+ Add file…"
+                        flat: true
+                        Material.theme: Material.Dark
+                        Material.accent: "#4f8cff"
+                        enabled: !infrastructureDialog.busy
+                        onClicked: declarationFileDialog.open()
+                    }
+
+                    Button {
+                        text: "Folder…"
+                        flat: true
+                        Material.theme: Material.Dark
+                        Material.accent: "#4f8cff"
+                        enabled: !infrastructureDialog.busy
+                        onClicked: declarationFolderDialog.open()
+                    }
+
+                    Button {
+                        text: "Clear"
+                        flat: true
+                        Material.theme: Material.Dark
+                        Material.accent: "#ff6b6b"
+                        visible: infrastructureDialog.hasDeclaration
+                        enabled: !infrastructureDialog.busy
+                        onClicked: infrastructureDialog.setSources([])
+                    }
+                }
+
+                // The files themselves, one per line, and a folder expanded into the ones it
+                // actually contributed - which is the only way to see what a folder brought in
+                // before it is uploaded.
+                Column {
+                    width: parent.width
+                    spacing: 2
+                    visible: infrastructureDialog.fileNames.length > 0
+
+                    Repeater {
+                        model: infrastructureDialog.fileNames
+                        Text {
+                            width: parent.width
+                            text: "• " + modelData
+                            color: "#c4c9d1"
+                            font.pixelSize: 12
+                            elide: Text.ElideMiddle
+                        }
+                    }
+
+                    Text {
+                        width: parent.width
+                        text: infrastructureDialog.mergeSummary
+                        color: "#6b7280"
+                        font.pixelSize: 11
+                    }
+                }
+
+                Text {
+                    width: parent.width
+                    wrapMode: Text.WordWrap
+                    color: "#6b7280"
+                    font.pixelSize: 11
+                    visible: !infrastructureDialog.hasDeclaration
+                    text: "None picked - \"Apply\" uses the declaration already in the bucket."
+                }
+                Text {
+                    width: parent.width
+                    wrapMode: Text.WordWrap
+                    color: "#6b7280"
+                    font.pixelSize: 11
+                    visible: infrastructureDialog.hasDeclaration
+                    text: "Merged into one document and uploaded as " + root.declarationKey + ", replacing "
+                          + "whatever is there, then applied once it has landed. Pick several files or the "
+                          + "folder they live in - a folder is read as every *.json in it, the way the CLI "
+                          + "reads one. Two of them naming the same resource is refused rather than resolved."
+                }
+            }
+
+            // What the answer said. Deletions first among equals - they are the part nobody should
+            // have to go looking for, which is why apply-infrastructure reports at all.
+            Column {
+                width: parent.width
+                spacing: 4
+                visible: infrastructureDialog.answered
+
+                Text {
+                    width: parent.width
+                    wrapMode: Text.WordWrap
+                    color: infrastructureDialog.declared ? "#4cd97b" : "#9aa1ac"
+                    font.pixelSize: 12
+                    text: infrastructureDialog.declared
+                          ? "Applied."
+                          : "This application declares no infrastructure: there is no " + root.declarationKey
+                            + " in its bucket. Nothing was created, and nothing was removed."
+                }
+
+                Repeater {
+                    model: infrastructureDialog.declared
+                           ? [{ label: "Deleted", erns: infrastructureDialog.deleted, color: "#ff6b6b" },
+                              { label: "Created", erns: infrastructureDialog.created, color: "#4cd97b" },
+                              { label: "Granted", erns: infrastructureDialog.granted, color: "#9aa1ac" },
+                              { label: "Revoked", erns: infrastructureDialog.revoked, color: "#e0a458" }]
+                           : []
+
+                    Text {
+                        width: infrastructureDialog.availableWidth
+                        wrapMode: Text.WordWrap
+                        color: modelData.color
+                        font.pixelSize: 11
+                        visible: modelData.erns.length > 0
+                        text: modelData.label + " (" + modelData.erns.length + "): " + modelData.erns.join(", ")
+                    }
+                }
+
+                Text {
+                    width: parent.width
+                    color: "#6b7280"
+                    font.pixelSize: 11
+                    visible: infrastructureDialog.declared
+                             && infrastructureDialog.created.length === 0 && infrastructureDialog.deleted.length === 0
+                             && infrastructureDialog.granted.length === 0 && infrastructureDialog.revoked.length === 0
+                    text: "Nothing changed - what the declaration asks for is already what this application has."
+                }
+            }
+
+            Text {
+                width: parent.width
+                wrapMode: Text.WordWrap
+                color: "#ff6b6b"
+                font.pixelSize: 12
+                visible: infrastructureDialog.errorText.length > 0
+                text: infrastructureDialog.errorText
+            }
+
+            Item {
+                width: parent.width
+                height: 40
+
+                Button {
+                    text: "Close"
+                    flat: true
+                    anchors.left: parent.left
+                    anchors.verticalCenter: parent.verticalCenter
+                    Material.theme: Material.Dark
+                    enabled: !infrastructureDialog.busy
+                    onClicked: infrastructureDialog.close()
+                }
+
+                BusyIndicator {
+                    running: infrastructureDialog.busy
+                    visible: infrastructureDialog.busy
+                    width: 22
+                    height: 22
+                    anchors.right: applyInfrastructureButton.left
+                    anchors.rightMargin: 12
+                    anchors.verticalCenter: parent.verticalCenter
+                }
+
+                Button {
+                    id: applyInfrastructureButton
+                    // One button for the two halves: with a file picked it deploys, without one it
+                    // applies what is already there, and the label says which it is about to do.
+                    text: infrastructureDialog.uploading
+                          ? "Uploading…"
+                          : (infrastructureDialog.applying
+                             ? "Applying…"
+                             : (infrastructureDialog.hasDeclaration ? "Upload & apply" : "Apply"))
+                    highlighted: true
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    Material.theme: Material.Dark
+                    Material.accent: "#4f8cff"
+                    enabled: !infrastructureDialog.busy
+                             && (!infrastructureDialog.hasDeclaration
+                                 || String(root.detail("bucketErn", "")).length > 0)
+                    onClicked: {
+                        if (infrastructureDialog.hasDeclaration) infrastructureDialog.uploadAndApply()
+                        else infrastructureDialog.apply()
                     }
                 }
             }
