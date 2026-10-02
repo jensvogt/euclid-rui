@@ -145,6 +145,8 @@ qt_add_qml_module(euclid-rui
         qml/components/MessageAttributes.qml
         qml/components/ConnectionGraph.qml
         qml/components/ApplicationConnectionsDialog.qml
+        qml/components/ApplicationGraph.qml
+        qml/components/ApplicationGraphDialog.qml
         qml/components/ServiceModuleTile.qml
         qml/components/Breadcrumb.qml
         qml/components/RoleGrants.qml
