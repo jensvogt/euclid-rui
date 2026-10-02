@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.23](https://github.com/jensvogt/euclid-rui/compare/1.1.22...v1.1.23) (2026-09-29)
+
+
+### Bug Fixes
+
+* add draw graph of infrastructure ([6ccdb7c](https://github.com/jensvogt/euclid-rui/commit/6ccdb7c546068935c37f6fa6b376ae54c119eb94))
+
 ## [1.1.22](https://github.com/jensvogt/euclid-rui/compare/1.1.21...v1.1.22) (2026-09-26)
 
 
