@@ -1219,6 +1219,21 @@ Item {
         }
     }
 
+    // Reads every declaration when it is opened rather than with the table: it is one request to ESM
+    // per application, and none of it is in the rows - the table is EAP's answer, and what an
+    // application is wired to is a file in a bucket.
+    ApplicationGraphDialog {
+        id: applicationGraphDialog
+        applications: root.applications
+        // It closes itself first, so this is a navigation rather than a page opening behind a modal
+        // dialog. The row is the one the table already has - the details page is opened from it
+        // exactly the way a click on the row opens it.
+        onApplicationActivated: applicationId => {
+            const row = root.applications.find(application => application.applicationId === applicationId)
+            if (row) root.openApplicationDetails(applicationId, row)
+        }
+    }
+
     ScrollView {
         anchors.fill: parent
         anchors.margins: 28
@@ -1247,14 +1262,30 @@ Item {
                     subtitle: "Artifacts euclid runs as processes."
                 }
 
-                Button {
-                    text: "+ Add Application"
-                    highlighted: true
+                Row {
+                    spacing: 8
                     anchors.right: parent.right
                     anchors.verticalCenter: sectionHeader.verticalCenter
-                    Material.theme: Material.Dark
-                    Material.accent: "#4f8cff"
-                    onClicked: createApplicationDialog.open()
+
+                    // The table says what each application is; this says what they are to each
+                    // other, which no column can - a queue one of them writes and another reads is
+                    // two rows here and one line there.
+                    Button {
+                        text: "Graph…"
+                        flat: true
+                        Material.theme: Material.Dark
+                        Material.accent: "#4f8cff"
+                        enabled: root.applications.length > 0
+                        onClicked: applicationGraphDialog.open()
+                    }
+
+                    Button {
+                        text: "+ Add Application"
+                        highlighted: true
+                        Material.theme: Material.Dark
+                        Material.accent: "#4f8cff"
+                        onClicked: createApplicationDialog.open()
+                    }
                 }
             }
 
