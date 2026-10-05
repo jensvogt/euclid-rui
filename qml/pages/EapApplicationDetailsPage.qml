@@ -17,6 +17,7 @@ Item {
     property bool deleting: false
     property bool savingEnvironment: false
     property bool savingRuntime: false
+    property bool savingNodeLabels: false
 
     // The processes actually running this application, from EMM rather than EAP: the manager runs
     // an application as a module pool named after its *runtime* name, and only that pool knows
@@ -224,6 +225,32 @@ Item {
         return environment ? Object.keys(environment).sort() : []
     }
 
+    // Placement constraints, written the same way the environment is and for the same reason:
+    // "update-application" replaces each field it is given, so adding or removing one label means
+    // sending the resulting map.
+    function setNodeLabels(labels) {
+        root.error = ""
+        root.savingNodeLabels = true
+        eapClient.updateApplication(root.applicationId, { nodeLabels: labels })
+    }
+
+    function setNodeLabel(name, value) {
+        const labels = Object.assign({}, root.detail("nodeLabels", ({})))
+        labels[name] = value
+        root.setNodeLabels(labels)
+    }
+
+    function removeNodeLabel(name) {
+        const labels = Object.assign({}, root.detail("nodeLabels", ({})))
+        delete labels[name]
+        root.setNodeLabels(labels)
+    }
+
+    function nodeLabelNames() {
+        const labels = root.detail("nodeLabels", ({}))
+        return labels ? Object.keys(labels).sort() : []
+    }
+
     function refresh() {
         if (!root.loggedIn || root.applicationId.length === 0)
             return
@@ -274,17 +301,21 @@ Item {
             root.deleting = false
             root.savingEnvironment = false
             root.savingRuntime = false
+            root.savingNodeLabels = false
             if (environmentDialog.opened) environmentDialog.errorText = message
             else if (runtimeDialog.opened) runtimeDialog.errorText = message
+            else if (nodeLabelDialog.opened) nodeLabelDialog.errorText = message
             else root.error = message
         }
         function onApplicationStateChanged(applicationId, desiredState) {
             if (applicationId !== root.applicationId) return
             root.savingEnvironment = false
             root.savingRuntime = false
-            // Both are modal, so only the one that was open can have sent this.
+            root.savingNodeLabels = false
+            // All three are modal, so only the one that was open can have sent this.
             environmentDialog.close()
             runtimeDialog.close()
+            nodeLabelDialog.close()
             // Stored already; re-reading is what puts the new map on screen.
             root.refresh()
         }
@@ -665,6 +696,141 @@ Item {
                 }
             }
 
+            // Where this application may run, as opposed to what it runs with. Under the
+            // environment because the two are edited the same way and read the same way - a map of
+            // names to values, replaced whole on every change - but they are answering different
+            // questions, which is why this is a tile of its own rather than another section of that
+            // one.
+            Rectangle {
+                width: parent.width
+                height: nodeLabelsCol.implicitHeight + 40
+                radius: 14
+                color: "#20242e"
+                border.color: "#2c313c"
+                border.width: 1
+
+                Column {
+                    id: nodeLabelsCol
+                    anchors.top: parent.top
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.margins: 20
+                    spacing: 14
+
+                    Item {
+                        width: parent.width
+                        height: nodeLabelsHeaderRow.implicitHeight
+
+                        Row {
+                            id: nodeLabelsHeaderRow
+                            spacing: 10
+                            Text { text: "Node Labels"; color: "white"; font.pixelSize: 15; font.bold: true }
+                            BusyIndicator {
+                                running: root.savingNodeLabels
+                                visible: root.savingNodeLabels
+                                width: 18
+                                height: 18
+                                anchors.verticalCenter: parent.verticalCenter
+                            }
+                        }
+
+                        Button {
+                            text: "+ Add label"
+                            highlighted: true
+                            anchors.right: parent.right
+                            anchors.verticalCenter: nodeLabelsHeaderRow.verticalCenter
+                            Material.theme: Material.Dark
+                            Material.accent: "#4f8cff"
+                            enabled: !root.savingNodeLabels
+                            onClicked: nodeLabelDialog.openFor("", "")
+                        }
+                    }
+
+                    Text {
+                        width: parent.width
+                        text: "Labels a worker node must carry - all of them - for this application to be placed there. "
+                              + "The scalable half of a placement constraint: naming nodes means editing every "
+                              + "application when a machine is replaced, where a label follows whichever machine "
+                              + "carries it."
+                        color: "#6b7280"
+                        font.pixelSize: 11
+                        wrapMode: Text.WordWrap
+                    }
+
+                    Text {
+                        visible: root.nodeLabelNames().length === 0
+                        // Not a restriction waiting to be filled in: no constraint is the permissive
+                        // case, and it is what every application on an installation without workers
+                        // has and must go on having.
+                        text: "No constraints: this application may run on any node, including the manager's own host."
+                        color: "#6b7280"
+                        font.pixelSize: 12
+                    }
+
+                    Repeater {
+                        model: root.nodeLabelNames()
+                        delegate: Row {
+                            id: nodeLabelRow
+                            required property string modelData
+
+                            width: nodeLabelsCol.width
+                            height: 26
+                            spacing: 12
+
+                            Text {
+                                text: nodeLabelRow.modelData
+                                color: "#e5e7eb"
+                                font.pixelSize: 13
+                                elide: Text.ElideRight
+                                width: Math.min(260, nodeLabelRow.width * 0.35)
+                                anchors.verticalCenter: parent.verticalCenter
+                            }
+                            Text {
+                                text: root.detail("nodeLabels", ({}))[nodeLabelRow.modelData]
+                                color: "#c4c9d1"
+                                font.pixelSize: 12
+                                elide: Text.ElideRight
+                                width: nodeLabelRow.width - Math.min(260, nodeLabelRow.width * 0.35) - 140
+                                anchors.verticalCenter: parent.verticalCenter
+                            }
+                            Text {
+                                text: "Edit"
+                                color: editLabelArea.containsMouse ? "#4f8cff" : "#9aa1ac"
+                                font.pixelSize: 11
+                                anchors.verticalCenter: parent.verticalCenter
+
+                                MouseArea {
+                                    id: editLabelArea
+                                    anchors.fill: parent
+                                    anchors.margins: -4
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    enabled: !root.savingNodeLabels
+                                    onClicked: nodeLabelDialog.openFor(nodeLabelRow.modelData,
+                                        String(root.detail("nodeLabels", ({}))[nodeLabelRow.modelData]))
+                                }
+                            }
+                            Text {
+                                text: "Remove"
+                                color: removeLabelArea.containsMouse ? "#ff6b6b" : "#9aa1ac"
+                                font.pixelSize: 11
+                                anchors.verticalCenter: parent.verticalCenter
+
+                                MouseArea {
+                                    id: removeLabelArea
+                                    anchors.fill: parent
+                                    anchors.margins: -4
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    enabled: !root.savingNodeLabels
+                                    onClicked: root.removeNodeLabel(nodeLabelRow.modelData)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             // The processes, as opposed to the definition above them. Everything on this page so
             // far is what was asked for; this is what is actually running - which pid, on which
             // port, since when, and how many times it has had to be restarted to stay that way.
@@ -960,6 +1126,165 @@ Item {
                     Material.accent: "#4f8cff"
                     enabled: !root.savingRuntime && runtimeDialog.wantedRuntime !== runtimeDialog.currentRuntime
                     onClicked: root.setRuntime(runtimeDialog.wantedRuntime)
+                }
+            }
+        }
+    }
+
+    // The same shape as the environment dialog next door, because a label is the same kind of
+    // thing - a name and a value in a map that is replaced whole. What differs is what it means,
+    // which is what the wording carries.
+    Dialog {
+        id: nodeLabelDialog
+        modal: true
+        anchors.centerIn: parent
+        width: 380
+        padding: 28
+        topPadding: 24
+        bottomPadding: 24
+        standardButtons: Dialog.NoButton
+
+        property string errorText: ""
+        // Non-empty while an existing label is being changed: its name is then fixed. A rename is a
+        // remove plus an add, which is two different maps and not what "edit" means here.
+        property string editingName: ""
+
+        background: Rectangle {
+            radius: 16
+            color: "#1b1e25"
+            border.color: "#2c313c"
+            border.width: 1
+        }
+
+        function openFor(name, value) {
+            nodeLabelDialog.editingName = name
+            nodeLabelDialog.errorText = ""
+            nodeLabelDialog.open()
+            // Assigned rather than bound, so the page's own refresh cannot overwrite what is being
+            // typed.
+            labelNameField.text = name
+            labelValueField.text = value
+            if (name.length === 0) labelNameField.forceActiveFocus()
+            else labelValueField.forceActiveFocus()
+        }
+
+        contentItem: Column {
+            width: nodeLabelDialog.availableWidth
+            spacing: 16
+
+            Column {
+                width: parent.width
+                spacing: 4
+                Text {
+                    text: nodeLabelDialog.editingName.length > 0 ? "Edit Node Label" : "Add Node Label"
+                    color: "white"
+                    font.pixelSize: 18
+                    font.bold: true
+                }
+                Text {
+                    text: "Matched against the labels a worker registered itself with. Every label here has to "
+                          + "match for a node to be a candidate, so each one added narrows where this application "
+                          + "can run."
+                    color: "#9aa1ac"
+                    font.pixelSize: 12
+                    wrapMode: Text.WordWrap
+                    width: parent.width
+                }
+            }
+
+            Column {
+                width: parent.width
+                spacing: 6
+                Text { text: "Name"; color: "#9aa1ac"; font.pixelSize: 12 }
+                TextField {
+                    id: labelNameField
+                    width: parent.width
+                    placeholderText: "e.g. gpu"
+                    enabled: nodeLabelDialog.editingName.length === 0
+                    Material.accent: "#4f8cff"
+                    selectByMouse: true
+                    Keys.onReturnPressed: labelValueField.forceActiveFocus()
+                }
+            }
+
+            Column {
+                width: parent.width
+                spacing: 6
+                Text { text: "Value"; color: "#9aa1ac"; font.pixelSize: 12 }
+                TextField {
+                    id: labelValueField
+                    width: parent.width
+                    placeholderText: "e.g. true"
+                    Material.accent: "#4f8cff"
+                    selectByMouse: true
+                    Keys.onReturnPressed: if (addLabelButton.enabled) addLabelButton.clicked()
+                }
+                Text {
+                    // The map is replaced wholesale, so re-using a name overwrites rather than
+                    // duplicating - worth saying, since that is not obvious from a form called "add".
+                    visible: nodeLabelDialog.editingName.length === 0
+                             && labelNameField.text.trim().length > 0
+                             && root.nodeLabelNames().indexOf(labelNameField.text.trim()) >= 0
+                    text: "\"" + labelNameField.text.trim() + "\" is already required; this replaces its value."
+                    color: "#ffb545"
+                    font.pixelSize: 11
+                    wrapMode: Text.WordWrap
+                    width: parent.width
+                }
+                Text {
+                    // The consequence of getting it wrong, which is quiet rather than loud: a
+                    // constraint no node satisfies is not refused, it simply leaves the application
+                    // unplaced.
+                    width: parent.width
+                    wrapMode: Text.WordWrap
+                    color: "#6b7280"
+                    font.pixelSize: 11
+                    text: "A constraint no node carries is not an error - the application is placed nowhere and "
+                          + "waits. Check the worker nodes list for what is actually labelled."
+                }
+                Text {
+                    text: nodeLabelDialog.errorText
+                    color: "#ff6b6b"
+                    font.pixelSize: 12
+                    wrapMode: Text.WordWrap
+                    width: parent.width
+                    visible: text.length > 0
+                }
+            }
+
+            Item {
+                width: parent.width
+                height: 40
+
+                Button {
+                    text: "Cancel"
+                    flat: true
+                    anchors.left: parent.left
+                    anchors.verticalCenter: parent.verticalCenter
+                    Material.theme: Material.Dark
+                    enabled: !root.savingNodeLabels
+                    onClicked: nodeLabelDialog.close()
+                }
+
+                Button {
+                    id: addLabelButton
+                    text: root.savingNodeLabels ? "Saving…"
+                          : (nodeLabelDialog.editingName.length > 0 ? "Apply" : "Add")
+                    highlighted: true
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    Material.theme: Material.Dark
+                    Material.accent: "#4f8cff"
+                    // A value is required, not optional as it is for an environment variable: the
+                    // server refuses a label with an empty one ("label 'x' needs a non-empty string
+                    // value"), and a form that lets it be sent only to have it come back refused is
+                    // a round trip spent learning a rule the button could have held.
+                    enabled: !root.savingNodeLabels && labelNameField.text.trim().length > 0
+                             && labelValueField.text.trim().length > 0
+                    onClicked: {
+                        nodeLabelDialog.errorText = ""
+                        root.setNodeLabel(labelNameField.text.trim(), labelValueField.text)
+                    }
                 }
             }
         }

@@ -107,6 +107,8 @@ qt_add_qml_module(euclid-rui
         qml/pages/EkvTableDetailsPage.qml
         qml/pages/EapApplicationsPage.qml
         qml/pages/EapApplicationDetailsPage.qml
+        qml/pages/EapNodesPage.qml
+        qml/pages/EapNodeDetailsPage.qml
         qml/pages/EtsServersPage.qml
         qml/pages/EtsServerDetailsPage.qml
         qml/pages/EsmObjectDetailsPage.qml

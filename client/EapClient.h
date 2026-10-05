@@ -45,6 +45,41 @@ public:
                                        const QVariantMap &environment = QVariantMap(),
                                        int minInstances = 1, int maxInstances = 1, int readyTimeoutMs = 30000);
 
+    // The hosts euclid places applications on - registered by a `euclid-wrk` announcing itself
+    // rather than created by anybody, so this is a census of what has turned up and not a list
+    // somebody maintains. Not the manager's own host, and not where euclid's modules run: those
+    // stay with the manager.
+    //
+    // Takes nothing. The server answers with the nodes of the caller's account, and the two flags
+    // on each are the ones worth reading together: `live` is whether the node has renewed inside
+    // the lease period, and `drained` whether it has been taken out of placement while still
+    // running what it has. A node can be live and drained at once, which is what draining is for.
+    Q_INVOKABLE void fetchNodes();
+
+    // One node by name, for a details page. Answers with the node at the top level rather than
+    // under a field, and 404s for a name that is not registered.
+    Q_INVOKABLE void fetchNode(const QString &node);
+
+    // Removes a node's *registration*, which is not a way to take a node out of service and must
+    // not be offered as one. The leases are left alone and a worker that is still running simply
+    // finds itself unregistered on its next renewal and registers again - so deleting a live node
+    // achieves nothing except briefly losing its record. Draining it and then stopping the worker
+    // is how a node is retired.
+    //
+    // What it is for: freeing a node name so a different principal can claim it. The first
+    // registration of a name binds it, and that binding is what stops one worker inheriting
+    // another's instance assignments and application credentials - so giving the name away is a
+    // deliberate act, and administrators only, unlike every other node action here.
+    Q_INVOKABLE void deleteNode(const QString &node);
+
+    // Takes a node out of placement, or puts it back. Not a stop, and this is the whole point of
+    // it: a drained node goes on running what it already has and goes on renewing its leases, and
+    // its instances leave only as they are replaced. A node that downed tools on being drained
+    // would make draining an outage, which is the opposite of what it is for.
+    //
+    // By node name, which is what the worker registered as.
+    Q_INVOKABLE void setNodeDrained(const QString &node, bool drained);
+
     // Only the fields named are changed server-side, so this sends just those.
     Q_INVOKABLE void updateApplication(const QString &applicationId, const QVariantMap &changes);
 
@@ -90,6 +125,24 @@ signals:
     // state, desiredState, instances, created, modified}. `total` is just the number of entries.
     void applicationsLoaded(const QVariantList &applications, int total);
     void applicationsFailed(const QString &message);
+    // Each entry: {name, principal, labels, cpuCount, version, os, arch, drained, live, lastSeen}.
+    // `os` and `arch` are what the worker's binary was built for, reported on registration; both
+    // are empty for a node whose worker predates the fields. `live` is
+    // the server's reading against its own lease period rather than something computed from
+    // lastSeen here - the client does not know what period the installation runs with, and
+    // guessing one would make a node look dead on a deployment that simply renews slowly.
+    void nodesLoaded(const QVariantList &nodes, int total);
+    void nodesFailed(const QString &message);
+    // Confirmed by the server, carrying the state it stored - so a page can say which way it went
+    // rather than assuming the click took.
+    void nodeDrainChanged(const QString &node, bool drained);
+    void nodeDrainFailed(const QString &message);
+    // One node, same shape as a nodesLoaded() entry. Carries the name it was asked for, so a page
+    // showing one node is not confused by an answer about another.
+    void nodeLoaded(const QString &node, const QVariantMap &details);
+    void nodeLoadFailed(const QString &node, const QString &message);
+    void nodeDeleted(const QString &node);
+    void nodeDeleteFailed(const QString &message);
     void applicationsReload();
     void applicationCreated(const QString &applicationId);
     void applicationCreateFailed(const QString &message);
