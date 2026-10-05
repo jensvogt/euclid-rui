@@ -136,10 +136,25 @@ ApplicationWindow {
     property int eapApplicationCount: -1
     property int eapRunningCount: -1
     property int eapInstanceCount: -1
+    // The hosts euclid may place applications on. Three numbers rather than one, because the total
+    // on its own is the least useful of them: a node that has stopped renewing still has a record,
+    // and a drained one is live and deliberately taking nothing. "How many are there" and "how many
+    // can take work" are different questions, and an operator reads the tile for the second.
+    property int eapNodeCount: -1
+    property int eapNodeLiveCount: -1
+    property int eapNodeDrainedCount: -1
+    // Live and not drained, which is Node::acceptsWork server-side. Counted rather than derived
+    // from the two above: a node can be drained *and* quiet, so live minus drained is not the
+    // number that can take an instance, and on a pool with one of each it is not even close.
+    property int eapNodeReadyCount: -1
     property double eapServiceCount: -1
     property double eapServiceTime: -1
     property string selectedApplicationId: ""
     property var selectedApplicationDetails: ({})
+    // The node details page is seeded from the row that was clicked and re-reads the listing for
+    // itself afterwards: EAP has no "get-node", so a single node is read by listing them all.
+    property string selectedNodeName: ""
+    property var selectedNodeDetails: ({})
 
     // ETS. Two kinds of metric: the per-action service count/time every module records through
     // Core::Monitoring::MonitoringTimer, and the transfer counters recorded by the
@@ -207,7 +222,9 @@ ApplicationWindow {
     readonly property var moduleRoutes: ({
         "eam": "modules-eam", "roles": "modules-eam-roles", "eqs": "modules-eqs", "esm": "modules-esm", "ess": "modules-ess",
         "ekm": "modules-ekm", "ekv": "modules-ekv", "ens": "modules-ens", "ets": "modules-ets",
-        "eap": "modules-eap",
+        // "nodes" alongside "eap" the way "roles" sits alongside "eam": a sub-page worth reaching
+        // by name, because somebody looking for a worker node is not looking for the module.
+        "eap": "modules-eap", "nodes": "modules-eap-nodes",
         // Like EMM below, administrators only - but listed all the same, so typing it says so
         // rather than pretending the module does not exist.
         "eag": "modules-eag",
@@ -331,6 +348,7 @@ ApplicationWindow {
         if (!window.loggedIn)
             return
         eapClient.fetchApplications("")
+        eapClient.fetchNodes()
         emoClient.fetchAverage("eap-service-count")
         emoClient.fetchAverage("eap-service-time")
     }
@@ -350,6 +368,22 @@ ApplicationWindow {
             window.eapApplicationCount = -1
             window.eapRunningCount = -1
             window.eapInstanceCount = -1
+        }
+        function onNodesLoaded(list, total) {
+            window.eapNodeCount = total
+            // `live` as the server read it against its own lease period - see
+            // EapClient::nodesLoaded. Drained nodes are counted whether or not they are live: a
+            // drained node that has also gone quiet is still one somebody took out of service, and
+            // folding it into the live figure would hide that.
+            window.eapNodeLiveCount = list.filter(n => n.live).length
+            window.eapNodeDrainedCount = list.filter(n => n.drained).length
+            window.eapNodeReadyCount = list.filter(n => n.live && !n.drained).length
+        }
+        function onNodesFailed(message) {
+            window.eapNodeCount = -1
+            window.eapNodeLiveCount = -1
+            window.eapNodeDrainedCount = -1
+            window.eapNodeReadyCount = -1
         }
     }
 
@@ -1244,6 +1278,21 @@ ApplicationWindow {
                             trend: "processes up", trendUp: window.eapInstanceCount > 0, accent: "#c56bff"
                         },
                         {
+                            // The registered hosts, with what can actually be placed on them
+                            // underneath: a count that said only "3" would read as three usable
+                            // nodes on an installation where two have gone quiet.
+                            title: "Worker Nodes", value: window.eapNodeCount < 0 ? "—" : String(window.eapNodeCount),
+                            route: "modules-eap-nodes",
+                            trend: window.eapNodeCount < 0 ? "not loaded"
+                                   : window.eapNodeCount === 0 ? "none registered"
+                                   : window.eapNodeLiveCount + " live"
+                                     + (window.eapNodeDrainedCount > 0 ? ", " + window.eapNodeDrainedCount + " drained" : ""),
+                            // Up only when something can actually be placed. A pool that is all live
+                            // and all drained is not a healthy one and should not be drawn as one.
+                            trendUp: window.eapNodeReadyCount > 0,
+                            accent: "#ffb545"
+                        },
+                        {
                             title: "Service Count", value: window.eapServiceCount < 0 ? "—" : window.eapServiceCount.toFixed(1),
                             trend: "per flush period", trendUp: true, accent: "#9aa1ac"
                         },
@@ -1282,6 +1331,27 @@ ApplicationWindow {
                     applicationId: window.selectedApplicationId
                     details: window.selectedApplicationDetails
                     onBack: window.currentRoute = "modules-eap-applications"
+                }
+                EapNodesPage {
+                    anchors.fill: parent
+                    visible: window.currentRoute === "modules-eap-nodes"
+                    loggedIn: window.loggedIn
+                    namespaceName: window.currentNamespace
+                    onBack: window.currentRoute = "modules-eap"
+                    onOpenNodeDetails: (nodeName, details) => {
+                        window.selectedNodeName = nodeName
+                        window.selectedNodeDetails = details
+                        window.currentRoute = "modules-eap-node-details"
+                    }
+                }
+                EapNodeDetailsPage {
+                    anchors.fill: parent
+                    visible: window.currentRoute === "modules-eap-node-details"
+                    loggedIn: window.loggedIn
+                    namespaceName: window.currentNamespace
+                    nodeName: window.selectedNodeName
+                    details: window.selectedNodeDetails
+                    onBack: window.currentRoute = "modules-eap-nodes"
                 }
 
                 // EAG. Administrator-only like EMM, and for the same reason: what the gateway

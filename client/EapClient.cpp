@@ -40,6 +40,10 @@ QVariantMap applicationToMap(const QJsonObject &application) {
     entry["command"] = application.value("command").toString();
     entry["arguments"] = application.value("arguments").toArray().toVariantList();
     entry["environment"] = application.value("environment").toObject().toVariantMap();
+    // The placement constraint: labels a node must carry, all of them, for this application to be
+    // put there. Empty means any node, including the manager's own host - which is what every
+    // application on an installation with no workers has.
+    entry["nodeLabels"] = application.value("nodeLabels").toObject().toVariantMap();
     // ERNs of the buckets and queues the application may act on; empty means unrestricted within
     // its own account.
     entry["resources"] = application.value("resources").toArray().toVariantList();
@@ -248,6 +252,91 @@ void EapClient::fetchApplications(const QString &prefix) {
          },
          [this](const QString &message) {
              emit applicationsFailed(message);
+         });
+}
+
+namespace {
+// One node, from "list-nodes" or "get-node" - the server builds both with the same nodeToJson, so
+// they are read in one place here too.
+QVariantMap nodeToMap(const QJsonObject &node) {
+    QVariantMap entry;
+    entry["name"] = node.value("name").toString();
+    // The EAM principal the worker registered as. The name belongs to whoever claimed it first, so
+    // this is also what says a second worker cannot take it over.
+    entry["principal"] = node.value("principal").toString();
+    entry["labels"] = node.value("labels").toObject().toVariantMap();
+    entry["cpuCount"] = node.value("cpuCount").toInteger();
+    entry["version"] = node.value("version").toString();
+    // What the worker's binary was built for, reported by the worker itself rather than configured
+    // - so unlike a label it cannot disagree with the machine it is running on. Both empty for a
+    // node registered by a worker older than the fields.
+    entry["os"] = node.value("os").toString();
+    entry["arch"] = node.value("arch").toString();
+    entry["drained"] = node.value("drained").toBool();
+    entry["live"] = node.value("live").toBool();
+    entry["lastSeen"] = node.value("lastSeen").toString();
+    return entry;
+}
+}// namespace
+
+void EapClient::fetchNodes() {
+    // No body: the server scopes the listing to the caller's account on its own, and there is
+    // nothing to filter or page - an installation has as many nodes as it has hosts.
+    m_base->post("eap", "list-nodes", QJsonObject(), true,
+         [this](const QJsonObject &response) {
+             QVariantList nodes;
+             for (const QJsonArray array = response.value("nodes").toArray(); const auto &value : array)
+                 nodes << nodeToMap(value.toObject());
+
+             emit nodesLoaded(nodes, response.value("total").toInt(static_cast<int>(nodes.size())));
+         },
+         [this](const QString &message) {
+             emit nodesFailed(message);
+         });
+}
+
+void EapClient::fetchNode(const QString &node) {
+    QJsonObject body;
+    body["node"] = node;
+
+    // Answers with the node itself rather than wrapping it in a field, unlike most of EAP - so the
+    // response *is* the node, and there is nothing to unwrap.
+    m_base->post("eap", "get-node", body, true,
+         [this, node](const QJsonObject &response) {
+             emit nodeLoaded(node, nodeToMap(response));
+         },
+         [this, node](const QString &message) {
+             emit nodeLoadFailed(node, message);
+         });
+}
+
+void EapClient::deleteNode(const QString &node) {
+    QJsonObject body;
+    body["node"] = node;
+
+    m_base->post("eap", "delete-node", body, true,
+         [this, node](const QJsonObject &) {
+             emit nodeDeleted(node);
+         },
+         [this](const QString &message) {
+             emit nodeDeleteFailed(message);
+         });
+}
+
+void EapClient::setNodeDrained(const QString &node, const bool drained) {
+    QJsonObject body;
+    body["node"] = node;
+    // Sent explicitly in both directions. The server reads an absent "drained" as true, because
+    // that is what the action is called - but a request that says which way it means does not
+    // depend on that, and undraining has to say so regardless.
+    body["drained"] = drained;
+
+    m_base->post("eap", "drain-node", body, true,
+         [this, node](const QJsonObject &response) {
+             emit nodeDrainChanged(node, response.value("drained").toBool());
+         },
+         [this](const QString &message) {
+             emit nodeDrainFailed(message);
          });
 }
 
