@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.1.25](https://github.com/jensvogt/euclid-rui/compare/1.1.24...v1.1.25) (2026-10-05)
+
+
+### Bug Fixes
+
+* purge of any queue, bucket looses sorting and page size ([964fdbf](https://github.com/jensvogt/euclid-rui/commit/964fdbf2de2064f4b96bdbfc16207d55b020b316))
+* purge of any queue, bucket looses sorting and page size ([3a3eded](https://github.com/jensvogt/euclid-rui/commit/3a3ededb60ec0a1684b8e5a0ede08c4f012ae57d))
+
 ## [1.1.24](https://github.com/jensvogt/euclid-rui/compare/1.1.23...v1.1.24) (2026-10-02)
 
 
