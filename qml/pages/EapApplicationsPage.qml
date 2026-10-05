@@ -126,11 +126,26 @@ Item {
         // the merged document, which exists only here - so it answers through these two instead.
         // They carry the bucket and key, so this only reacts to its own object.
         function onObjectContentSaved(bucketErn, key, object) {
+            // Storing the document is only half of it: put-object wrote a file into the bucket and
+            // nothing has read it yet, so the apply is what makes it mean anything.
+            if (deployInfrastructureDialog.uploading && key === deployInfrastructureDialog.declarationKey) {
+                deployInfrastructureDialog.uploading = false
+                deployInfrastructureDialog.applying = true
+                eapClient.applyInfrastructure(deployInfrastructureDialog.applicationId)
+                return
+            }
             if (!createApplicationDialog.uploadingDeclaration || key !== createApplicationDialog.declarationKey) return
             createApplicationDialog.uploadingDeclaration = false
             createApplicationDialog.submit()
         }
         function onObjectContentSaveFailed(bucketErn, key, message) {
+            // Nothing was applied because nothing was stored, and the application is exactly as it
+            // was - so this is a retry, with the files still picked.
+            if (deployInfrastructureDialog.uploading && key === deployInfrastructureDialog.declarationKey) {
+                deployInfrastructureDialog.uploading = false
+                deployInfrastructureDialog.errorText = "The declaration was not uploaded, so nothing was applied: " + message
+                return
+            }
             if (!createApplicationDialog.uploadingDeclaration || key !== createApplicationDialog.declarationKey) return
             createApplicationDialog.uploadingDeclaration = false
             createApplicationDialog.creating = false
@@ -269,9 +284,26 @@ Item {
         // dialog is closing by then and none of it shows up in the row: a declaration creates
         // queues and topics, which belong to EQS and ENS, and grants that live on the principal.
         function onInfrastructureApplied(applicationId, declared, created, deleted, granted, revoked) {
+            // The deploy dialog is held open until the server answers, so the report that closes it
+            // is this one. The note below is then written the same way it is for a create.
+            const fromDeployDialog = deployInfrastructureDialog.applying
+            if (fromDeployDialog) {
+                deployInfrastructureDialog.applying = false
+                deployInfrastructureDialog.close()
+            }
             // An apply started from the details page answers here too, and its report belongs
-            // there - this note is for the one this page's create dialog caused.
-            if (!root.visible || !declared) return
+            // there - this note is for the one this page's dialogs caused.
+            if (!root.visible) return
+            if (!declared) {
+                // Nothing to say for a create: most applications have no declaration at all. After
+                // a deploy it is worth reading - the document was just uploaded, so EAP finding
+                // none means it went somewhere this application does not read.
+                if (fromDeployDialog) {
+                    root.actionNote = ""
+                    root.actionWarning = "EAP found no declaration for '" + applicationId + "' to apply."
+                }
+                return
+            }
             const parts = []
             if (created.length > 0) parts.push("created " + created.length)
             if (deleted.length > 0) parts.push("deleted " + deleted.length)
@@ -287,6 +319,14 @@ Item {
         // owns nothing. Said plainly, because the alternative is finding out from the first thing
         // that cannot reach its queue.
         function onInfrastructureApplyFailed(message) {
+            // Into the dialog while it is up: the files this is about are still on screen there, and
+            // a "uses" entry naming something that does not exist is fixed by picking different
+            // ones and sending them again. Nothing was applied, so the application is unchanged.
+            if (deployInfrastructureDialog.applying) {
+                deployInfrastructureDialog.applying = false
+                deployInfrastructureDialog.errorText = message
+                return
+            }
             if (!root.visible) return
             root.actionNote = ""
             root.actionWarning = "The application was created, but its declaration was not applied, so it owns "
@@ -611,6 +651,311 @@ Item {
                         esmClient.uploadObject(redeployDialog.bucketErn, redeployArtifactField.text.trim(),
                                                redeployDialog.pendingFile)
                     }
+                }
+            }
+        }
+    }
+
+    // The deploy dialog's own pickers. The create dialog's two cannot be shared: a FileDialog keeps
+    // the folder it was last left in as its own state, and the two are used from different places
+    // in a session - a create starts from wherever the artifact lives, a deploy from wherever the
+    // declaration does.
+    FileDialog {
+        id: deployDeclarationFileDialog
+        title: "Add a declaration file"
+        fileMode: FileDialog.OpenFiles
+        nameFilters: ["Declaration files (*.json)", "All files (*)"]
+        currentFolder: appSettings.lastFileDialogFolder
+        onAccepted: {
+            appSettings.lastFileDialogFolder = currentFolder
+            deployInfrastructureDialog.addSources(selectedFiles.length > 0 ? selectedFiles : [selectedFile])
+        }
+    }
+
+    // A folder replaces the selection rather than adding to it, same as the create dialog: a folder
+    // is a complete statement about which files belong together, and a file left over beside it
+    // would not be part of it.
+    FolderDialog {
+        id: deployDeclarationFolderDialog
+        title: "Select the application's declaration folder"
+        currentFolder: appSettings.lastFileDialogFolder
+        onAccepted: {
+            appSettings.lastFileDialogFolder = selectedFolder
+            deployInfrastructureDialog.setSources([selectedFolder])
+        }
+    }
+
+    // "eap deploy-infrastructure" as a dialog: merge the declaration files, store the result beside
+    // the artifact under the key EAP reads it by, then apply it.
+    //
+    // The one way to apply a declaration without deploying a build. Create and redeploy both apply
+    // whatever is in the bucket in passing, which makes a declaration written after the application
+    // was created - or one whose "uses" entries only exist now - something that otherwise needs a
+    // redeploy of a build that has not changed, restarting a pool for a change that does not
+    // concern it. This applies it and leaves the running processes alone.
+    Dialog {
+        id: deployInfrastructureDialog
+        modal: true
+        anchors.centerIn: parent
+        width: 520
+        padding: 28
+        topPadding: 24
+        bottomPadding: 24
+        standardButtons: Dialog.NoButton
+
+        // The row the menu was opened on. It carries the bucket the declaration goes into, so
+        // nothing has to be looked up to upload - same as the redeploy dialog above.
+        property var application: null
+        property var sources: []
+        property var fileNames: []
+        property string summary: ""
+        // Two steps, reported apart: the upload is ESM's and the apply is EAP's, and a failure in
+        // the first leaves nothing behind while a failure in the second leaves the document stored.
+        property bool uploading: false
+        property bool applying: false
+        property string errorText: ""
+
+        readonly property string applicationId: application ? application.applicationId : ""
+        readonly property string bucketErn: application ? application.bucketErn : ""
+        readonly property string declarationKey: applicationId.length > 0 ? applicationId + ".euclid.json" : ""
+        readonly property bool busy: uploading || applying
+        readonly property bool hasSources: sources.length > 0
+
+        function openFor(row) {
+            deployInfrastructureDialog.application = row
+            deployInfrastructureDialog.setSources([])
+            deployInfrastructureDialog.errorText = ""
+            deployInfrastructureDialog.open()
+        }
+
+        function addSources(picked) {
+            let next = deployInfrastructureDialog.sources.slice()
+            for (const source of picked) {
+                // The same file twice is the operator clicking again, not a declaration naming
+                // something twice - so it is ignored rather than refused by the merge.
+                if (next.indexOf(source) < 0) next.push(source)
+            }
+            deployInfrastructureDialog.setSources(next)
+        }
+
+        // Merged as soon as anything is picked, and with the application id - which is known here,
+        // unlike in the create dialog where it is still being typed. So a file declaring a
+        // different application is refused while the selection is on screen, before anything has
+        // been uploaded and while the picker is still the obvious thing to correct it with.
+        function setSources(picked) {
+            deployInfrastructureDialog.errorText = ""
+            deployInfrastructureDialog.sources = picked
+            deployInfrastructureDialog.fileNames = []
+            deployInfrastructureDialog.summary = ""
+            if (picked.length === 0) return
+
+            const merged = eapClient.mergeDeclaration(picked, deployInfrastructureDialog.applicationId)
+            if (merged.error.length > 0) {
+                deployInfrastructureDialog.sources = []
+                deployInfrastructureDialog.errorText = merged.error
+                return
+            }
+            deployInfrastructureDialog.fileNames = merged.fileNames
+            deployInfrastructureDialog.summary = merged.fileNames.length + " file(s)  ·  owns "
+                    + merged.creates + ", uses " + merged.uses
+        }
+
+        // Merged again on the way out rather than kept from the picking: the files on disk are the
+        // statement of record, and re-reading them means what is uploaded is what they say now.
+        function submit() {
+            const merged = eapClient.mergeDeclaration(deployInfrastructureDialog.sources,
+                                                      deployInfrastructureDialog.applicationId)
+            if (merged.error.length > 0) {
+                deployInfrastructureDialog.errorText = merged.error
+                return
+            }
+            deployInfrastructureDialog.errorText = ""
+            deployInfrastructureDialog.uploading = true
+            esmClient.saveObjectContent(deployInfrastructureDialog.bucketErn,
+                                        deployInfrastructureDialog.declarationKey, merged.document)
+        }
+
+        background: Rectangle {
+            radius: 16
+            color: "#1b1e25"
+            border.color: "#2c313c"
+            border.width: 1
+        }
+
+        contentItem: Column {
+            width: deployInfrastructureDialog.availableWidth
+            spacing: 16
+
+            Column {
+                width: parent.width
+                spacing: 4
+                Text { text: "Deploy infrastructure"; color: "white"; font.pixelSize: 18; font.bold: true }
+                Text {
+                    text: "Admin only. Stores the declaration beside the artifact and applies it. Nothing about "
+                          + "the running processes changes - the definition is not stamped, so the pool is not "
+                          + "restarted."
+                    color: "#9aa1ac"
+                    font.pixelSize: 12
+                    wrapMode: Text.WordWrap
+                    width: parent.width
+                }
+            }
+
+            Column {
+                width: parent.width
+                spacing: 6
+                Text { text: "Application"; color: "#9aa1ac"; font.pixelSize: 12 }
+                Text {
+                    width: parent.width
+                    text: deployInfrastructureDialog.applicationId
+                    color: "white"
+                    font.pixelSize: 15
+                    elide: Text.ElideRight
+                }
+                Text {
+                    width: parent.width
+                    text: deployInfrastructureDialog.declarationKey.length > 0
+                          ? "Uploaded as " + deployInfrastructureDialog.declarationKey + " in the application's own bucket."
+                          : ""
+                    color: "#6b7280"
+                    font.pixelSize: 11
+                    wrapMode: Text.WordWrap
+                }
+            }
+
+            Column {
+                width: parent.width
+                spacing: 6
+                Text { text: "Declaration"; color: "#9aa1ac"; font.pixelSize: 12 }
+
+                Row {
+                    width: parent.width
+                    spacing: 8
+
+                    Button {
+                        text: "+ Add file…"
+                        flat: true
+                        Material.theme: Material.Dark
+                        Material.accent: "#4f8cff"
+                        enabled: !deployInfrastructureDialog.busy
+                        onClicked: deployDeclarationFileDialog.open()
+                    }
+
+                    Button {
+                        text: "Folder…"
+                        flat: true
+                        Material.theme: Material.Dark
+                        Material.accent: "#4f8cff"
+                        enabled: !deployInfrastructureDialog.busy
+                        onClicked: deployDeclarationFolderDialog.open()
+                    }
+
+                    Button {
+                        text: "Clear"
+                        flat: true
+                        Material.theme: Material.Dark
+                        Material.accent: "#ff6b6b"
+                        visible: deployInfrastructureDialog.hasSources
+                        enabled: !deployInfrastructureDialog.busy
+                        onClicked: deployInfrastructureDialog.setSources([])
+                    }
+                }
+
+                // The files themselves, one per line, and a folder expanded into the ones it
+                // actually contributed - which is the only way to see what a folder brought in
+                // before it is uploaded.
+                Column {
+                    width: parent.width
+                    spacing: 2
+                    visible: deployInfrastructureDialog.fileNames.length > 0
+
+                    Repeater {
+                        model: deployInfrastructureDialog.fileNames
+                        Text {
+                            width: parent.width
+                            text: "• " + modelData
+                            color: "#c4c9d1"
+                            font.pixelSize: 12
+                            elide: Text.ElideMiddle
+                        }
+                    }
+
+                    Text {
+                        width: parent.width
+                        text: deployInfrastructureDialog.summary
+                        color: "#6b7280"
+                        font.pixelSize: 11
+                    }
+                }
+
+                Text {
+                    width: parent.width
+                    wrapMode: Text.WordWrap
+                    color: "#6b7280"
+                    font.pixelSize: 11
+                    text: "JSON files naming the queues and topics this application owns, and the resources "
+                          + "somebody else owns that it has to reach. Add them one at a time, or pick the folder "
+                          + "they live in - a folder is every *.json in it, the way the CLI reads one."
+                }
+            }
+
+            // Said before it is pressed rather than reported afterwards: the delete half is the one
+            // step here that cannot be undone, and it is not what "deploy" sounds like it does.
+            Text {
+                width: parent.width
+                wrapMode: Text.WordWrap
+                color: "#e0a458"
+                font.pixelSize: 11
+                visible: deployInfrastructureDialog.hasSources
+                text: "A full reconcile, not an addition: what the file names is created, what this application "
+                      + "owned and no longer declares is deleted - with a queue's messages and a bucket's objects "
+                      + "- and its access grants are replaced with exactly the ones the file asks for."
+            }
+
+            Text {
+                width: parent.width
+                text: deployInfrastructureDialog.errorText
+                color: "#ff6b6b"
+                font.pixelSize: 12
+                wrapMode: Text.WordWrap
+                visible: text.length > 0
+            }
+
+            Item {
+                width: parent.width
+                height: 40
+
+                Button {
+                    text: "Cancel"
+                    flat: true
+                    anchors.left: parent.left
+                    anchors.verticalCenter: parent.verticalCenter
+                    Material.theme: Material.Dark
+                    onClicked: deployInfrastructureDialog.close()
+                }
+
+                BusyIndicator {
+                    running: deployInfrastructureDialog.busy
+                    visible: deployInfrastructureDialog.busy
+                    width: 22
+                    height: 22
+                    anchors.right: deployInfrastructureButton.left
+                    anchors.rightMargin: 12
+                    anchors.verticalCenter: parent.verticalCenter
+                }
+
+                Button {
+                    id: deployInfrastructureButton
+                    text: "Deploy"
+                    highlighted: true
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    Material.theme: Material.Dark
+                    Material.accent: "#4f8cff"
+                    enabled: !deployInfrastructureDialog.busy
+                             && deployInfrastructureDialog.hasSources
+                             && deployInfrastructureDialog.bucketErn.length > 0
+                    onClicked: deployInfrastructureDialog.submit()
                 }
             }
         }
@@ -1356,6 +1701,15 @@ Item {
                         text: "Redeploy…",
                         action: function(row) {
                             redeployDialog.openFor(row)
+                        }
+                    },
+                    {
+                        // The declaration on its own, for a file written after the application was
+                        // created or one whose "uses" entries have only just come to exist. The
+                        // alternative is a redeploy of a build that has not changed.
+                        text: "Deploy infrastructure…",
+                        action: function(row) {
+                            deployInfrastructureDialog.openFor(row)
                         }
                     },
                     {
