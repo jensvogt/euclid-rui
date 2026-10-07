@@ -164,6 +164,18 @@ public:
     Q_INVOKABLE void startApplication(const QString &applicationId);
     Q_INVOKABLE void stopApplication(const QString &applicationId);
 
+    // Takes the instances down and lets the manager bring them back, without changing anything
+    // about the definition: no new artifact, no new version, and desiredState is left as it is.
+    // What it writes is the stamp the reconciler reads as a new revision - the same mechanism a
+    // redeploy uses, minus the build - so the pool goes and comes back within a pass or two.
+    //
+    // Refused for an application that is not desired RUNNING: there is nothing to restart, and the
+    // only way to honour it would be to start what somebody stopped. The server says so rather than
+    // quietly doing nothing, because "restarted" and "still stopped" are acted on differently.
+    //
+    // Administrators only.
+    Q_INVOKABLE void restartApplication(const QString &applicationId);
+
 signals:
     // Each entry: {applicationId, ern, accountId, region, runtime, bucketErn, artifactKey, command,
     // arguments, environment, resources, userId, minInstances, maxInstances, readyTimeoutMs,
@@ -182,7 +194,9 @@ signals:
     // rather than assuming the click took.
     void nodeDrainChanged(const QString &node, bool drained);
     void nodeDrainFailed(const QString &message);
-    // One node, same shape as a nodesLoaded() entry. Carries the name it was asked for, so a page
+    // One node, shaped like a nodesLoaded() entry and with one field more: "applications", each
+    // {applicationId, runtimeName, namespace, runtime, instances, running} - what this node is
+    // actually running, which only get-node answers. Carries the name it was asked for, so a page
     // showing one node is not confused by an answer about another.
     void nodeLoaded(const QString &node, const QVariantMap &details);
     void nodeLoadFailed(const QString &node, const QString &message);
@@ -199,6 +213,12 @@ signals:
     // revision to restart onto.
     void applicationRedeployed(const QString &applicationId, const QString &artifact, const QString &version);
     void applicationRedeployFailed(const QString &message);
+    // The restart was recorded. `instances` is what was running when it was asked for and not what
+    // came back: nothing has happened yet when this arrives - the manager acts on its next pass.
+    void applicationRestarted(const QString &applicationId, int instances);
+    // Carries the server's wording, which for the one refusal it has names the application and what
+    // to do instead ("start-application"), so it is worth passing on as it stands.
+    void applicationRestartFailed(const QString &message);
     // What applying the declaration did. `declared` is false for an application that has no
     // declaration stored at all, which is not an error - most do not - and the four lists are then
     // empty. They are ERNs: what was created, what was deleted because the file no longer names

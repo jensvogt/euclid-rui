@@ -62,8 +62,13 @@ Item {
         return root.detail("resources", [])
     }
 
+    // The application's own state now carries the pool's, so it has the same values an instance row
+    // below can have - and is coloured the same way, bar STOPPED, which here is also what the
+    // Requested state beside it can say and is not a fault.
     function applicationStateColor(value) {
         if (value === "RUNNING") return "#4cd97b"
+        if (value === "CRASHED") return "#ff6b6b"
+        if (value === "STARTING" || value === "STOPPING") return "#ffb545"
         if (value === "STOPPED") return "#ffb545"
         return "#9aa1ac"
     }
@@ -110,6 +115,9 @@ Item {
             String(i.instanceId).toLowerCase().indexOf(needle) >= 0
             || String(i.pid).indexOf(needle) >= 0
             || String(i.httpPort).indexOf(needle) >= 0
+            // By the reported host rather than what the column shows for an empty one: "manager" is
+            // a word this page chose, and filtering by it would match hosts nobody can name.
+            || String(i.host).toLowerCase().indexOf(needle) >= 0
             || String(i.state).toLowerCase().indexOf(needle) >= 0)
 
         const key = root.instanceSortColumn
@@ -150,6 +158,18 @@ Item {
             formatter: function (v) { return Number(v) > 0 ? String(v) : "—" }
         },
         {
+            // Beside the pid, because a pid on its own does not identify a process here: every host
+            // runs the same installation path and pids collide across machines as a matter of
+            // course. This is the machine the worker running the instance reported itself as.
+            title: "Host",
+            key: "host",
+            // Empty is the manager's own host and not an unknown one - it is what every instance on
+            // an installation with no workers carries. Named rather than left blank, so a column of
+            // them reads as "all here" instead of "nobody knows".
+            formatter: function (v) { return String(v).length > 0 ? String(v) : "manager" },
+            colorFor: function (v) { return String(v).length > 0 ? "#c4c9d1" : "#6b7280" }
+        },
+        {
             title: "Port",
             key: "httpPort",
             // 0 means none was handed out. An instance without one is not reachable through the
@@ -158,7 +178,11 @@ Item {
             colorFor: function (v) { return Number(v) > 0 ? "#4f8cff" : "#6b7280" }
         },
         {
-            title: "State",
+            // Not "State", though that is what the field is called: this is one process's state out
+            // of EMM - STARTING, CRASHED, RESTARTING and the rest of the module lifecycle - and the
+            // application's own State above it is EAP's answer to "is any instance running", which
+            // has only two values. Naming both "State" reads as one of them being wrong.
+            title: "Instance state",
             key: "state",
             colorFor: function (v) { return root.instanceStateColor(v) }
         },
@@ -459,7 +483,14 @@ Item {
                 StatCard {
                     title: "State"
                     value: root.applicationState.length > 0 ? root.applicationState : "—"
-                    trend: root.applicationState === root.desiredState ? "as requested" : "reconciling to " + root.desiredState
+                    // "Reconciling" is what a state on its way to the requested one is doing, and a
+                    // crashed pool is not doing it: the manager restarts it or it stays where it
+                    // is, and either way the word to read is the one EMM used.
+                    trend: root.applicationState === root.desiredState
+                           ? "as requested"
+                           : root.applicationState === "CRASHED"
+                             ? "crashed while asked to be " + root.desiredState
+                             : "reconciling to " + root.desiredState
                     trendUp: root.applicationState === "RUNNING"
                     accent: root.applicationStateColor(root.applicationState)
                     width: 440
@@ -883,7 +914,7 @@ Item {
                     // only report that the page as a whole is reloading, which it already shows.
                     loading: false
                     error: root.instancesError
-                    searchPlaceholder: "Filter by instance, pid, port or state..."
+                    searchPlaceholder: "Filter by instance, pid, host, port or state..."
                     emptyText: root.instanceFilter.length > 0
                                ? "No instance matches that."
                                : (root.desiredState === "RUNNING"

@@ -275,6 +275,28 @@ QVariantMap nodeToMap(const QJsonObject &node) {
     entry["drained"] = node.value("drained").toBool();
     entry["live"] = node.value("live").toBool();
     entry["lastSeen"] = node.value("lastSeen").toString();
+
+    // What the node is actually running, which only "get-node" carries: a listing leaves it out
+    // rather than walking every module pool once per row. So an entry out of fetchNodes() has none
+    // of these - which is not the same as a node running nothing, and is why the details page asks
+    // for its node by name instead of picking it out of the list it came from.
+    QVariantList applications;
+    for (const QJsonArray array = node.value("applications").toArray(); const auto &value: array) {
+        const QJsonObject application = value.toObject();
+        QVariantMap placement;
+        placement["applicationId"] = application.value("applicationId").toString();
+        // The pool name, which is what the instances, the data directory and the log channel on
+        // this host are called - so it is the name to look for once you are on the machine.
+        placement["runtimeName"] = application.value("runtimeName").toString();
+        placement["namespace"] = application.value("namespace").toString();
+        placement["runtime"] = application.value("runtime").toString();
+        // Slots this node holds, and how many of them are actually serving. Both, because a node
+        // holding slots that run nothing is the state worth seeing.
+        placement["instances"] = application.value("instances").toInteger();
+        placement["running"] = application.value("running").toInteger();
+        applications << placement;
+    }
+    entry["applications"] = applications;
     return entry;
 }
 }// namespace
@@ -619,5 +641,22 @@ void EapClient::stopApplication(const QString &applicationId) {
          },
          [this](const QString &message) {
              emit applicationStateFailed(message);
+         });
+}
+
+void EapClient::restartApplication(const QString &applicationId) {
+    QJsonObject body;
+    body["applicationId"] = applicationId;
+
+    m_base->post("eap", "restart-application", body, true,
+         [this, applicationId](const QJsonObject &response) {
+             emit applicationRestarted(applicationId, response.value("instances").toInt());
+             // Re-read rather than patched: what this wrote is the definition's stamp, so the row's
+             // "Modified" has moved - and the state and instance count move with the pool over the
+             // next passes, which only another listing says.
+             emit applicationsReload();
+         },
+         [this](const QString &message) {
+             emit applicationRestartFailed(message);
          });
 }

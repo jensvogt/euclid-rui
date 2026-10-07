@@ -41,6 +41,11 @@ Item {
     // to ask whether anything can be placed here.
     readonly property bool acceptsWork: root.live && !root.drained
 
+    // What this node is actually running, each {applicationId, runtimeName, namespace, runtime,
+    // instances, running}. Only "get-node" carries it, so it is empty until this page's own read
+    // lands - the entry the list handed over on the way in has nothing in it.
+    readonly property var applications: root.detail("applications", [])
+
     function nodeState() {
         if (!root.node || root.node.name === undefined) return "—"
         // Quiet first: a drained node that has also stopped renewing is a problem rather than a
@@ -290,6 +295,110 @@ Item {
 
             Rectangle {
                 width: parent.width
+                height: applicationsCol.implicitHeight + 40
+                radius: 14
+                color: "#20242e"
+                border.color: "#2c313c"
+                border.width: 1
+
+                Column {
+                    id: applicationsCol
+                    anchors.top: parent.top
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.margins: 20
+                    spacing: 14
+
+                    Text {
+                        text: "Applications (" + root.applications.length + ")"
+                        color: "white"
+                        font.pixelSize: 15
+                        font.bold: true
+                    }
+
+                    Text {
+                        width: parent.width
+                        text: "What this node is holding slots for, read off the placements themselves rather than off "
+                              + "what each application is allowed to run on. A slot is this node's whether or not the "
+                              + "process in it is up, which is why both numbers are given."
+                        color: "#6b7280"
+                        font.pixelSize: 11
+                        wrapMode: Text.WordWrap
+                    }
+
+                    Text {
+                        visible: root.applications.length === 0
+                        // Not a fault, and not the same as a node that cannot take work: a live node
+                        // simply has nothing placed on it yet, and a drained one has had its slots
+                        // leave as they were replaced.
+                        text: root.acceptsWork
+                              ? "Nothing is placed here yet."
+                              : "Nothing is placed here. " + root.nodeState().charAt(0) + root.nodeState().slice(1).toLowerCase()
+                                + " nodes are not given new instances."
+                        color: "#6b7280"
+                        font.pixelSize: 12
+                    }
+
+                    Repeater {
+                        model: root.applications
+
+                        delegate: Item {
+                            id: placement
+                            required property var modelData
+
+                            width: parent.width
+                            height: Math.max(placementName.implicitHeight, placementCount.implicitHeight)
+
+                            Column {
+                                id: placementName
+                                anchors.left: parent.left
+                                anchors.right: placementCount.left
+                                anchors.rightMargin: 12
+                                anchors.verticalCenter: parent.verticalCenter
+                                spacing: 2
+
+                                Text {
+                                    width: parent.width
+                                    text: placement.modelData.applicationId
+                                    color: "white"
+                                    font.pixelSize: 13
+                                    elide: Text.ElideRight
+                                }
+
+                                Text {
+                                    width: parent.width
+                                    // The pool name first: on this machine the data directory, the
+                                    // log channel and the processes are all called that, not what
+                                    // the application is defined as.
+                                    text: placement.modelData.runtimeName
+                                          + (String(placement.modelData["namespace"]).length > 0
+                                             ? "  ·  " + placement.modelData["namespace"] : "")
+                                          + "  ·  " + placement.modelData.runtime
+                                    color: "#6b7280"
+                                    font.pixelSize: 11
+                                    elide: Text.ElideRight
+                                }
+                            }
+
+                            Text {
+                                id: placementCount
+                                anchors.right: parent.right
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: placement.modelData.running + " / " + placement.modelData.instances + " running"
+                                // Amber rather than red for a slot that is not serving: it may be
+                                // starting, and the application's own page is where the instance
+                                // states that say which are.
+                                color: Number(placement.modelData.running) === Number(placement.modelData.instances)
+                                       ? "#4cd97b" : "#ffb545"
+                                font.pixelSize: 12
+                            }
+                        }
+                    }
+                }
+            }
+
+            Rectangle {
+                width: parent.width
                 height: labelsCol.implicitHeight + 40
                 radius: 14
                 color: "#20242e"
@@ -368,10 +477,10 @@ Item {
                 wrapMode: Text.WordWrap
                 color: "#6b7280"
                 font.pixelSize: 11
-                text: "What is running here is not shown: the manager records which node owns each slot, but "
-                      + "\"list-modules\" does not report it, so no client can tell. QUIET means the worker has not "
-                      + "renewed inside the lease period - which does not by itself mean its processes have stopped, "
-                      + "so euclid does not re-place them on that alone."
+                text: "QUIET means the worker has not renewed inside the lease period - which does not by itself mean "
+                      + "its processes have stopped, so euclid does not re-place them on that alone. The applications "
+                      + "above are what the manager has placed here; a QUIET node may still be running every one of "
+                      + "them."
             }
         }
     }

@@ -25,8 +25,13 @@ Item {
     property string actionNote: ""
     property string actionWarning: ""
 
+    // Shared by the State and Desired columns, which is why STOPPED is not red: asked for, it is
+    // an ordinary thing to want. CRASHED is the one that has to stand out - it only ever arrives in
+    // the State column, and it is the reason that column is worth scanning.
     function stateColor(state) {
         if (state === "RUNNING") return "#4cd97b"
+        if (state === "CRASHED") return "#ff6b6b"
+        if (state === "STARTING" || state === "STOPPING") return "#ffb545"
         if (state === "STOPPED") return "#ffb545"
         return "#9aa1ac"
     }
@@ -333,6 +338,22 @@ Item {
                     + "nothing it declared and has none of the access it asked for: " + message
         }
         function onApplicationStateFailed(message) {
+            root.error = message
+        }
+        // Next to the table rather than in the row: nothing in the row moves yet, because what a
+        // restart writes is a stamp the manager has not read at the point this arrives.
+        function onApplicationRestarted(applicationId, instances) {
+            root.actionWarning = ""
+            root.actionNote = instances > 0
+                    ? "Restarting '" + applicationId + "': " + instances + " instance(s) go down and come back on the "
+                      + "manager's next pass."
+                    // Asked for while nothing was up, which is the ordinary way out of a crash loop:
+                    // the stamp is what the manager reads, and it starts the pool from there.
+                    : "Restart requested for '" + applicationId + "'; it had no running instance, so the manager "
+                      + "starts it on its next pass."
+        }
+        function onApplicationRestartFailed(message) {
+            root.actionNote = ""
             root.error = message
         }
         function onApplicationScaled(applicationId, minInstances, maxInstances) {
@@ -1681,6 +1702,22 @@ Item {
                         },
                         action: function(row) {
                             eapClient.stopApplication(row.applicationId)
+                        }
+                    },
+                    {
+                        // Not a stop followed by a start: the definition is stamped and the manager
+                        // takes the pool down and brings it back on its next pass - the mechanism a
+                        // redeploy uses, without a new build. desiredState is left alone, so an
+                        // application that does not come back still reads as one that should be up.
+                        text: "Restart",
+                        // Same rule the server applies: there is nothing to restart on an
+                        // application nobody asked to run, and honouring it would mean starting
+                        // what somebody stopped.
+                        enabled: function(row) {
+                            return !!row && row.desiredState === "RUNNING"
+                        },
+                        action: function(row) {
+                            eapClient.restartApplication(row.applicationId)
                         }
                     },
                     {
