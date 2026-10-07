@@ -74,9 +74,28 @@ Item {
         return os + "-" + arch
     }
 
-    readonly property var labelKeys: {
-        const labels = root.detail("labels", null)
-        return labels ? Object.keys(labels).sort() : []
+    // What placement matches an application's nodeLabels against, which is not the "labels" field
+    // alone: the master adds the os and arch the worker reported, over any configured label of the
+    // same name (Controller::placementLabels). Shown merged so that "os=windows" on an application
+    // can be checked against what is on this page.
+    readonly property var placementLabels: {
+        const merged = Object.assign({}, root.detail("labels", null) || {})
+        for (const key of root.reportedKeys) merged[key] = String(root.detail(key, ""))
+        return merged
+    }
+
+    // The keys the worker reported rather than an operator configured.
+    readonly property var reportedKeys: ["os", "arch"].filter(k => String(root.detail(k, "")).trim().length > 0)
+
+    readonly property var labelKeys: Object.keys(root.placementLabels).sort()
+
+    // Configured labels placement does not use, because the reported value of the same name wins.
+    // Almost always a configuration copied from another host, and worth saying so.
+    readonly property var overriddenLabels: {
+        const configured = root.detail("labels", null) || {}
+        return root.reportedKeys
+            .filter(k => configured[k] !== undefined && configured[k] !== root.placementLabels[k])
+            .map(k => k + "=" + configured[k])
     }
 
     function refresh() {
@@ -419,7 +438,8 @@ Item {
                         width: parent.width
                         text: "What an application's placement constraints are matched against: a node says what it is "
                               + "and an application says what it needs. Free-form on purpose - euclid has no opinion "
-                              + "about what \"gpu\" means."
+                              + "about what \"gpu\" means. The highlighted os and arch are reported by the worker "
+                              + "itself rather than configured, and win over a configured label of the same name."
                         color: "#6b7280"
                         font.pixelSize: 11
                         wrapMode: Text.WordWrap
@@ -444,21 +464,35 @@ Item {
                             delegate: Rectangle {
                                 id: labelChip
                                 required property string modelData
+                                // Accented the way the OS / Arch card is, since that is where the value comes from.
+                                readonly property bool reported: root.reportedKeys.indexOf(modelData) >= 0
 
                                 radius: 8
-                                color: "#2c3648"
+                                color: reported ? "#33274a" : "#2c3648"
+                                border.color: reported ? "#c56bff" : "transparent"
+                                border.width: reported ? 1 : 0
                                 height: 26
                                 width: labelChipText.implicitWidth + 20
 
                                 Text {
                                     id: labelChipText
                                     anchors.centerIn: parent
-                                    text: labelChip.modelData + "=" + root.detail("labels", {})[labelChip.modelData]
+                                    text: labelChip.modelData + "=" + root.placementLabels[labelChip.modelData]
                                     color: "#c4c9d1"
                                     font.pixelSize: 11
                                 }
                             }
                         }
+                    }
+
+                    Text {
+                        width: parent.width
+                        visible: root.overriddenLabels.length > 0
+                        text: "⚠  Configured " + root.overriddenLabels.join(", ") + " is ignored: placement uses what "
+                              + "the worker reported. Remove it from euclid.worker.labels on this node."
+                        color: "#ffb545"
+                        font.pixelSize: 12
+                        wrapMode: Text.WordWrap
                     }
                 }
             }
