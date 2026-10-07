@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.1.26](https://github.com/jensvogt/euclid-rui/compare/1.1.25...v1.1.26) (2026-10-07)
+
+
+### Bug Fixes
+
+* add worker node list ([2c5f97b](https://github.com/jensvogt/euclid-rui/commit/2c5f97b2e3db684f3cd071514b6ecd65f723a9f4))
+* add worker nodes ([266c859](https://github.com/jensvogt/euclid-rui/commit/266c859d6f54ed194bc2deb0b232bcead6cabc69))
+* add worker nodes ([e53d996](https://github.com/jensvogt/euclid-rui/commit/e53d996d1e3ebaf38b4d3c7e7197b30dbc11c356))
+
 ## [1.1.25](https://github.com/jensvogt/euclid-rui/compare/1.1.24...v1.1.25) (2026-10-05)
 
 
