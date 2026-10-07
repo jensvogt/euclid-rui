@@ -70,10 +70,18 @@ Item {
         return os + "-" + arch
     }
 
-    // The labels a worker registered itself with, as "key=value" pairs. What placement is written
-    // against, so they are worth seeing on the node rather than only in a placement rule.
-    function labelText(labels) {
-        if (!labels) return "—"
+    // The labels placement matches an application's nodeLabels against, as "key=value" pairs: the
+    // ones the worker was configured with, plus the os and arch it reported, which win over a
+    // configured label of the same name (Controller::placementLabels on the master). Merged here
+    // because the server returns them apart, and "os=windows" on an application has to be
+    // checkable against this column.
+    function labelText(row) {
+        if (!row) return "—"
+        const labels = Object.assign({}, row.labels || {})
+        for (const key of ["os", "arch"]) {
+            const reported = String(row[key] === undefined ? "" : row[key]).trim()
+            if (reported.length > 0) labels[key] = reported
+        }
         const keys = Object.keys(labels)
         if (keys.length === 0) return "—"
         return keys.sort().map(k => k + "=" + labels[k]).join(", ")
@@ -107,8 +115,8 @@ Item {
         {
             title: "Labels",
             key: "labels",
-            formatter: function (v) { return root.labelText(v) },
-            colorFor: function (v) { return root.labelText(v) === "—" ? "#6b7280" : "#c4c9d1" }
+            formatter: function (v, row) { return root.labelText(row) },
+            colorFor: function (v, row) { return root.labelText(row) === "—" ? "#6b7280" : "#c4c9d1" }
         },
         // The EAM principal the worker registered as. The node name belongs to whoever claimed it
         // first, and this is who that was - so it is also what says a second worker cannot take the
