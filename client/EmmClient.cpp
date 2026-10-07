@@ -107,6 +107,12 @@ void EmmClient::fetchModules() {
                      QVariantMap entry;
                      entry["instanceId"] = instance.value("instanceId").toString();
                      entry["pid"] = instance.value("pid").toInt();
+                     // Which machine that pid is on, as the worker running it reported. Empty is
+                     // the manager's own host rather than "unknown" - that is what every instance
+                     // on an installation with no workers carries, and what every record written
+                     // before the field existed carries too. A pid without it says little: the
+                     // installation path is the same everywhere and pids collide across machines.
+                     entry["host"] = instance.value("host").toString();
                      entry["state"] = instance.value("state").toString();
                      entry["socketPath"] = instance.value("socketPath").toString();
                      // The port this instance was given for an HTTP listener of its own, 0 for a

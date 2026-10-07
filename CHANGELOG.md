@@ -1,5 +1,51 @@
 # Changelog
 
+## [1.1.26](https://github.com/jensvogt/euclid-rui/compare/1.1.25...v1.1.26) (2026-10-07)
+
+
+### Bug Fixes
+
+* add worker node list ([2c5f97b](https://github.com/jensvogt/euclid-rui/commit/2c5f97b2e3db684f3cd071514b6ecd65f723a9f4))
+* add worker nodes ([266c859](https://github.com/jensvogt/euclid-rui/commit/266c859d6f54ed194bc2deb0b232bcead6cabc69))
+* add worker nodes ([e53d996](https://github.com/jensvogt/euclid-rui/commit/e53d996d1e3ebaf38b4d3c7e7197b30dbc11c356))
+
+## [1.1.25](https://github.com/jensvogt/euclid-rui/compare/1.1.24...v1.1.25) (2026-10-05)
+
+
+### Bug Fixes
+
+* purge of any queue, bucket looses sorting and page size ([964fdbf](https://github.com/jensvogt/euclid-rui/commit/964fdbf2de2064f4b96bdbfc16207d55b020b316))
+* purge of any queue, bucket looses sorting and page size ([3a3eded](https://github.com/jensvogt/euclid-rui/commit/3a3ededb60ec0a1684b8e5a0ede08c4f012ae57d))
+
+## [1.1.24](https://github.com/jensvogt/euclid-rui/compare/1.1.23...v1.1.24) (2026-10-02)
+
+
+### Bug Fixes
+
+* purge of any queue, bucket looses sorting and page size ([9342d38](https://github.com/jensvogt/euclid-rui/commit/9342d382d8f6b0dc7fd59263de259b85755b5ef2))
+
+## [1.1.23](https://github.com/jensvogt/euclid-rui/compare/1.1.22...v1.1.23) (2026-09-29)
+
+
+### Bug Fixes
+
+* add draw graph of infrastructure ([6ccdb7c](https://github.com/jensvogt/euclid-rui/commit/6ccdb7c546068935c37f6fa6b376ae54c119eb94))
+
+## [1.1.22](https://github.com/jensvogt/euclid-rui/compare/1.1.21...v1.1.22) (2026-09-26)
+
+
+### Bug Fixes
+
+* add load on windows ([3423799](https://github.com/jensvogt/euclid-rui/commit/3423799dc1bda3acbf2589743a846d626252fbd7))
+
+## [1.1.21](https://github.com/jensvogt/euclid-rui/compare/1.1.20...v1.1.21) (2026-09-25)
+
+
+### Bug Fixes
+
+* add change userid command ([1abca6e](https://github.com/jensvogt/euclid-rui/commit/1abca6e5ede7bdc482d8dab6e295dab5372f047b))
+* add change userid command ([445362c](https://github.com/jensvogt/euclid-rui/commit/445362cee9207a575bece1a4b65ece1f62578822))
+
 ## [1.1.20](https://github.com/jensvogt/euclid-rui/compare/1.1.19...v1.1.20) (2026-09-24)
 
 

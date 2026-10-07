@@ -19,8 +19,19 @@ Item {
     property string error: ""
     property string lastUpdatedText: "—"
 
+    // What applying an application's declaration did, kept next to the table because none of it is
+    // visible in the rows: the queues and topics a declaration creates or deletes are EQS's and
+    // ENS's, and the access it grants is a role on the application's principal.
+    property string actionNote: ""
+    property string actionWarning: ""
+
+    // Shared by the State and Desired columns, which is why STOPPED is not red: asked for, it is
+    // an ordinary thing to want. CRASHED is the one that has to stand out - it only ever arrives in
+    // the State column, and it is the reason that column is worth scanning.
     function stateColor(state) {
         if (state === "RUNNING") return "#4cd97b"
+        if (state === "CRASHED") return "#ff6b6b"
+        if (state === "STARTING" || state === "STOPPING") return "#ffb545"
         if (state === "STOPPED") return "#ffb545"
         return "#9aa1ac"
     }
@@ -105,11 +116,50 @@ Item {
             if (createApplicationDialog.uploading) {
                 createApplicationDialog.uploading = false
                 createApplicationDialog.pendingFile = ""
-                createApplicationDialog.submit()
+                // The declaration goes in before the application is created, since that is what
+                // reads it - so the create waits for a second upload when one was picked.
+                if (createApplicationDialog.hasDeclaration)
+                    createApplicationDialog.uploadDeclaration()
+                else
+                    createApplicationDialog.submit()
             } else if (redeployDialog.uploading) {
                 redeployDialog.uploading = false
                 redeployDialog.submit()
             }
+        }
+        // The declaration is put through put-object as text rather than uploaded from disk - it is
+        // the merged document, which exists only here - so it answers through these two instead.
+        // They carry the bucket and key, so this only reacts to its own object.
+        function onObjectContentSaved(bucketErn, key, object) {
+            // Storing the document is only half of it: put-object wrote a file into the bucket and
+            // nothing has read it yet, so the apply is what makes it mean anything.
+            if (deployInfrastructureDialog.uploading && key === deployInfrastructureDialog.declarationKey) {
+                deployInfrastructureDialog.uploading = false
+                deployInfrastructureDialog.applying = true
+                eapClient.applyInfrastructure(deployInfrastructureDialog.applicationId)
+                return
+            }
+            if (!createApplicationDialog.uploadingDeclaration || key !== createApplicationDialog.declarationKey) return
+            createApplicationDialog.uploadingDeclaration = false
+            createApplicationDialog.submit()
+        }
+        function onObjectContentSaveFailed(bucketErn, key, message) {
+            // Nothing was applied because nothing was stored, and the application is exactly as it
+            // was - so this is a retry, with the files still picked.
+            if (deployInfrastructureDialog.uploading && key === deployInfrastructureDialog.declarationKey) {
+                deployInfrastructureDialog.uploading = false
+                deployInfrastructureDialog.errorText = "The declaration was not uploaded, so nothing was applied: " + message
+                return
+            }
+            if (!createApplicationDialog.uploadingDeclaration || key !== createApplicationDialog.declarationKey) return
+            createApplicationDialog.uploadingDeclaration = false
+            createApplicationDialog.creating = false
+            // Stopped here rather than created without it: an application whose declaration never
+            // arrived comes up owning none of the queues it asked for, and the way that reads
+            // afterwards is "the declaration did nothing". An artifact that was uploaded is in the
+            // bucket already, so pressing Create again only retries this half.
+            createApplicationDialog.errorText = "The declaration was not uploaded, so the application was "
+                    + "not created: " + message
         }
         function onObjectUploadFailed(message) {
             if (createApplicationDialog.uploading) {
@@ -124,6 +174,8 @@ Item {
             }
         }
         function onUploadProgress(bucketErn, key, bytesSent, bytesTotal) {
+            // Not for the declaration: it is a few kilobytes of JSON, and a progress line for it
+            // would only flash.
             if (createApplicationDialog.uploading) {
                 createApplicationDialog.bytesSent = bytesSent
                 createApplicationDialog.bytesTotal = bytesTotal
@@ -131,6 +183,38 @@ Item {
                 redeployDialog.bytesSent = bytesSent
                 redeployDialog.bytesTotal = bytesTotal
             }
+        }
+    }
+
+    // A declaration is usually several files: one naming what the application owns, another what it
+    // reaches. They are merged by section and kind before being uploaded.
+    //
+    // Each pick is added to the selection rather than replacing it, which is what makes picking
+    // several possible at all: this build falls back to Qt's own file dialog, which selects one
+    // file however "OpenFiles" is set - the mode is still asked for, so a platform dialog that can
+    // do better hands over everything at once and the same code takes it.
+    FileDialog {
+        id: declarationFileDialog
+        title: "Add a declaration file"
+        fileMode: FileDialog.OpenFiles
+        nameFilters: ["Declaration files (*.json)", "All files (*)"]
+        currentFolder: appSettings.lastFileDialogFolder
+        onAccepted: {
+            appSettings.lastFileDialogFolder = currentFolder
+            createApplicationDialog.addDeclarationSources(selectedFiles.length > 0 ? selectedFiles : [selectedFile])
+        }
+    }
+
+    // The other way in, and the one the CLI takes: a folder, read as every *.json in it. It
+    // replaces the selection rather than adding to it - a folder is a complete statement about
+    // which files belong together, and a leftover file beside it would not be part of it.
+    FolderDialog {
+        id: declarationFolderDialog
+        title: "Select the application's declaration folder"
+        currentFolder: appSettings.lastFileDialogFolder
+        onAccepted: {
+            appSettings.lastFileDialogFolder = selectedFolder
+            createApplicationDialog.setDeclarationSources([selectedFolder])
         }
     }
 
@@ -192,13 +276,84 @@ Item {
         }
         function onApplicationCreated(applicationId) {
             createApplicationDialog.creating = false
+            root.actionNote = ""
+            root.actionWarning = ""
             createApplicationDialog.close()
         }
         function onApplicationCreateFailed(message) {
             createApplicationDialog.creating = false
             createApplicationDialog.errorText = message
         }
+        // Creating an application applies whatever declaration is beside its artifact, so this
+        // arrives with the create rather than on its own. Reported next to the table because the
+        // dialog is closing by then and none of it shows up in the row: a declaration creates
+        // queues and topics, which belong to EQS and ENS, and grants that live on the principal.
+        function onInfrastructureApplied(applicationId, declared, created, deleted, granted, revoked) {
+            // The deploy dialog is held open until the server answers, so the report that closes it
+            // is this one. The note below is then written the same way it is for a create.
+            const fromDeployDialog = deployInfrastructureDialog.applying
+            if (fromDeployDialog) {
+                deployInfrastructureDialog.applying = false
+                deployInfrastructureDialog.close()
+            }
+            // An apply started from the details page answers here too, and its report belongs
+            // there - this note is for the one this page's dialogs caused.
+            if (!root.visible) return
+            if (!declared) {
+                // Nothing to say for a create: most applications have no declaration at all. After
+                // a deploy it is worth reading - the document was just uploaded, so EAP finding
+                // none means it went somewhere this application does not read.
+                if (fromDeployDialog) {
+                    root.actionNote = ""
+                    root.actionWarning = "EAP found no declaration for '" + applicationId + "' to apply."
+                }
+                return
+            }
+            const parts = []
+            if (created.length > 0) parts.push("created " + created.length)
+            if (deleted.length > 0) parts.push("deleted " + deleted.length)
+            if (granted.length > 0) parts.push("granted access to " + granted.length)
+            if (revoked.length > 0) parts.push("revoked access to " + revoked.length)
+            root.actionWarning = ""
+            root.actionNote = parts.length > 0
+                    ? "Declaration for '" + applicationId + "' applied: " + parts.join(", ") + " resource(s)."
+                    : "Declaration for '" + applicationId + "' applied; everything it asks for was already there."
+        }
+        // Not an error the create failed on: EAP applies the declaration as a side effect of
+        // deploying and will not stop a release over a JSON typo, so the application exists and
+        // owns nothing. Said plainly, because the alternative is finding out from the first thing
+        // that cannot reach its queue.
+        function onInfrastructureApplyFailed(message) {
+            // Into the dialog while it is up: the files this is about are still on screen there, and
+            // a "uses" entry naming something that does not exist is fixed by picking different
+            // ones and sending them again. Nothing was applied, so the application is unchanged.
+            if (deployInfrastructureDialog.applying) {
+                deployInfrastructureDialog.applying = false
+                deployInfrastructureDialog.errorText = message
+                return
+            }
+            if (!root.visible) return
+            root.actionNote = ""
+            root.actionWarning = "The application was created, but its declaration was not applied, so it owns "
+                    + "nothing it declared and has none of the access it asked for: " + message
+        }
         function onApplicationStateFailed(message) {
+            root.error = message
+        }
+        // Next to the table rather than in the row: nothing in the row moves yet, because what a
+        // restart writes is a stamp the manager has not read at the point this arrives.
+        function onApplicationRestarted(applicationId, instances) {
+            root.actionWarning = ""
+            root.actionNote = instances > 0
+                    ? "Restarting '" + applicationId + "': " + instances + " instance(s) go down and come back on the "
+                      + "manager's next pass."
+                    // Asked for while nothing was up, which is the ordinary way out of a crash loop:
+                    // the stamp is what the manager reads, and it starts the pool from there.
+                    : "Restart requested for '" + applicationId + "'; it had no running instance, so the manager "
+                      + "starts it on its next pass."
+        }
+        function onApplicationRestartFailed(message) {
+            root.actionNote = ""
             root.error = message
         }
         function onApplicationScaled(applicationId, minInstances, maxInstances) {
@@ -522,6 +677,311 @@ Item {
         }
     }
 
+    // The deploy dialog's own pickers. The create dialog's two cannot be shared: a FileDialog keeps
+    // the folder it was last left in as its own state, and the two are used from different places
+    // in a session - a create starts from wherever the artifact lives, a deploy from wherever the
+    // declaration does.
+    FileDialog {
+        id: deployDeclarationFileDialog
+        title: "Add a declaration file"
+        fileMode: FileDialog.OpenFiles
+        nameFilters: ["Declaration files (*.json)", "All files (*)"]
+        currentFolder: appSettings.lastFileDialogFolder
+        onAccepted: {
+            appSettings.lastFileDialogFolder = currentFolder
+            deployInfrastructureDialog.addSources(selectedFiles.length > 0 ? selectedFiles : [selectedFile])
+        }
+    }
+
+    // A folder replaces the selection rather than adding to it, same as the create dialog: a folder
+    // is a complete statement about which files belong together, and a file left over beside it
+    // would not be part of it.
+    FolderDialog {
+        id: deployDeclarationFolderDialog
+        title: "Select the application's declaration folder"
+        currentFolder: appSettings.lastFileDialogFolder
+        onAccepted: {
+            appSettings.lastFileDialogFolder = selectedFolder
+            deployInfrastructureDialog.setSources([selectedFolder])
+        }
+    }
+
+    // "eap deploy-infrastructure" as a dialog: merge the declaration files, store the result beside
+    // the artifact under the key EAP reads it by, then apply it.
+    //
+    // The one way to apply a declaration without deploying a build. Create and redeploy both apply
+    // whatever is in the bucket in passing, which makes a declaration written after the application
+    // was created - or one whose "uses" entries only exist now - something that otherwise needs a
+    // redeploy of a build that has not changed, restarting a pool for a change that does not
+    // concern it. This applies it and leaves the running processes alone.
+    Dialog {
+        id: deployInfrastructureDialog
+        modal: true
+        anchors.centerIn: parent
+        width: 520
+        padding: 28
+        topPadding: 24
+        bottomPadding: 24
+        standardButtons: Dialog.NoButton
+
+        // The row the menu was opened on. It carries the bucket the declaration goes into, so
+        // nothing has to be looked up to upload - same as the redeploy dialog above.
+        property var application: null
+        property var sources: []
+        property var fileNames: []
+        property string summary: ""
+        // Two steps, reported apart: the upload is ESM's and the apply is EAP's, and a failure in
+        // the first leaves nothing behind while a failure in the second leaves the document stored.
+        property bool uploading: false
+        property bool applying: false
+        property string errorText: ""
+
+        readonly property string applicationId: application ? application.applicationId : ""
+        readonly property string bucketErn: application ? application.bucketErn : ""
+        readonly property string declarationKey: applicationId.length > 0 ? applicationId + ".euclid.json" : ""
+        readonly property bool busy: uploading || applying
+        readonly property bool hasSources: sources.length > 0
+
+        function openFor(row) {
+            deployInfrastructureDialog.application = row
+            deployInfrastructureDialog.setSources([])
+            deployInfrastructureDialog.errorText = ""
+            deployInfrastructureDialog.open()
+        }
+
+        function addSources(picked) {
+            let next = deployInfrastructureDialog.sources.slice()
+            for (const source of picked) {
+                // The same file twice is the operator clicking again, not a declaration naming
+                // something twice - so it is ignored rather than refused by the merge.
+                if (next.indexOf(source) < 0) next.push(source)
+            }
+            deployInfrastructureDialog.setSources(next)
+        }
+
+        // Merged as soon as anything is picked, and with the application id - which is known here,
+        // unlike in the create dialog where it is still being typed. So a file declaring a
+        // different application is refused while the selection is on screen, before anything has
+        // been uploaded and while the picker is still the obvious thing to correct it with.
+        function setSources(picked) {
+            deployInfrastructureDialog.errorText = ""
+            deployInfrastructureDialog.sources = picked
+            deployInfrastructureDialog.fileNames = []
+            deployInfrastructureDialog.summary = ""
+            if (picked.length === 0) return
+
+            const merged = eapClient.mergeDeclaration(picked, deployInfrastructureDialog.applicationId)
+            if (merged.error.length > 0) {
+                deployInfrastructureDialog.sources = []
+                deployInfrastructureDialog.errorText = merged.error
+                return
+            }
+            deployInfrastructureDialog.fileNames = merged.fileNames
+            deployInfrastructureDialog.summary = merged.fileNames.length + " file(s)  ·  owns "
+                    + merged.creates + ", uses " + merged.uses
+        }
+
+        // Merged again on the way out rather than kept from the picking: the files on disk are the
+        // statement of record, and re-reading them means what is uploaded is what they say now.
+        function submit() {
+            const merged = eapClient.mergeDeclaration(deployInfrastructureDialog.sources,
+                                                      deployInfrastructureDialog.applicationId)
+            if (merged.error.length > 0) {
+                deployInfrastructureDialog.errorText = merged.error
+                return
+            }
+            deployInfrastructureDialog.errorText = ""
+            deployInfrastructureDialog.uploading = true
+            esmClient.saveObjectContent(deployInfrastructureDialog.bucketErn,
+                                        deployInfrastructureDialog.declarationKey, merged.document)
+        }
+
+        background: Rectangle {
+            radius: 16
+            color: "#1b1e25"
+            border.color: "#2c313c"
+            border.width: 1
+        }
+
+        contentItem: Column {
+            width: deployInfrastructureDialog.availableWidth
+            spacing: 16
+
+            Column {
+                width: parent.width
+                spacing: 4
+                Text { text: "Deploy infrastructure"; color: "white"; font.pixelSize: 18; font.bold: true }
+                Text {
+                    text: "Admin only. Stores the declaration beside the artifact and applies it. Nothing about "
+                          + "the running processes changes - the definition is not stamped, so the pool is not "
+                          + "restarted."
+                    color: "#9aa1ac"
+                    font.pixelSize: 12
+                    wrapMode: Text.WordWrap
+                    width: parent.width
+                }
+            }
+
+            Column {
+                width: parent.width
+                spacing: 6
+                Text { text: "Application"; color: "#9aa1ac"; font.pixelSize: 12 }
+                Text {
+                    width: parent.width
+                    text: deployInfrastructureDialog.applicationId
+                    color: "white"
+                    font.pixelSize: 15
+                    elide: Text.ElideRight
+                }
+                Text {
+                    width: parent.width
+                    text: deployInfrastructureDialog.declarationKey.length > 0
+                          ? "Uploaded as " + deployInfrastructureDialog.declarationKey + " in the application's own bucket."
+                          : ""
+                    color: "#6b7280"
+                    font.pixelSize: 11
+                    wrapMode: Text.WordWrap
+                }
+            }
+
+            Column {
+                width: parent.width
+                spacing: 6
+                Text { text: "Declaration"; color: "#9aa1ac"; font.pixelSize: 12 }
+
+                Row {
+                    width: parent.width
+                    spacing: 8
+
+                    Button {
+                        text: "+ Add file…"
+                        flat: true
+                        Material.theme: Material.Dark
+                        Material.accent: "#4f8cff"
+                        enabled: !deployInfrastructureDialog.busy
+                        onClicked: deployDeclarationFileDialog.open()
+                    }
+
+                    Button {
+                        text: "Folder…"
+                        flat: true
+                        Material.theme: Material.Dark
+                        Material.accent: "#4f8cff"
+                        enabled: !deployInfrastructureDialog.busy
+                        onClicked: deployDeclarationFolderDialog.open()
+                    }
+
+                    Button {
+                        text: "Clear"
+                        flat: true
+                        Material.theme: Material.Dark
+                        Material.accent: "#ff6b6b"
+                        visible: deployInfrastructureDialog.hasSources
+                        enabled: !deployInfrastructureDialog.busy
+                        onClicked: deployInfrastructureDialog.setSources([])
+                    }
+                }
+
+                // The files themselves, one per line, and a folder expanded into the ones it
+                // actually contributed - which is the only way to see what a folder brought in
+                // before it is uploaded.
+                Column {
+                    width: parent.width
+                    spacing: 2
+                    visible: deployInfrastructureDialog.fileNames.length > 0
+
+                    Repeater {
+                        model: deployInfrastructureDialog.fileNames
+                        Text {
+                            width: parent.width
+                            text: "• " + modelData
+                            color: "#c4c9d1"
+                            font.pixelSize: 12
+                            elide: Text.ElideMiddle
+                        }
+                    }
+
+                    Text {
+                        width: parent.width
+                        text: deployInfrastructureDialog.summary
+                        color: "#6b7280"
+                        font.pixelSize: 11
+                    }
+                }
+
+                Text {
+                    width: parent.width
+                    wrapMode: Text.WordWrap
+                    color: "#6b7280"
+                    font.pixelSize: 11
+                    text: "JSON files naming the queues and topics this application owns, and the resources "
+                          + "somebody else owns that it has to reach. Add them one at a time, or pick the folder "
+                          + "they live in - a folder is every *.json in it, the way the CLI reads one."
+                }
+            }
+
+            // Said before it is pressed rather than reported afterwards: the delete half is the one
+            // step here that cannot be undone, and it is not what "deploy" sounds like it does.
+            Text {
+                width: parent.width
+                wrapMode: Text.WordWrap
+                color: "#e0a458"
+                font.pixelSize: 11
+                visible: deployInfrastructureDialog.hasSources
+                text: "A full reconcile, not an addition: what the file names is created, what this application "
+                      + "owned and no longer declares is deleted - with a queue's messages and a bucket's objects "
+                      + "- and its access grants are replaced with exactly the ones the file asks for."
+            }
+
+            Text {
+                width: parent.width
+                text: deployInfrastructureDialog.errorText
+                color: "#ff6b6b"
+                font.pixelSize: 12
+                wrapMode: Text.WordWrap
+                visible: text.length > 0
+            }
+
+            Item {
+                width: parent.width
+                height: 40
+
+                Button {
+                    text: "Cancel"
+                    flat: true
+                    anchors.left: parent.left
+                    anchors.verticalCenter: parent.verticalCenter
+                    Material.theme: Material.Dark
+                    onClicked: deployInfrastructureDialog.close()
+                }
+
+                BusyIndicator {
+                    running: deployInfrastructureDialog.busy
+                    visible: deployInfrastructureDialog.busy
+                    width: 22
+                    height: 22
+                    anchors.right: deployInfrastructureButton.left
+                    anchors.rightMargin: 12
+                    anchors.verticalCenter: parent.verticalCenter
+                }
+
+                Button {
+                    id: deployInfrastructureButton
+                    text: "Deploy"
+                    highlighted: true
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    Material.theme: Material.Dark
+                    Material.accent: "#4f8cff"
+                    enabled: !deployInfrastructureDialog.busy
+                             && deployInfrastructureDialog.hasSources
+                             && deployInfrastructureDialog.bucketErn.length > 0
+                    onClicked: deployInfrastructureDialog.submit()
+                }
+            }
+        }
+    }
+
     Dialog {
         id: scaleDialog
         modal: true
@@ -722,6 +1182,75 @@ Item {
         property real bytesSent: 0
         property real bytesTotal: 0
 
+        // The application's declaration: the queues and topics it owns and the resources somebody
+        // else owns that it has to reach. Optional, and uploaded beside the artifact under the key
+        // EAP reads it by - create-application applies whatever is there as part of deploying, so
+        // it has to be in the bucket before the application is created rather than after.
+        //
+        // Merged on picking rather than on Create, so a file that is not JSON or two files claiming
+        // the same queue are said while the selection is on screen and before anything is uploaded.
+        // What was picked - files, or one folder - and what merging them said. The files are kept
+        // rather than the merged document: the document has to carry the application's id, and the
+        // id is still being typed while these are being picked.
+        property var declarationSources: []
+        property var declarationFileNames: []
+        property string declarationSummary: ""
+        property bool uploadingDeclaration: false
+
+        readonly property string declarationKey: applicationIdField.text.trim().length > 0
+                                                 ? applicationIdField.text.trim() + ".euclid.json" : ""
+        readonly property bool hasDeclaration: createApplicationDialog.declarationSources.length > 0
+
+        function addDeclarationSources(picked) {
+            let sources = createApplicationDialog.declarationSources.slice()
+            for (const source of picked) {
+                // The same file twice is the operator clicking again, not a declaration naming
+                // something twice - so it is ignored rather than refused by the merge.
+                if (sources.indexOf(source) < 0) sources.push(source)
+            }
+            createApplicationDialog.setDeclarationSources(sources)
+        }
+
+        // Merged as soon as anything is picked, and without the application id: what it produces is
+        // shown, and the document that gets uploaded is merged again with the id once there is one
+        // to stamp it with. A file that is not JSON, or two of them claiming the same queue, is
+        // said here - while the selection is on screen and before anything has been uploaded.
+        function setDeclarationSources(sources) {
+            createApplicationDialog.errorText = ""
+            createApplicationDialog.declarationSources = sources
+            createApplicationDialog.declarationFileNames = []
+            createApplicationDialog.declarationSummary = ""
+            if (sources.length === 0) return
+
+            const merged = eapClient.mergeDeclaration(sources, "")
+            if (merged.error.length > 0) {
+                createApplicationDialog.declarationSources = []
+                createApplicationDialog.errorText = merged.error
+                return
+            }
+            createApplicationDialog.declarationFileNames = merged.fileNames
+            createApplicationDialog.declarationSummary = merged.fileNames.length + " file(s)  ·  owns "
+                    + merged.creates + ", uses " + merged.uses
+        }
+
+        // Straight after the artifact, and before the application exists: the declaration is read
+        // from the bucket by create-application itself. Merged again here, with the id this time,
+        // so the document carries the application it belongs to - and so a selection that names a
+        // different application is refused before anything is uploaded rather than by the server.
+        // Written as text through put-object, which is what the merged document is.
+        function uploadDeclaration() {
+            const merged = eapClient.mergeDeclaration(createApplicationDialog.declarationSources,
+                                                      applicationIdField.text.trim())
+            if (merged.error.length > 0) {
+                createApplicationDialog.creating = false
+                createApplicationDialog.errorText = merged.error
+                return
+            }
+            createApplicationDialog.uploadingDeclaration = true
+            esmClient.saveObjectContent(root.applicationsBucketErn, createApplicationDialog.declarationKey,
+                                        merged.document)
+        }
+
         // Everything after the artifact exists in the bucket.
         function submit() {
             // No buckets or queues named here: an application is deployed unrestricted within its
@@ -752,6 +1281,10 @@ Item {
             artifactField.text = ""
             createApplicationDialog.pendingFile = ""
             createApplicationDialog.uploading = false
+            createApplicationDialog.declarationSources = []
+            createApplicationDialog.declarationFileNames = []
+            createApplicationDialog.declarationSummary = ""
+            createApplicationDialog.uploadingDeclaration = false
             createApplicationDialog.bytesSent = 0
             createApplicationDialog.bytesTotal = 0
             // Empty on purpose: the default is a dedicated technical principal, not the operator.
@@ -864,6 +1397,94 @@ Item {
             Column {
                 width: parent.width
                 spacing: 6
+                Text { text: "Declaration (optional)"; color: "#9aa1ac"; font.pixelSize: 12 }
+
+                Row {
+                    width: parent.width
+                    spacing: 8
+
+                    Button {
+                        text: "+ Add file…"
+                        flat: true
+                        Material.theme: Material.Dark
+                        Material.accent: "#4f8cff"
+                        enabled: !createApplicationDialog.creating
+                        onClicked: declarationFileDialog.open()
+                    }
+
+                    Button {
+                        text: "Folder…"
+                        flat: true
+                        Material.theme: Material.Dark
+                        Material.accent: "#4f8cff"
+                        enabled: !createApplicationDialog.creating
+                        onClicked: declarationFolderDialog.open()
+                    }
+
+                    Button {
+                        text: "Clear"
+                        flat: true
+                        Material.theme: Material.Dark
+                        Material.accent: "#ff6b6b"
+                        visible: createApplicationDialog.hasDeclaration
+                        enabled: !createApplicationDialog.creating
+                        onClicked: createApplicationDialog.setDeclarationSources([])
+                    }
+                }
+
+                // The files themselves, one per line, and a folder expanded into the ones it
+                // actually contributed - which is the only way to see what a folder brought in
+                // before it is uploaded.
+                Column {
+                    width: parent.width
+                    spacing: 2
+                    visible: createApplicationDialog.declarationFileNames.length > 0
+
+                    Repeater {
+                        model: createApplicationDialog.declarationFileNames
+                        Text {
+                            width: parent.width
+                            text: "• " + modelData
+                            color: "#c4c9d1"
+                            font.pixelSize: 12
+                            elide: Text.ElideMiddle
+                        }
+                    }
+
+                    Text {
+                        width: parent.width
+                        text: createApplicationDialog.declarationSummary
+                        color: "#6b7280"
+                        font.pixelSize: 11
+                    }
+                }
+
+                Text {
+                    width: parent.width
+                    wrapMode: Text.WordWrap
+                    color: createApplicationDialog.hasDeclaration ? "#4f8cff" : "#6b7280"
+                    font.pixelSize: 11
+                    // What it is for, and - once files are picked - where the merged document goes
+                    // and when it is read. Creating applies it, so this is not a file that sits
+                    // there until somebody asks: what it names exists by the time the application
+                    // does.
+                    text: createApplicationDialog.hasDeclaration
+                          ? "Merged and uploaded as " + (createApplicationDialog.declarationKey.length > 0
+                                                         ? createApplicationDialog.declarationKey
+                                                         : "<application-id>.euclid.json")
+                            + " beside the artifact, and applied as part of creating the application: what it "
+                            + "declares the application owns is created, and access to what somebody else owns "
+                            + "is granted."
+                          : "JSON files naming the queues and topics this application owns, and the resources "
+                            + "somebody else owns that it has to reach. Add them one at a time, or pick the "
+                            + "folder they live in - a folder is every *.json in it, the way the CLI reads one. "
+                            + "They can also be deployed later from the application's own page."
+                }
+            }
+
+            Column {
+                width: parent.width
+                spacing: 6
                 Text { text: "Runs as (optional)"; color: "#9aa1ac"; font.pixelSize: 12 }
                 TextField {
                     id: userField
@@ -933,11 +1554,14 @@ Item {
                     onClicked: {
                         createApplicationDialog.errorText = ""
                         createApplicationDialog.creating = true
-                        if (createApplicationDialog.pendingFile.toString().length > 0) {
-                            // Naming an artifact that is already there needs no ERN, so this is the
-                            // only path that can be held up by not knowing it - say which bucket in
-                            // that one case, because it is the one time an operator has to go and
-                            // look at the installation itself.
+                        const hasArtifactFile = createApplicationDialog.pendingFile.toString().length > 0
+                        const hasDeclaration = createApplicationDialog.hasDeclaration
+                        if (hasArtifactFile || hasDeclaration) {
+                            // Naming an artifact that is already there needs no ERN, so uploading is
+                            // the only path that can be held up by not knowing it - say which bucket
+                            // in that case, because it is the one time an operator has to go and
+                            // look at the installation itself. The declaration goes to the same
+                            // bucket and is held up by the same thing.
                             if (root.applicationsBucketErn.length === 0) {
                                 createApplicationDialog.creating = false
                                 createApplicationDialog.errorText = "Cannot upload: euclid's \"" + root.applicationsBucket
@@ -945,15 +1569,34 @@ Item {
                                         + "deployed, or have an administrator check the installation."
                                 return
                             }
+                        }
+                        if (hasArtifactFile) {
                             createApplicationDialog.uploading = true
                             esmClient.uploadObject(root.applicationsBucketErn,
                                                    artifactField.text.trim(), createApplicationDialog.pendingFile)
+                        } else if (hasDeclaration) {
+                            createApplicationDialog.uploadDeclaration()
                         } else {
                             createApplicationDialog.submit()
                         }
                     }
                 }
             }
+        }
+    }
+
+    // Reads every declaration when it is opened rather than with the table: it is one request to ESM
+    // per application, and none of it is in the rows - the table is EAP's answer, and what an
+    // application is wired to is a file in a bucket.
+    ApplicationGraphDialog {
+        id: applicationGraphDialog
+        applications: root.applications
+        // It closes itself first, so this is a navigation rather than a page opening behind a modal
+        // dialog. The row is the one the table already has - the details page is opened from it
+        // exactly the way a click on the row opens it.
+        onApplicationActivated: applicationId => {
+            const row = root.applications.find(application => application.applicationId === applicationId)
+            if (row) root.openApplicationDetails(applicationId, row)
         }
     }
 
@@ -985,14 +1628,30 @@ Item {
                     subtitle: "Artifacts euclid runs as processes."
                 }
 
-                Button {
-                    text: "+ Add Application"
-                    highlighted: true
+                Row {
+                    spacing: 8
                     anchors.right: parent.right
                     anchors.verticalCenter: sectionHeader.verticalCenter
-                    Material.theme: Material.Dark
-                    Material.accent: "#4f8cff"
-                    onClicked: createApplicationDialog.open()
+
+                    // The table says what each application is; this says what they are to each
+                    // other, which no column can - a queue one of them writes and another reads is
+                    // two rows here and one line there.
+                    Button {
+                        text: "Graph…"
+                        flat: true
+                        Material.theme: Material.Dark
+                        Material.accent: "#4f8cff"
+                        enabled: root.applications.length > 0
+                        onClicked: applicationGraphDialog.open()
+                    }
+
+                    Button {
+                        text: "+ Add Application"
+                        highlighted: true
+                        Material.theme: Material.Dark
+                        Material.accent: "#4f8cff"
+                        onClicked: createApplicationDialog.open()
+                    }
                 }
             }
 
@@ -1046,6 +1705,22 @@ Item {
                         }
                     },
                     {
+                        // Not a stop followed by a start: the definition is stamped and the manager
+                        // takes the pool down and brings it back on its next pass - the mechanism a
+                        // redeploy uses, without a new build. desiredState is left alone, so an
+                        // application that does not come back still reads as one that should be up.
+                        text: "Restart",
+                        // Same rule the server applies: there is nothing to restart on an
+                        // application nobody asked to run, and honouring it would mean starting
+                        // what somebody stopped.
+                        enabled: function(row) {
+                            return !!row && row.desiredState === "RUNNING"
+                        },
+                        action: function(row) {
+                            eapClient.restartApplication(row.applicationId)
+                        }
+                    },
+                    {
                         // Both directions, which is what the dialog does: it opens on the
                         // application's own bounds and either of them can be moved either way.
                         text: "Scale…",
@@ -1066,12 +1741,42 @@ Item {
                         }
                     },
                     {
+                        // The declaration on its own, for a file written after the application was
+                        // created or one whose "uses" entries have only just come to exist. The
+                        // alternative is a redeploy of a build that has not changed.
+                        text: "Deploy infrastructure…",
+                        action: function(row) {
+                            deployInfrastructureDialog.openFor(row)
+                        }
+                    },
+                    {
                         text: "Delete",
                         action: function(row) {
                             eapClient.deleteApplication(row.applicationId)
                         }
                     }
                 ]
+            }
+
+            // What the last declaration did. Nothing above shows it: the queues and topics a
+            // declaration creates or deletes belong to EQS and ENS, and the access it grants is a
+            // role on the application's own principal.
+            Text {
+                width: parent.width
+                wrapMode: Text.WordWrap
+                color: "#4cd97b"
+                font.pixelSize: 12
+                visible: root.actionNote.length > 0
+                text: root.actionNote
+            }
+
+            Text {
+                width: parent.width
+                wrapMode: Text.WordWrap
+                color: "#e0a458"
+                font.pixelSize: 12
+                visible: root.actionWarning.length > 0
+                text: root.actionWarning
             }
         }
     }
