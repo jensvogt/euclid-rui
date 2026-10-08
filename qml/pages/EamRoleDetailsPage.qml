@@ -385,7 +385,18 @@ Item {
                         placeholderText: "filter, e.g. eqs:"
                         Material.accent: "#4f8cff"
                         selectByMouse: true
+                        rightPadding: clearEditFilter.width + 12
                         onTextChanged: editDialog.filter = text
+
+                        // The dialog's filter is bound to this text, so emptying the field puts the
+                        // whole permission list back by itself.
+                        ClearButton {
+                            id: clearEditFilter
+                            field: editFilterField
+                            anchors.right: parent.right
+                            anchors.rightMargin: 6
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
                     }
                 }
 

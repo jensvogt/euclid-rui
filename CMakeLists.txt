@@ -133,6 +133,7 @@ qt_add_qml_module(euclid-rui
         qml/components/EditableText.qml
         qml/components/ImageViewer.qml
         qml/components/DataTable.qml
+        qml/components/ClearButton.qml
         qml/components/DateFormat.qml
         qml/components/SizeFormat.qml
         qml/components/Gauge.qml
@@ -149,6 +150,7 @@ qt_add_qml_module(euclid-rui
         qml/components/ApplicationConnectionsDialog.qml
         qml/components/ApplicationGraph.qml
         qml/components/ApplicationGraphDialog.qml
+        qml/components/RouteEditDialog.qml
         qml/components/ServiceModuleTile.qml
         qml/components/Breadcrumb.qml
         qml/components/RoleGrants.qml

@@ -27,6 +27,9 @@ Item {
 
     readonly property bool active: !!detail("active", false)
     readonly property string path: String(detail("path", "—"))
+    // What the editor starts from, which is not the same string: the display falls back to "—" for
+    // a route that has not been read yet, and that is not a path anybody should be handed to edit.
+    readonly property string currentPath: String(detail("path", ""))
     readonly property string applicationId: String(detail("applicationId", "—"))
     readonly property string moduleTarget: String(detail("moduleTarget", ""))
     readonly property string moduleAction: String(detail("moduleAction", ""))
@@ -64,11 +67,17 @@ Item {
     // Configured but not bound: the port was taken, or an HTTPS one's certificate would not load.
     readonly property bool servedOnBoundPort: root.routeListeners.some(l => l.serving)
 
+    // The applications the edit form may point this route at. Read here rather than carried in:
+    // EAP's listing is a separate call from anything about routes, and the form cannot offer a
+    // choice it has not been given.
+    property var applicationChoices: []
+
     function refresh() {
         if (!root.loggedIn || root.routeId.length === 0)
             return
         eagClient.fetchRoute(root.routeId)
         eagClient.fetchListeners()
+        eapClient.fetchApplications("")
     }
 
     onVisibleChanged: if (visible) refresh()
@@ -84,9 +93,29 @@ Item {
         function onRouteUpdated(routeId, route) {
             if (routeId !== root.routeId) return
             root.details = route
+            // Which update this was: the enable/disable buttons and the path dialog both come back
+            // through update-route, and "Route is being served again" is not what a path change
+            // did. Only one of the two can be outstanding - the dialog is modal.
+            if (routeDialog.saving) {
+                routeDialog.saving = false
+                routeDialog.close()
+                root.actionNote = "Saved. Now published at " + route.path + ", "
+                        + (!route.methods || route.methods.length === 0 ? "every method" : route.methods.join("/"))
+                        + ". The gateway re-reads its routes every few seconds, so the change is not instant - and "
+                        + "a path that is no longer served answers 404 from then on."
+                return
+            }
             root.actionNote = route.active ? "Route is being served again." : "Route taken out of service."
         }
         function onRouteUpdateFailed(message) {
+            if (routeDialog.saving) {
+                routeDialog.saving = false
+                // In the dialog, where the fields it is about are: this is where the server's
+                // refusal for a path and method pair another route already carries lands, and it
+                // names that route.
+                routeDialog.errorText = message
+                return
+            }
             root.error = message
         }
         function onRoutesFailed(message) {
@@ -107,6 +136,16 @@ Item {
             root.listeners = []
             root.listenersError = message
         }
+    }
+
+    Connections {
+        target: eapClient
+        function onApplicationsLoaded(list, total) {
+            root.applicationChoices = list.map(a => a.applicationId)
+        }
+        // Left as it was on purpose: an application listing this page could not read is not this
+        // route's error, and the form still edits everything that does not name one.
+        function onApplicationsFailed(message) {}
     }
 
     ScrollView {
@@ -243,7 +282,30 @@ Item {
                     anchors.margins: 20
                     spacing: 14
 
-                    Text { text: "Routing"; color: "white"; font.pixelSize: 15; font.bold: true }
+                    Item {
+                        width: parent.width
+                        height: routingHeader.implicitHeight
+
+                        Text {
+                            id: routingHeader
+                            text: "Routing"
+                            color: "white"
+                            font.pixelSize: 15
+                            font.bold: true
+                        }
+
+                        Button {
+                            text: "Edit…"
+                            flat: true
+                            anchors.right: parent.right
+                            anchors.verticalCenter: routingHeader.verticalCenter
+                            Material.theme: Material.Dark
+                            Material.accent: "#4f8cff"
+                            // The route as it was last read, which is what the form fills itself
+                            // in from - it takes a row, and this page's details snapshot is one.
+                            onClicked: routeDialog.openForEdit(root.details)
+                        }
+                    }
 
                     Text {
                         width: parent.width
@@ -353,6 +415,14 @@ Item {
                 text: root.error
             }
         }
+    }
+
+    // The whole route, not one field of it: the same form the route list creates and edits with,
+    // so there is one set of rules about what a route may be rather than two. Note that a port is
+    // not among them - see the dialog, and "Served on" above.
+    RouteEditDialog {
+        id: routeDialog
+        applicationChoices: root.applicationChoices
     }
 
     Dialog {
