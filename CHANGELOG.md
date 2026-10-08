@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.1.28](https://github.com/jensvogt/euclid-rui/compare/1.1.27...v1.1.28) (2026-10-08)
+
+
+### Bug Fixes
+
+* add worker nodes ([9856047](https://github.com/jensvogt/euclid-rui/commit/9856047bc61d344437446029606f6d7d8c9c64b9))
+* add worker nodes ([802b424](https://github.com/jensvogt/euclid-rui/commit/802b4247dc3da190d47713cab087e3d52b530aa3))
+
 ## [1.1.27](https://github.com/jensvogt/euclid-rui/compare/1.1.26...v1.1.27) (2026-10-07)
 
 
