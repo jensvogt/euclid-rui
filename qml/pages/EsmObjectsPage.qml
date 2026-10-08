@@ -922,7 +922,18 @@ Item {
                             placeholderText: "Filter by any part of the key..."
                             Material.accent: "#4f8cff"
                             selectByMouse: true
+                            rightPadding: clearFilter.width + 14
                             onTextChanged: root.prefix = text
+
+                            // Emptying the field is all this needs to do: the filter is bound to the
+                            // text above, so the listing follows on its own.
+                            ClearButton {
+                                id: clearFilter
+                                field: filterField
+                                anchors.right: parent.right
+                                anchors.rightMargin: 8
+                                anchors.verticalCenter: parent.verticalCenter
+                            }
                         }
 
                         Row {

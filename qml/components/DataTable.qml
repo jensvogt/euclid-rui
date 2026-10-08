@@ -156,7 +156,36 @@ Item {
                     anchors.verticalCenter: parent.verticalCenter
                     placeholderText: root.searchPlaceholder
                     Material.accent: "#4f8cff"
+                    // Room for the × that sits in the field, so a long filter scrolls to a stop in
+                    // front of it rather than underneath it.
+                    rightPadding: clearSearch.width + 14
                     onTextChanged: searchDebounce.restart()
+                    // The other way out, for somebody who never took their hands off the keyboard.
+                    // Only when there is something to clear: Escape on an empty field belongs to
+                    // whatever is around it, a dialog most likely.
+                    Keys.onEscapePressed: function (event) {
+                        if (searchField.text.length === 0) {
+                            event.accepted = false
+                            return
+                        }
+                        clearSearch.clear()
+                    }
+
+                    ClearButton {
+                        id: clearSearch
+                        field: searchField
+                        anchors.right: parent.right
+                        anchors.rightMargin: 8
+                        anchors.verticalCenter: parent.verticalCenter
+
+                        // Clearing is answered at once rather than after the debounce the typing
+                        // path uses: there is no next keystroke to wait for, and 350ms of the old
+                        // filtered page is exactly the moment somebody presses it again.
+                        onCleared: {
+                            searchDebounce.stop()
+                            root.searchChanged("")
+                        }
+                    }
 
                     Timer {
                         id: searchDebounce
