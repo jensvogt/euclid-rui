@@ -60,6 +60,12 @@ QVariantMap applicationToMap(const QJsonObject &application) {
     entry["readyTimeoutMs"] = application.value("readyTimeoutMs").toInt();
     entry["state"] = application.value("state").toString();
     entry["desiredState"] = application.value("desiredState").toString();
+    // Whether this is something that stays up or something that finishes: PROCESS is held at its
+    // instance count and restarted on an exit, a JOB runs to completion and nothing restarts it,
+    // and UNKNOWN is what a value a newer euclid wrote reads as. PROCESS when the server does not
+    // send it at all, which is the same default the definition itself carries - everything that
+    // existed before the field is one.
+    entry["type"] = application.value("type").toString(QStringLiteral("PROCESS"));
     entry["instances"] = application.value("instances").toInt();
     entry["created"] = application.value("created").toString();
     entry["modified"] = application.value("modified").toString();
@@ -363,7 +369,8 @@ void EapClient::setNodeDrained(const QString &node, const bool drained) {
 }
 
 void EapClient::createApplication(const QString &applicationId, const QString &runtime, const QString &bucket,
-                                  const QString &artifact, const QString &userId, const QStringList &buckets,
+                                  const QString &artifact, const QString &userId, const QString &type,
+                                  const QString &schedule, const QStringList &buckets,
                                   const QStringList &queues, const QString &command,
                                   const QStringList &arguments, const QVariantMap &environment,
                                   const int minInstances, const int maxInstances, const int readyTimeoutMs) {
@@ -377,6 +384,13 @@ void EapClient::createApplication(const QString &applicationId, const QString &r
     // leaving it out keeps the request honest about what was asked for.
     if (!userId.isEmpty())
         body["user"] = userId;
+    // Both left out when empty, for the same reason: the server's own defaults are the ones to
+    // apply, and a "type" of "" is a word it would have to refuse. An empty schedule is a job
+    // started on demand, which is what sending nothing says.
+    if (!type.isEmpty())
+        body["type"] = type;
+    if (!schedule.isEmpty())
+        body["schedule"] = schedule;
     body["buckets"] = toJsonArray(buckets);
     body["queues"] = toJsonArray(queues);
     body["command"] = command;

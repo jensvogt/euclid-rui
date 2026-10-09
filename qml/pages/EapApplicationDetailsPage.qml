@@ -43,6 +43,16 @@ Item {
     readonly property string applicationState: detail("state", "")
     readonly property string desiredState: detail("desiredState", "")
 
+    // PROCESS when the definition carries no type, which is what every application written before
+    // the field existed has - and what the server itself falls back to, so the two agree.
+    readonly property string applicationType: detail("type", "PROCESS")
+
+    // One width for every stat on this page. They are read across rather than one at a time, and a
+    // row of cards at three different sizes reads as three kinds of thing. Wide enough for the
+    // longest line any of them shows - the principal of an application running under its own
+    // identity - and StatCard elides anything past that, so a long value cannot change the layout.
+    readonly property int statWidth: 300
+
     // What the manager knows this application as, and what everything outside the definition is
     // named after: the process pool and its EMM module row, the data directory, the socket, the log
     // channel and the technical principal. Issued once by EAP and held from then on, so it is not
@@ -71,6 +81,15 @@ Item {
         if (value === "STARTING" || value === "STOPPING") return "#ffb545"
         if (value === "STOPPED") return "#ffb545"
         return "#9aa1ac"
+    }
+
+    // Same reading the applications list gives it: a job is a different kind of thing rather than
+    // a worse one, and UNKNOWN is the only value that says something is wrong - a type this build
+    // has no word for, which it runs as a process because that is all it knows how to do.
+    function applicationTypeColor(value) {
+        if (value === "JOB") return "#c56bff"
+        if (value === "UNKNOWN") return "#ffb545"
+        return "#4f8cff"
     }
 
     function instanceStateColor(value) {
@@ -489,11 +508,27 @@ Item {
                     trend: root.applicationState === root.desiredState
                            ? "as requested"
                            : root.applicationState === "CRASHED"
-                             ? "crashed while asked to be " + root.desiredState
+                             ? "crashed, asked for " + root.desiredState
                              : "reconciling to " + root.desiredState
                     trendUp: root.applicationState === "RUNNING"
                     accent: root.applicationStateColor(root.applicationState)
-                    width: 440
+                    width: root.statWidth
+                }
+                StatCard {
+                    title: "Type"
+                    value: root.applicationType
+                    // Said here because it decides what the card beside it means: for a PROCESS,
+                    // STOPPED is a fault to look into, and for a JOB it is the ordinary end.
+                    trend: root.applicationType === "JOB"
+                           ? "runs once, then it is done"
+                           : root.applicationType === "UNKNOWN"
+                             ? "not a type this build knows"
+                             : "kept up, an exit is a fault"
+                    // Down for UNKNOWN alone: a definition written by a newer euclid, which this
+                    // one runs as a process because that is the only behaviour it has.
+                    trendUp: root.applicationType !== "UNKNOWN"
+                    accent: root.applicationTypeColor(root.applicationType)
+                    width: root.statWidth
                 }
                 StatCard {
                     title: "Instances"
@@ -501,6 +536,7 @@ Item {
                     trend: "scales " + root.detail("minInstances", 1) + " to " + root.detail("maxInstances", 1)
                     trendUp: root.detail("instances", 0) > 0
                     accent: "#4f8cff"
+                    width: root.statWidth
                 }
                 StatCard {
                     title: "Runtime"
@@ -508,6 +544,7 @@ Item {
                     trend: "starts the artifact"
                     trendUp: true
                     accent: "#c56bff"
+                    width: root.statWidth
                 }
                 StatCard {
                     title: "Runs as"
@@ -517,7 +554,7 @@ Item {
                     trend: root.ownPrincipal ? "its own principal, signs with its key" : "an existing user's identity"
                     trendUp: true
                     accent: "#ffb545"
-                    width: 440
+                    width: root.statWidth
                 }
             }
 

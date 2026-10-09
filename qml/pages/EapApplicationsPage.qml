@@ -55,17 +55,20 @@ Item {
         { title: "Runtime", key: "runtime" },
         { title: "Version", key: "version" },
         {
-            title: "Runs as",
-            key: "userId",
-            // Marked where the principal is not there any more. An application whose identity does
-            // not exist runs and is refused everything it calls, and what it reports is the first
-            // call it made - a secret it could not read, a queue it could not reach - so the one
-            // place this is worth saying is next to the name that is wrong.
-            formatter: function (v, row) {
-                return row && row.userExists === false ? String(v) + "  (no such user)" : String(v)
-            },
-            colorFor: function (v, row) {
-                return row && row.userExists === false ? "#ff6b6b" : "#c4c9d1"
+            // What the row beside it means: a PROCESS is held at its instance count and an exit is
+            // a fault, a JOB runs to completion and nothing restarts it. Without this, a finished
+            // job and a dead process read identically down the State column - and only one of them
+            // is something to go and look at.
+            //
+            // The identity each runs as is on the details page: it is a name nobody scans a list
+            // for, where the type changes how every other column is read.
+            title: "Type",
+            key: "type",
+            colorFor: function (v) {
+                // UNKNOWN is a type this build does not have a word for - written by a newer
+                // euclid, run here as a PROCESS - so it is marked rather than printed flat.
+                if (v === "UNKNOWN") return "#ffb545"
+                return v === "JOB" ? "#c56bff" : "#c4c9d1"
             }
         },
         { title: "State", key: "state", colorFor: function (v) { return root.stateColor(v) } },
@@ -1167,7 +1170,10 @@ Item {
         id: createApplicationDialog
         modal: true
         anchors.centerIn: parent
-        width: 400
+        // Two columns of fields and the gap between them. Wide rather than tall: everything here
+        // is filled in once, in one go, and a dialog that has to be scrolled hides the half of it
+        // somebody has not thought about yet.
+        width: 880
         padding: 28
         topPadding: 24
         bottomPadding: 24
@@ -1200,6 +1206,10 @@ Item {
         readonly property string declarationKey: applicationIdField.text.trim().length > 0
                                                  ? applicationIdField.text.trim() + ".euclid.json" : ""
         readonly property bool hasDeclaration: createApplicationDialog.declarationSources.length > 0
+
+        // Asked by the schedule field, its label and its explanation, so it is read off the combo
+        // once rather than three times.
+        readonly property bool isJob: typeCombo.currentText === "JOB"
 
         function addDeclarationSources(picked) {
             let sources = createApplicationDialog.declarationSources.slice()
@@ -1257,8 +1267,14 @@ Item {
             // own account, and what it may reach is to become a role on its principal rather than
             // a list carried by the definition. createApplication() still takes the two lists, so
             // nothing server-side changed and the CLI can still set them.
+            // The schedule only when the type is one that can hold it: the field is cleared
+            // when the type changes, and this is the other half of that - the server refuses a
+            // schedule on a PROCESS, and being refused for a field nobody could see would be a
+            // puzzle.
             eapClient.createApplication(applicationIdField.text.trim(), runtimeCombo.currentText,
-                root.applicationsBucket, artifactField.text.trim(), userField.text.trim())
+                root.applicationsBucket, artifactField.text.trim(), userField.text.trim(),
+                typeCombo.currentText,
+                createApplicationDialog.isJob ? scheduleField.text.trim() : "")
         }
 
         background: Rectangle {
@@ -1287,6 +1303,10 @@ Item {
             createApplicationDialog.uploadingDeclaration = false
             createApplicationDialog.bytesSent = 0
             createApplicationDialog.bytesTotal = 0
+            // PROCESS first in the model, and the default the server applies to a create that
+            // names no type - so an operator who ignores both fields gets what they always got.
+            typeCombo.currentIndex = 0
+            scheduleField.text = ""
             // Empty on purpose: the default is a dedicated technical principal, not the operator.
             userField.text = ""
             createApplicationDialog.errorText = ""
@@ -1312,210 +1332,309 @@ Item {
                 }
             }
 
-            Column {
+            // Two columns rather than one tall one. What the application *is* goes on the left -
+            // its name, what starts it, whether it stays up - and what it is made of on the right:
+            // the artifact and the declaration, which are both files in the same bucket and are
+            // read together when the thing is created.
+            Row {
+                id: formRow
                 width: parent.width
-                spacing: 6
-                Text { text: "Application ID"; color: "#9aa1ac"; font.pixelSize: 12 }
-                TextField {
-                    id: applicationIdField
-                    width: parent.width
-                    placeholderText: "e.g. inbox"
-                    Material.accent: "#4f8cff"
-                    selectByMouse: true
-                    Keys.onReturnPressed: artifactField.forceActiveFocus()
-                }
-            }
+                spacing: 24
 
-            Column {
-                id: runtimeColumn
-                width: parent.width
-                spacing: 6
-                Text { text: "Runtime"; color: "#9aa1ac"; font.pixelSize: 12 }
-                ComboBox {
-                    id: runtimeCombo
-                    width: runtimeColumn.width
-                    // Java is the only versioned one, and deliberately: a host runs several JDKs
-                    // and a jar built for 25 does not start under 21 at all, so the version is
-                    // asked for by name rather than left to whichever java the manager finds
-                    // first. JAVA still means exactly that, and is what everything deployed
-                    // before the versioned ones runs under.
-                    model: [ "JAVA", "JAVA21", "JAVA25", "PYTHON", "NODEJS", "BINARY" ]
-                    Material.theme: Material.Dark
-                    Material.accent: "#4f8cff"
-                }
-            }
+                readonly property real columnWidth: (width - spacing) / 2
 
-            Column {
-                id: artifactColumn
-                width: parent.width
-                spacing: 6
-                Text { text: "Artifact"; color: "#9aa1ac"; font.pixelSize: 12 }
-
-                Row {
-                    width: parent.width
-                    spacing: 8
-
-                    TextField {
-                        id: artifactField
-                        width: artifactColumn.width - uploadButton.width - 8
-                        placeholderText: "object key, e.g. euclid-inbox-app.jar"
-                        Material.accent: "#4f8cff"
-                        selectByMouse: true
-                        Keys.onReturnPressed: userField.forceActiveFocus()
-                    }
-                    Button {
-                        id: uploadButton
-                        text: "Upload…"
-                        flat: true
-                        Material.theme: Material.Dark
-                        Material.accent: "#4f8cff"
-                        enabled: !createApplicationDialog.creating
-                        onClicked: artifactFileDialog.open()
-                    }
-                }
-
-                Text {
-                    // Two ways in: name an artifact that was deployed before, or pick a file and
-                    // let this upload it under that key first.
-                    text: createApplicationDialog.pendingFile.toString().length > 0
-                          ? "Will be uploaded under this key when you press Create."
-                          : "An artifact deployed here before, or pick a file to upload."
-                    color: createApplicationDialog.pendingFile.toString().length > 0 ? "#4f8cff" : "#6b7280"
-                    font.pixelSize: 11
-                    wrapMode: Text.WordWrap
-                    width: parent.width
-                }
-                Text {
-                    visible: createApplicationDialog.uploading && createApplicationDialog.bytesTotal > 0
-                    text: "Uploading " + SizeFormat.format(createApplicationDialog.bytesSent) + " of "
-                          + SizeFormat.format(createApplicationDialog.bytesTotal) + "…"
-                    color: "#9aa1ac"
-                    font.pixelSize: 11
-                }
-            }
-
-            Column {
-                width: parent.width
-                spacing: 6
-                Text { text: "Declaration (optional)"; color: "#9aa1ac"; font.pixelSize: 12 }
-
-                Row {
-                    width: parent.width
-                    spacing: 8
-
-                    Button {
-                        text: "+ Add file…"
-                        flat: true
-                        Material.theme: Material.Dark
-                        Material.accent: "#4f8cff"
-                        enabled: !createApplicationDialog.creating
-                        onClicked: declarationFileDialog.open()
-                    }
-
-                    Button {
-                        text: "Folder…"
-                        flat: true
-                        Material.theme: Material.Dark
-                        Material.accent: "#4f8cff"
-                        enabled: !createApplicationDialog.creating
-                        onClicked: declarationFolderDialog.open()
-                    }
-
-                    Button {
-                        text: "Clear"
-                        flat: true
-                        Material.theme: Material.Dark
-                        Material.accent: "#ff6b6b"
-                        visible: createApplicationDialog.hasDeclaration
-                        enabled: !createApplicationDialog.creating
-                        onClicked: createApplicationDialog.setDeclarationSources([])
-                    }
-                }
-
-                // The files themselves, one per line, and a folder expanded into the ones it
-                // actually contributed - which is the only way to see what a folder brought in
-                // before it is uploaded.
                 Column {
-                    width: parent.width
-                    spacing: 2
-                    visible: createApplicationDialog.declarationFileNames.length > 0
+                    id: leftColumn
+                    width: formRow.columnWidth
+                    spacing: 16
 
-                    Repeater {
-                        model: createApplicationDialog.declarationFileNames
-                        Text {
+                    Column {
+                        width: parent.width
+                        spacing: 6
+                        Text { text: "Application ID"; color: "#9aa1ac"; font.pixelSize: 12 }
+                        TextField {
+                            id: applicationIdField
                             width: parent.width
-                            text: "• " + modelData
-                            color: "#c4c9d1"
-                            font.pixelSize: 12
-                            elide: Text.ElideMiddle
+                            placeholderText: "e.g. inbox"
+                            Material.accent: "#4f8cff"
+                            selectByMouse: true
+                            Keys.onReturnPressed: artifactField.forceActiveFocus()
                         }
                     }
 
-                    Text {
+                    Column {
+                        id: runtimeColumn
                         width: parent.width
-                        text: createApplicationDialog.declarationSummary
-                        color: "#6b7280"
-                        font.pixelSize: 11
+                        spacing: 6
+                        Text { text: "Runtime"; color: "#9aa1ac"; font.pixelSize: 12 }
+                        ComboBox {
+                            id: runtimeCombo
+                            width: runtimeColumn.width
+                            // Java is the only versioned one, and deliberately: a host runs several
+                            // JDKs and a jar built for 25 does not start under 21 at all, so the
+                            // version is asked for by name rather than left to whichever java the
+                            // manager finds first. JAVA still means exactly that, and is what
+                            // everything deployed before the versioned ones runs under.
+                            model: [ "JAVA", "JAVA21", "JAVA25", "PYTHON", "NODEJS", "BINARY" ]
+                            Material.theme: Material.Dark
+                            Material.accent: "#4f8cff"
+                        }
+                    }
+
+                    Column {
+                        id: typeColumn
+                        width: parent.width
+                        spacing: 6
+                        Text { text: "Type"; color: "#9aa1ac"; font.pixelSize: 12 }
+                        ComboBox {
+                            id: typeCombo
+                            width: typeColumn.width
+                            // The two the server accepts. UNKNOWN is what it calls a word it does
+                            // not recognise, not something to ask for - and it refuses the create
+                            // rather than storing one.
+                            model: [ "PROCESS", "JOB" ]
+                            Material.theme: Material.Dark
+                            Material.accent: "#4f8cff"
+                            // A schedule left behind on a process would be sent with the create and
+                            // refused by the server - and before that, read as a job that is going
+                            // to run nightly. Dropped when the type stops being one.
+                            //
+                            // onActivated rather than onCurrentTextChanged: the latter also fires
+                            // while the combo is being built, when the field below it does not
+                            // exist yet. This one is a person choosing something.
+                            onActivated: if (!createApplicationDialog.isJob) scheduleField.text = ""
+                        }
+                        Text {
+                            width: parent.width
+                            text: createApplicationDialog.isJob
+                                  ? "Runs to completion: exit 0 is success, and nothing restarts it."
+                                  : "Started and kept up: an exit is a fault, and the pool is held at its instance count."
+                            color: "#6b7280"
+                            font.pixelSize: 11
+                            wrapMode: Text.WordWrap
+                        }
+                    }
+
+                    Column {
+                        width: parent.width
+                        spacing: 6
+                        Text {
+                            text: "Schedule (optional)"
+                            // Dimmed with the field it labels, so the pair reads as one thing that
+                            // is not available rather than a field that happens to be grey.
+                            color: createApplicationDialog.isJob ? "#9aa1ac" : "#4a515c"
+                            font.pixelSize: 12
+                        }
+                        TextField {
+                            id: scheduleField
+                            width: parent.width
+                            // Only a job has something to schedule, which is also what the server
+                            // says: a schedule on a process would be stored, listed, and never
+                            // fire, so it refuses the pair outright.
+                            enabled: createApplicationDialog.isJob
+                            placeholderText: createApplicationDialog.isJob ? "e.g. 0 3 * * *  or  @daily"
+                                                                           : "jobs only"
+                            Material.accent: "#4f8cff"
+                            selectByMouse: true
+                            Keys.onReturnPressed: if (createApplicationButton.enabled) createApplicationButton.clicked()
+                        }
+                        Text {
+                            width: parent.width
+                            text: createApplicationDialog.isJob
+                                  ? "Five cron fields, or an @daily-style name. Left empty, the job runs only when "
+                                    + "it is started. EAP parses this before storing it, so an expression it cannot "
+                                    + "read is refused here rather than silently never firing."
+                                  : "A schedule belongs to a job. A process is kept running, so there is nothing to "
+                                    + "start on a timer."
+                            color: "#6b7280"
+                            font.pixelSize: 11
+                            wrapMode: Text.WordWrap
+                        }
+                    }
+
+                    Column {
+                        width: parent.width
+                        spacing: 6
+                        Text { text: "Runs as (optional)"; color: "#9aa1ac"; font.pixelSize: 12 }
+                        TextField {
+                            id: userField
+                            width: parent.width
+                            placeholderText: "leave empty for a dedicated principal"
+                            Material.accent: "#4f8cff"
+                            selectByMouse: true
+                            Keys.onReturnPressed: if (createApplicationButton.enabled) createApplicationButton.clicked()
+                        }
+                        Text {
+                            // Not spelled out any more: the principal is named after the name EAP
+                            // issues the application to run under, which is the id plus a random
+                            // suffix and is not known until the application exists. The details
+                            // page shows both afterwards.
+                            text: userField.text.trim().length === 0
+                                  ? "EAP creates a principal of its own for this application, with its own access key, "
+                                    + "and deletes it with the application - so no person's credentials are involved."
+                                  : "The application acts as this user, who must already exist and already have an "
+                                    + "access key."
+                            color: "#6b7280"
+                            font.pixelSize: 11
+                            wrapMode: Text.WordWrap
+                            width: parent.width
+                        }
                     }
                 }
 
-                Text {
-                    width: parent.width
-                    wrapMode: Text.WordWrap
-                    color: createApplicationDialog.hasDeclaration ? "#4f8cff" : "#6b7280"
-                    font.pixelSize: 11
-                    // What it is for, and - once files are picked - where the merged document goes
-                    // and when it is read. Creating applies it, so this is not a file that sits
-                    // there until somebody asks: what it names exists by the time the application
-                    // does.
-                    text: createApplicationDialog.hasDeclaration
-                          ? "Merged and uploaded as " + (createApplicationDialog.declarationKey.length > 0
-                                                         ? createApplicationDialog.declarationKey
-                                                         : "<application-id>.euclid.json")
-                            + " beside the artifact, and applied as part of creating the application: what it "
-                            + "declares the application owns is created, and access to what somebody else owns "
-                            + "is granted."
-                          : "JSON files naming the queues and topics this application owns, and the resources "
-                            + "somebody else owns that it has to reach. Add them one at a time, or pick the "
-                            + "folder they live in - a folder is every *.json in it, the way the CLI reads one. "
-                            + "They can also be deployed later from the application's own page."
+                Column {
+                    id: rightColumn
+                    width: formRow.columnWidth
+                    spacing: 16
+
+                    Column {
+                        id: artifactColumn
+                        width: parent.width
+                        spacing: 6
+                        Text { text: "Artifact"; color: "#9aa1ac"; font.pixelSize: 12 }
+
+                        Row {
+                            width: parent.width
+                            spacing: 8
+
+                            TextField {
+                                id: artifactField
+                                width: artifactColumn.width - uploadButton.width - 8
+                                placeholderText: "object key, e.g. euclid-inbox-app.jar"
+                                Material.accent: "#4f8cff"
+                                selectByMouse: true
+                                Keys.onReturnPressed: userField.forceActiveFocus()
+                            }
+                            Button {
+                                id: uploadButton
+                                text: "Upload…"
+                                flat: true
+                                Material.theme: Material.Dark
+                                Material.accent: "#4f8cff"
+                                enabled: !createApplicationDialog.creating
+                                onClicked: artifactFileDialog.open()
+                            }
+                        }
+
+                        Text {
+                            // Two ways in: name an artifact that was deployed before, or pick a
+                            // file and let this upload it under that key first.
+                            text: createApplicationDialog.pendingFile.toString().length > 0
+                                  ? "Will be uploaded under this key when you press Create."
+                                  : "An artifact deployed here before, or pick a file to upload."
+                            color: createApplicationDialog.pendingFile.toString().length > 0 ? "#4f8cff" : "#6b7280"
+                            font.pixelSize: 11
+                            wrapMode: Text.WordWrap
+                            width: parent.width
+                        }
+                        Text {
+                            visible: createApplicationDialog.uploading && createApplicationDialog.bytesTotal > 0
+                            text: "Uploading " + SizeFormat.format(createApplicationDialog.bytesSent) + " of "
+                                  + SizeFormat.format(createApplicationDialog.bytesTotal) + "…"
+                            color: "#9aa1ac"
+                            font.pixelSize: 11
+                        }
+                    }
+
+                    Column {
+                        width: parent.width
+                        spacing: 6
+                        Text { text: "Declaration (optional)"; color: "#9aa1ac"; font.pixelSize: 12 }
+
+                        Row {
+                            width: parent.width
+                            spacing: 8
+
+                            Button {
+                                text: "+ Add file…"
+                                flat: true
+                                Material.theme: Material.Dark
+                                Material.accent: "#4f8cff"
+                                enabled: !createApplicationDialog.creating
+                                onClicked: declarationFileDialog.open()
+                            }
+
+                            Button {
+                                text: "Folder…"
+                                flat: true
+                                Material.theme: Material.Dark
+                                Material.accent: "#4f8cff"
+                                enabled: !createApplicationDialog.creating
+                                onClicked: declarationFolderDialog.open()
+                            }
+
+                            Button {
+                                text: "Clear"
+                                flat: true
+                                Material.theme: Material.Dark
+                                Material.accent: "#ff6b6b"
+                                visible: createApplicationDialog.hasDeclaration
+                                enabled: !createApplicationDialog.creating
+                                onClicked: createApplicationDialog.setDeclarationSources([])
+                            }
+                        }
+
+                        // The files themselves, one per line, and a folder expanded into the ones
+                        // it actually contributed - which is the only way to see what a folder
+                        // brought in before it is uploaded.
+                        Column {
+                            width: parent.width
+                            spacing: 2
+                            visible: createApplicationDialog.declarationFileNames.length > 0
+
+                            Repeater {
+                                model: createApplicationDialog.declarationFileNames
+                                Text {
+                                    width: parent.width
+                                    text: "• " + modelData
+                                    color: "#c4c9d1"
+                                    font.pixelSize: 12
+                                    elide: Text.ElideMiddle
+                                }
+                            }
+
+                            Text {
+                                width: parent.width
+                                text: createApplicationDialog.declarationSummary
+                                color: "#6b7280"
+                                font.pixelSize: 11
+                            }
+                        }
+
+                        Text {
+                            width: parent.width
+                            wrapMode: Text.WordWrap
+                            color: createApplicationDialog.hasDeclaration ? "#4f8cff" : "#6b7280"
+                            font.pixelSize: 11
+                            // What it is for, and - once files are picked - where the merged
+                            // document goes and when it is read. Creating applies it, so this is
+                            // not a file that sits there until somebody asks: what it names exists
+                            // by the time the application does.
+                            text: createApplicationDialog.hasDeclaration
+                                  ? "Merged and uploaded as " + (createApplicationDialog.declarationKey.length > 0
+                                                                 ? createApplicationDialog.declarationKey
+                                                                 : "<application-id>.euclid.json")
+                                    + " beside the artifact, and applied as part of creating the application: what it "
+                                    + "declares the application owns is created, and access to what somebody else "
+                                    + "owns is granted."
+                                  : "JSON files naming the queues and topics this application owns, and the resources "
+                                    + "somebody else owns that it has to reach. Add them one at a time, or pick the "
+                                    + "folder they live in - a folder is every *.json in it, the way the CLI reads "
+                                    + "one. They can also be deployed later from the application's own page."
+                        }
+                    }
                 }
             }
 
-            Column {
+            // Full width under both columns: a refusal is about the create rather than about one
+            // of the fields, and the server's wording is long enough to need the room.
+            Text {
+                text: createApplicationDialog.errorText
+                color: "#ff6b6b"
+                font.pixelSize: 12
+                wrapMode: Text.WordWrap
                 width: parent.width
-                spacing: 6
-                Text { text: "Runs as (optional)"; color: "#9aa1ac"; font.pixelSize: 12 }
-                TextField {
-                    id: userField
-                    width: parent.width
-                    placeholderText: "leave empty for a dedicated principal"
-                    Material.accent: "#4f8cff"
-                    selectByMouse: true
-                    Keys.onReturnPressed: if (createApplicationButton.enabled) createApplicationButton.clicked()
-                }
-                Text {
-                    // Not spelled out any more: the principal is named after the name EAP issues
-                    // the application to run under, which is the id plus a random suffix and is
-                    // not known until the application exists. The details page shows both
-                    // afterwards.
-                    text: userField.text.trim().length === 0
-                          ? "EAP creates a principal of its own for this application, with its own access key, and "
-                            + "deletes it with the application - so no person's credentials are involved."
-                          : "The application acts as this user, who must already exist and already have an access key."
-                    color: "#6b7280"
-                    font.pixelSize: 11
-                    wrapMode: Text.WordWrap
-                    width: parent.width
-                }
-                Text {
-                    text: createApplicationDialog.errorText
-                    color: "#ff6b6b"
-                    font.pixelSize: 12
-                    wrapMode: Text.WordWrap
-                    width: parent.width
-                    visible: text.length > 0
-                }
+                visible: text.length > 0
             }
 
             Item {
