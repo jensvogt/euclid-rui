@@ -480,21 +480,51 @@ jobs:
 
       - name: Codesign + create DMG
         run: |
+          set -euo pipefail
           APP_BUNDLE="$BUILD_DIR/${APP_NAME}.app"
           if [ ! -d "$APP_BUNDLE" ]; then
-            # qt_add_executable() only produces a .app bundle for a GUI-flagged target; fall back
-            # to wrapping the raw binary if that didn't happen for some reason.
-            echo "No .app bundle at $APP_BUNDLE, packaging the raw binary instead"
-            mkdir -p "dist-root/${APP_NAME}.app/Contents/MacOS"
-            cp "$BUILD_DIR/$APP_NAME" "dist-root/${APP_NAME}.app/Contents/MacOS/$APP_NAME"
-            APP_BUNDLE="dist-root/${APP_NAME}.app"
+            # No fallback any more. CMakeLists.txt sets MACOSX_BUNDLE for Apple builds, so a missing
+            # bundle means the build did not produce what it is supposed to - and the hand-made
+            # replacement this used to assemble had no Info.plist, which macOS will not launch. A
+            # DMG containing one is worse than no DMG: it ships and fails on somebody's machine.
+            echo "::error::No .app bundle at $APP_BUNDLE - the build did not produce one"
+            exit 1
           fi
           # Ad-hoc signed (no Apple Developer ID here) - fine for local/manual install, not
           # notarized for Gatekeeper-free distribution.
           codesign --force --deep --options runtime --entitlements dist/macos/entitlements.plist --sign - "$APP_BUNDLE"
+
+          # Staged rather than imaged straight from the bundle, so the volume carries the
+          # /Applications symlink a DMG is dragged into - and so its size can be measured before
+          # the image is sized against it.
+          STAGE="$RUNNER_TEMP/dmg-stage"
+          rm -rf "$STAGE"
+          mkdir -p "$STAGE"
+          cp -R "$APP_BUNDLE" "$STAGE/"
+          ln -s /Applications "$STAGE/Applications"
+
+          # The object tree is gigabytes and is finished with: the bundle is in the staging folder
+          # and nothing below reads the build directory again. A macOS runner has little enough
+          # disk that the image and its intermediate can want more than is left.
+          rm -rf "$BUILD_DIR"
+          df -h /
+
+          # Sized explicitly, with slack, instead of letting hdiutil infer it from the source. The
+          # inferred size is what ran out mid-copy - "No space left on device" against a path
+          # inside /Volumes, with the image already mounted - and a static Qt application is large
+          # enough that the estimate has nothing to spare.
+          SIZE_MB=$(( $(du -sm "$STAGE" | cut -f1) + 128 ))
+          echo "Staging folder is $(du -sh "$STAGE" | cut -f1); creating a ${SIZE_MB}m image"
+
           mkdir -p dist
           DMG_NAME="${APP_NAME}-${SEMVER}-macos.dmg"
-          hdiutil create "dist/$DMG_NAME" -volname "${APP_NAME}" -srcfolder "$APP_BUNDLE" -ov -format UDZO
+          # Read/write first and compressed after, which is the only way to give the intermediate a
+          # size of its own: -format UDZO takes no -size.
+          hdiutil create -srcfolder "$STAGE" -volname "${APP_NAME}" -fs HFS+ \
+                  -format UDRW -size "${SIZE_MB}m" -ov "$RUNNER_TEMP/${APP_NAME}-rw.dmg"
+          hdiutil convert "$RUNNER_TEMP/${APP_NAME}-rw.dmg" -format UDZO -o "dist/$DMG_NAME"
+          rm -f "$RUNNER_TEMP/${APP_NAME}-rw.dmg"
+          ls -lh "dist/$DMG_NAME"
 
       - name: Upload macOS DMG
         uses: actions/upload-artifact@v4

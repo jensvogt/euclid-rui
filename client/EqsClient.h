@@ -77,6 +77,9 @@ public:
     // The ERNs every queue names as its dead letter queue, which is the only way to know that a
     // queue is one. Asked for separately from the table's own page: a dead letter queue and the
     // queue feeding it are rarely on the same page of ten.
+    //
+    // Internal queues are included in the scan - see the implementation for why that is not the
+    // same decision as showing them.
     Q_INVOKABLE void fetchDeadLetterTargets();
     // Upserts the tag unconditionally (unlike set-queue-tag, this doesn't require the key to
     // already exist), matching an "Add" button's semantics.

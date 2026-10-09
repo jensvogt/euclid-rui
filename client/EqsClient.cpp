@@ -225,6 +225,16 @@ void EqsClient::fetchDeadLetterTargets() {
     body["pageIndex"] = 0;
     body["sortColumn"] = QStringLiteral("name");
     body["sortDirection"] = QStringLiteral("asc");
+    // Asked for here and not only where the table is filled, because this scan answers a different
+    // question: not "which queues should somebody see" but "which queues does anything point at".
+    // An application's delivery queue is internal and names a dead letter queue like any other, and
+    // leaving it out of the scan makes that dead letter queue - internal or not - look like an
+    // ordinary queue, with the redrive it supports refused by a menu that never offers it.
+    //
+    // Nothing is shown as a result: the answer is a set of ERNs used to mark rows the caller
+    // already has. The server honours this for administrators only and silently ignores it for
+    // everybody else, so a non-admin's answer is exactly what it was.
+    body["includeInternal"] = true;
 
     m_base->post("eqs", "list-queues", body, true,
          [this](const QJsonObject &response) {
