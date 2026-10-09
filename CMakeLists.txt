@@ -171,6 +171,26 @@ qt_add_qml_module(euclid-rui
 # /CMakeLists.txt:1569-1581 - so the two have to be turned on together, and are.
 set_target_properties(euclid-rui PROPERTIES WIN32_EXECUTABLE TRUE)
 
+# The macOS half of the same omission: qt_add_executable() forwards to a plain add_executable() with
+# no MACOSX_BUNDLE either, so the build produced a bare Mach-O and no euclid-rui.app at all. The
+# release workflow wrapped that binary in a hand-made Contents/MacOS directory to have something to
+# put in the DMG - a bundle with no Info.plist, which Launch Services will not open and which
+# carries neither a version nor an identifier.
+#
+# Set here rather than worked around there, because everything that reads a bundle reads the plist
+# CMake generates from these: the name in the menu bar, the version in "About", and the identifier
+# codesign signs under.
+if(APPLE)
+    set_target_properties(euclid-rui PROPERTIES
+            MACOSX_BUNDLE TRUE
+            MACOSX_BUNDLE_BUNDLE_NAME "euclid-rui"
+            # The same identifier the Windows installer packages under, so one application is one
+            # name on both - see dist/win32/installer/packages/de.jensvogt.euclidrui.
+            MACOSX_BUNDLE_GUI_IDENTIFIER "de.jensvogt.euclidrui"
+            MACOSX_BUNDLE_BUNDLE_VERSION "${VERSION_STRING}"
+            MACOSX_BUNDLE_SHORT_VERSION_STRING "${VERSION_STRING}")
+endif()
+
 # The icon and version metadata Windows reads off the executable itself. Compiled in rather than
 # attached to the shortcuts, because that is where the shell looks: a .lnk with no icon of its own
 # takes the one in the binary it points at, so this single resource covers Explorer, the taskbar,
