@@ -41,15 +41,25 @@ Rectangle {
             color: "#9aa1ac"
             font.pixelSize: 13
         }
+        // Both of these are cut off rather than allowed to run on. A Text with no width is as wide
+        // as its content, and a card is not: without this, one long principal name or one wordy
+        // trend line paints across whatever card sits to the right of it, which is also what
+        // forced callers to size cards by their longest sentence instead of by how they should
+        // look in a row.
         Text {
             text: root.value
             color: "white"
             font.pixelSize: 28
             font.bold: true
+            width: parent.width
+            elide: Text.ElideRight
         }
         Row {
             spacing: 4
+            width: parent.width
+
             Text {
+                id: trendArrow
                 text: root.trendUp ? "▲" : "▼"
                 color: root.trendUp ? "#4cd97b" : "#ff6b6b"
                 font.pixelSize: 11
@@ -58,6 +68,8 @@ Rectangle {
                 text: root.trend
                 color: root.trendUp ? "#4cd97b" : "#ff6b6b"
                 font.pixelSize: 12
+                width: parent.width - trendArrow.width - parent.spacing
+                elide: Text.ElideRight
             }
         }
     }

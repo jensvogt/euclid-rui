@@ -40,8 +40,17 @@ public:
     // `buckets` and `queues` are *names*, resolved to ERNs server-side and stored as the
     // application's resource list. Leaving both empty means unrestricted within its own account;
     // naming any restricts it to those, which is what ESM and EQS then enforce.
+    // `type` is "PROCESS" or "JOB", or empty to let the server apply its own default - which is
+    // PROCESS, the behaviour everything deployed before the field existed has. The server refuses
+    // any other word rather than reading it as UNKNOWN and running it as a process anyway.
+    //
+    // `schedule` is a cron expression for a JOB that runs on one, and empty for a job started on
+    // demand. Only valid on a JOB: a PROCESS is held at its instance count for as long as it is
+    // RUNNING, so a schedule on one would be stored, listed, and never fire - which is why the
+    // server refuses that pair rather than keeping it.
     Q_INVOKABLE void createApplication(const QString &applicationId, const QString &runtime, const QString &bucket,
                                        const QString &artifact, const QString &userId = QString(),
+                                       const QString &type = QString(), const QString &schedule = QString(),
                                        const QStringList &buckets = QStringList(), const QStringList &queues = QStringList(),
                                        const QString &command = QString(), const QStringList &arguments = QStringList(),
                                        const QVariantMap &environment = QVariantMap(),
