@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.1.29](https://github.com/jensvogt/euclid-rui/compare/v1.1.28...v1.1.29) (2026-10-09)
+
+
+### Bug Fixes
+
+* add jobs ([41ff459](https://github.com/jensvogt/euclid-rui/commit/41ff459c3defab1a58eacfc85d5cd3c0b80dcc74))
+* add jobs ([0b10836](https://github.com/jensvogt/euclid-rui/commit/0b10836da6ae03a0ee4dbfb445a2163ddaead43c))
+
 ## [1.1.28](https://github.com/jensvogt/euclid-rui/compare/1.1.27...v1.1.28) (2026-10-08)
 
 
