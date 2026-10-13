@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.1.31](https://github.com/jensvogt/euclid-rui/compare/1.1.30...v1.1.31) (2026-10-13)
+
+
+### Bug Fixes
+
+* ETS counters ([24792be](https://github.com/jensvogt/euclid-rui/commit/24792be5064d934963d3c086a22da3205a334bf8))
+* worker monitoring ([6b6881e](https://github.com/jensvogt/euclid-rui/commit/6b6881ecdef44072825f5c90a425432d78a33a22))
+
 ## [1.1.30](https://github.com/jensvogt/euclid-rui/compare/v1.1.29...v1.1.30) (2026-10-09)
 
 
