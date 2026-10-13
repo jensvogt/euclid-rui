@@ -20,6 +20,14 @@ Item {
     property var requestCountByMethod: ({})
     property var requestTimeByMethod: ({})
 
+    // "eag-proxy-count"/"eag-proxy-time", recorded once per proxied request in the API gateway's
+    // ProxyServer and labelled by the same four methods. A different gateway from the one above:
+    // that one is the manager's own on 5566, which the RUI and the CLI talk to, and this one is
+    // what fronts the applications EAP runs. Deliberately not "eag-service-*", which is the half
+    // dozen actions somebody calls when they edit a route.
+    property var proxyCountByMethod: ({})
+    property var proxyTimeByMethod: ({})
+
     // Every other module records "<id>-service-count"/"<id>-service-time" the same way, but
     // labelled with the action ("send-message", "receive-messages", ...) rather than a handful of
     // HTTP methods - around twenty per module, too many to give a line each, and the client can't
@@ -121,8 +129,12 @@ Item {
 
     // Every tile on the page, set at once. Assigned rather than bound: a tile's own header click
     // writes `expanded` directly, and a binding would be broken by the first one of those anyway.
+    // The fixed tiles by name and the per-module ones through their repeater. A tile added to the
+    // page and not to this list keeps whatever state it was in while every other one moves, which
+    // reads as the buttons having missed it - because they have.
     function setAllExpanded(expanded) {
         gatewayTile.expanded = expanded
+        proxyTile.expanded = expanded
         repositoryTile.expanded = expanded
         for (let i = 0; i < moduleTiles.count; ++i) {
             const tile = moduleTiles.itemAt(i)
@@ -159,6 +171,11 @@ Item {
             root.requestTimeByMethod = ({})
             return
         }
+        if (tileId === "eag-proxy") {
+            root.proxyCountByMethod = ({})
+            root.proxyTimeByMethod = ({})
+            return
+        }
         if (tileId === "eqs-repository") {
             root.repositoryCountByOperation = ({})
             root.repositoryTimeByOperation = ({})
@@ -177,6 +194,8 @@ Item {
     function tileForMetric(name) {
         if (name === "gateway-service-count" || name === "gateway-service-time")
             return "gateway"
+        if (name === "eag-proxy-count" || name === "eag-proxy-time")
+            return "eag-proxy"
         if (name === "eqs-repository-count" || name === "eqs-repository-time")
             return "eqs-repository"
         for (const m of root.serviceModules) {
@@ -258,6 +277,13 @@ Item {
             for (const m of root.httpMethods) {
                 emoClient.fetchSeries("gateway-service-count", "method", m.name, range.limit, range.resolution)
                 emoClient.fetchSeries("gateway-service-time", "method", m.name, range.limit, range.resolution)
+            }
+            return
+        }
+        if (tileId === "eag-proxy") {
+            for (const m of root.httpMethods) {
+                emoClient.fetchSeries("eag-proxy-count", "method", m.name, range.limit, range.resolution)
+                emoClient.fetchSeries("eag-proxy-time", "method", m.name, range.limit, range.resolution)
             }
             return
         }
@@ -436,6 +462,7 @@ Item {
         emoClient.fetchLatestByLabel("application-utilisation")
         emoClient.fetchLatestByLabel("application-backlog")
         root.refreshTile("gateway")
+        root.refreshTile("eag-proxy")
         root.refreshTile("eqs-repository")
         for (const m of root.serviceModules)
             root.refreshTile(m.id)
@@ -503,6 +530,14 @@ Item {
                 const byMethod = Object.assign({}, root.requestTimeByMethod)
                 byMethod[labelValue] = inRange
                 root.requestTimeByMethod = byMethod
+            } else if (name === "eag-proxy-count") {
+                const byMethod = Object.assign({}, root.proxyCountByMethod)
+                byMethod[labelValue] = inRange
+                root.proxyCountByMethod = byMethod
+            } else if (name === "eag-proxy-time") {
+                const byMethod = Object.assign({}, root.proxyTimeByMethod)
+                byMethod[labelValue] = inRange
+                root.proxyTimeByMethod = byMethod
             } else if (name === "eqs-repository-count") {
                 const byOperation = Object.assign({}, root.repositoryCountByOperation)
                 byOperation[labelValue] = inRange
@@ -528,6 +563,14 @@ Item {
                 const byMethod = Object.assign({}, root.requestTimeByMethod)
                 byMethod[labelValue] = []
                 root.requestTimeByMethod = byMethod
+            } else if (name === "eag-proxy-count") {
+                const byMethod = Object.assign({}, root.proxyCountByMethod)
+                byMethod[labelValue] = []
+                root.proxyCountByMethod = byMethod
+            } else if (name === "eag-proxy-time") {
+                const byMethod = Object.assign({}, root.proxyTimeByMethod)
+                byMethod[labelValue] = []
+                root.proxyTimeByMethod = byMethod
             } else if (name === "eqs-repository-count" || name === "eqs-repository-time") {
                 const byOperation = Object.assign({}, name === "eqs-repository-count"
                                                      ? root.repositoryCountByOperation : root.repositoryTimeByOperation)
@@ -646,6 +689,83 @@ Item {
                         Text {
                             text: root.rangeFor("gateway").label + " · updated "
                                   + (root.updatedByTile["gateway"] || "—")
+                            color: "#6b7280"
+                            font.pixelSize: 11
+                        }
+                    }
+                ]
+            }
+
+            // The other gateway: what EAG proxies to the applications EAP runs, as opposed to the
+            // manager's own gateway above it. Kept apart rather than added to that chart, because
+            // the two carry different traffic on different ports and a line that summed them would
+            // answer neither "is the control plane busy" nor "is the API busy".
+            FoldableTile {
+                id: proxyTile
+                width: parent.width
+                title: "EAG Traffic"
+                expanded: true
+
+                headerContent: [
+                    Button {
+                        text: "⚙"
+                        font.pixelSize: 16
+                        flat: true
+                        implicitWidth: 32
+                        implicitHeight: 32
+                        Material.theme: Material.Dark
+                        onClicked: chartSettingsDialog.openFor("eag-proxy", "EAG Traffic")
+                    },
+                    Button {
+                        text: "⟳"
+                        font.pixelSize: 16
+                        flat: true
+                        implicitWidth: 32
+                        implicitHeight: 32
+                        Material.theme: Material.Dark
+                        onClicked: root.refreshTile("eag-proxy")
+                    }
+                ]
+
+                contentData: [
+                    Column {
+                        width: proxyTile.width - 32
+                        spacing: 20
+
+                        Column {
+                            width: parent.width
+                            spacing: 8
+                            visible: root.chartVisible("eag-proxy", "count")
+                            Text { text: "Request Count"; color: "#c4c9d1"; font.pixelSize: 12; font.bold: true }
+                            LineChart {
+                                width: parent.width
+                                height: 160
+                                timeFormat: root.rangeFor("eag-proxy").timeFormat
+                                series: root.seriesFor(root.proxyCountByMethod)
+                            }
+                        }
+
+                        Column {
+                            width: parent.width
+                            spacing: 8
+                            visible: root.chartVisible("eag-proxy", "time")
+                            Text { text: "Request Time"; color: "#c4c9d1"; font.pixelSize: 12; font.bold: true }
+                            LineChart {
+                                width: parent.width
+                                height: 160
+                                valueSuffix: " ms"
+                                decimals: 1
+                                timeFormat: root.rangeFor("eag-proxy").timeFormat
+                                // End to end, as the caller experienced it: the clock starts when
+                                // the request is understood and stops when it is answered, so a
+                                // slow backend shows up here rather than in the gateway's own time.
+                                series: root.seriesFor(root.proxyTimeByMethod)
+                            }
+                        }
+
+                        Text {
+                            text: root.rangeFor("eag-proxy").label + " · updated "
+                                  + (root.updatedByTile["eag-proxy"] || "—")
                             color: "#6b7280"
                             font.pixelSize: 11
                         }
@@ -997,7 +1117,11 @@ Item {
 
         property string tileId: "gateway"
         property string tileTitle: "Gateway Traffic"
-        readonly property bool gateway: chartSettingsDialog.tileId === "gateway"
+        // Which half of the dialog applies: a tile drawn one line per HTTP method is configured
+        // by choosing the methods, and every other tile by choosing which of its two charts to
+        // show. Both gateways are the first kind - see the EAG Traffic tile.
+        readonly property bool byMethod: chartSettingsDialog.tileId === "gateway"
+                                         || chartSettingsDialog.tileId === "eag-proxy"
 
         // ComboBox's currentIndex binding gets clobbered by its own internal model-populate
         // logic, same as every other dialog's combo/spinbox in this app - set it imperatively
@@ -1070,7 +1194,7 @@ Item {
                 id: methodsColumn
                 width: parent.width
                 spacing: 10
-                visible: chartSettingsDialog.gateway
+                visible: chartSettingsDialog.byMethod
 
                 Text { text: "HTTP Methods"; color: "#9aa1ac"; font.pixelSize: 12 }
 
@@ -1117,7 +1241,7 @@ Item {
                 id: chartsColumn
                 width: parent.width
                 spacing: 10
-                visible: !chartSettingsDialog.gateway
+                visible: !chartSettingsDialog.byMethod
 
                 Text { text: "Charts"; color: "#9aa1ac"; font.pixelSize: 12 }
 
