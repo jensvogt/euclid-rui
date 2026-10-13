@@ -35,7 +35,10 @@ Item {
         { title: "Bucket", key: "bucketName" },
         { title: "State", key: "state", colorFor: function (v) { return root.stateColor(v) } },
         { title: "Desired", key: "desiredState", colorFor: function (v) { return root.stateColor(v) } },
-        { title: "Users", key: "userIds", formatter: function (v) { return v ? v.length : 0 } },
+        // Everyone who may log in, not the length of the userIds list: access is the union of the
+        // users named directly and the members of the groups named, so a server that admits a
+        // whole department by group used to read as having none. ETS counts it - see its toJson.
+        { title: "Users", key: "userCount" },
         { title: "Created", key: "created", formatter: function (v) { return DateFormat.format(v) } },
         { title: "Ern", key: "ern", hidden: true }
     ]

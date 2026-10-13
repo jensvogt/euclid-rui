@@ -16,6 +16,16 @@ QVariantMap serverToMap(const QJsonObject &server) {
     entry["bucketErn"] = server.value("bucketErn").toString();
     entry["userIds"] = server.value("userIds").toArray().toVariantList();
     entry["userGroups"] = server.value("userGroups").toArray().toVariantList();
+    // How many people the server actually admits: the two lists above are a union, so a member of
+    // a named group may log in without being in userIds, and somebody in both is still one person.
+    // Counted by ETS, which can read the groups - a client would have to list every one of them to
+    // work it out, and would get it wrong the moment the groups ran past one page.
+    //
+    // The length of userIds for a server that does not send it, which is what the count was before
+    // and is right for every server that admits nobody by group.
+    entry["userCount"] = server.contains("userCount")
+                                 ? server.value("userCount").toInteger()
+                                 : server.value("userIds").toArray().size();
     // Where each session is rooted, as a template: "{user}" becomes the client's own user id, and
     // an empty one puts every session at the bucket root.
     entry["homeDirectory"] = server.value("homeDirectory").toString();
