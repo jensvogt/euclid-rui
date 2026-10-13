@@ -340,9 +340,14 @@ Item {
                 }
                 StatCard {
                     title: "Allowed"
-                    value: String(root.detail("userIds", []).length + root.detail("userGroups", []).length)
-                    trend: root.detail("userIds", []).length + " user(s), " + root.detail("userGroups", []).length + " group(s)"
-                    trendUp: root.detail("userIds", []).length + root.detail("userGroups", []).length > 0
+                    // People, counted once each - not entries. The two lists under this card are a
+                    // union, so adding their lengths counted a group as though it were a person and
+                    // counted anybody who is both named and a member twice. ETS resolves the
+                    // membership and reports the figure; the breakdown below says how it is granted.
+                    value: String(root.detail("userCount", 0))
+                    trend: root.detail("userIds", []).length + " named, "
+                           + root.detail("userGroups", []).length + " group(s)"
+                    trendUp: root.detail("userCount", 0) > 0
                     accent: "#ffb545"
                     width: 440
                 }
