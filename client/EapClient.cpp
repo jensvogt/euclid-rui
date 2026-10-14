@@ -37,6 +37,16 @@ QVariantMap applicationToMap(const QJsonObject &application) {
     // and the artifact's checksum with it, so the two together say exactly which build is running.
     entry["version"] = application.value("version").toString();
     entry["md5Sum"] = application.value("md5Sum").toString();
+    // How big that build is, in bytes, as EAP recorded it at deploy time - not as the bucket stands
+    // now, which is the better of the two: the object can have been overwritten since, and what
+    // this page is describing is what was deployed.
+    //
+    // Zero means it was never recorded rather than that the artifact is empty. The field is newer
+    // than plenty of definitions still in service, and EAP writes it only when an application is
+    // created, updated or redeployed - there is no backfill - so one deployed before it existed
+    // reports 0 until its next redeploy. Read as a 64-bit integer because an artifact outgrows
+    // 2 GB long before it outgrows what ESM will store.
+    entry["artifactSize"] = application.value("artifactSize").toInteger();
     entry["command"] = application.value("command").toString();
     entry["arguments"] = application.value("arguments").toArray().toVariantList();
     entry["environment"] = application.value("environment").toObject().toVariantMap();

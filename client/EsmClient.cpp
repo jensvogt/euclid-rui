@@ -290,6 +290,36 @@ void EsmClient::fetchObjects(const QString &bucketErn, const QString &prefix, co
          });
 }
 
+void EsmClient::fetchObjectSize(const QString &bucketErn, const QString &key) {
+    QJsonObject body;
+    body["bucketErn"] = bucketErn;
+    body["prefix"] = key;
+    // Room for the neighbours a prefix drags in - the checksum and signature files written beside
+    // an artifact - without reading a page of a bucket to find one object.
+    body["pageSize"] = 20;
+    body["pageIndex"] = 0;
+    body["sortColumn"] = QStringLiteral("key");
+    body["sortDirection"] = QStringLiteral("asc");
+    // The exact key is wanted, and a directory marker is a zero-byte object whose key ends in "/" -
+    // it can never be the one asked for, so there is no reason to ask for them.
+    body["includeDirectories"] = false;
+
+    m_base->post("esm", "list-objects", body, true,
+         [this, bucketErn, key](const QJsonObject &response) {
+             for (const QJsonArray array = response.value("objects").toArray(); const auto &value : array) {
+                 const QJsonObject object = value.toObject();
+                 if (object.value("key").toString() != key)
+                     continue;
+                 emit objectSizeLoaded(bucketErn, key, object.value("size").toInteger());
+                 return;
+             }
+             emit objectSizeFailed(bucketErn, key, tr("No object '%1' in this bucket").arg(key));
+         },
+         [this, bucketErn, key](const QString &message) {
+             emit objectSizeFailed(bucketErn, key, message);
+         });
+}
+
 void EsmClient::deleteObject(const QString &bucketErn, const QString &objectErn) {
     QJsonObject body;
     body["ern"] = objectErn;
