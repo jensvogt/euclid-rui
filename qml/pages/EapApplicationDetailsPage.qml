@@ -29,6 +29,31 @@ Item {
     // look broken.
     property string instancesError: ""
 
+    // How big the deployed artifact is, as EAP recorded it when it was deployed. Zero means it was
+    // never recorded rather than that the file is empty - see applicationToMap() - so it cannot be
+    // shown as "0 B".
+    readonly property real recordedArtifactSize: Number(root.detail("artifactSize", 0))
+
+    // The fallback for exactly those definitions: ESM still knows how big the object is, so an
+    // application deployed before EAP recorded the size is measured rather than left blank.
+    // Negative means not known yet, which is also where it stays if the lookup fails.
+    property real measuredArtifactSize: -1
+    // Shown in place of the size rather than in the page's error line: an artifact that cannot be
+    // measured says nothing about whether the definition is fine, and most of the reasons are
+    // ordinary - the bucket is in another namespace, or the caller may not read it.
+    property string artifactSizeError: ""
+    // Which artifact the measurement belongs to, so the ten-second poll behind this page does not
+    // ask ESM again every time it re-reads a definition that has not changed. The checksum is part
+    // of it because a redeploy keeps the key and changes the contents.
+    property string artifactSizeFor: ""
+
+    // EAP's own figure wins where there is one, and not only because it costs nothing to read: it
+    // is the size of the build that was actually deployed, where ESM reports whatever is in the
+    // bucket now - and an object can be overwritten without the application being redeployed.
+    readonly property real artifactSize: root.recordedArtifactSize > 0
+                                         ? root.recordedArtifactSize
+                                         : root.measuredArtifactSize
+
     signal back()
 
     function detail(key, fallback) {
@@ -306,8 +331,62 @@ Item {
         emmClient.fetchModules()
     }
 
+    // Measures the artifact through ESM, for the one case that still needs it: a definition from
+    // before EAP recorded the size. Asks only when it is a different artifact from the one already
+    // measured - see artifactSizeFor. Called after every definition read rather than from
+    // refresh(), because the bucket and key it needs arrive with the definition.
+    function refreshArtifactSize() {
+        // EAP has answered; there is nothing to ask ESM, and nothing left over from a definition
+        // that had to be measured before.
+        if (root.recordedArtifactSize > 0) {
+            root.artifactSizeFor = ""
+            root.measuredArtifactSize = -1
+            root.artifactSizeError = ""
+            return
+        }
+
+        const bucketErn = String(root.detail("bucketErn", ""))
+        const key = String(root.detail("artifactKey", ""))
+
+        if (bucketErn.length === 0 || key.length === 0) {
+            root.artifactSizeFor = ""
+            root.measuredArtifactSize = -1
+            root.artifactSizeError = ""
+            return
+        }
+
+        const token = bucketErn + "\n" + key + "\n" + String(root.detail("md5Sum", ""))
+        if (token === root.artifactSizeFor)
+            return
+
+        root.artifactSizeFor = token
+        root.measuredArtifactSize = -1
+        root.artifactSizeError = ""
+        esmClient.fetchObjectSize(bucketErn, key)
+    }
+
     onVisibleChanged: if (visible) refresh()
     onLoggedInChanged: if (loggedIn && visible) refresh()
+
+    Connections {
+        target: esmClient
+
+        // Matched against the definition on screen rather than against what was asked for: these
+        // signals reach every page, and the object browser asks about objects too.
+        function onObjectSizeLoaded(bucketErn, key, size) {
+            if (bucketErn !== String(root.detail("bucketErn", "")) || key !== String(root.detail("artifactKey", "")))
+                return
+            root.measuredArtifactSize = size
+            root.artifactSizeError = ""
+        }
+
+        function onObjectSizeFailed(bucketErn, key, message) {
+            if (bucketErn !== String(root.detail("bucketErn", "")) || key !== String(root.detail("artifactKey", "")))
+                return
+            root.measuredArtifactSize = -1
+            root.artifactSizeError = message
+        }
+    }
 
     Timer {
         interval: appSettings.autoRefreshSeconds * 1000
@@ -326,6 +405,7 @@ Item {
                 if (application.applicationId !== root.applicationId) continue
                 root.details = application
                 root.error = ""
+                root.refreshArtifactSize()
                 return
             }
             // Gone from the list: deleted, by this page or from somewhere else. Its pool goes with
@@ -604,6 +684,20 @@ Item {
                         }
                         DetailField { width: (identityCol.width - 48) / 3; label: "Runtime"; value: root.detail("runtime", "—") }
                         DetailField { width: (identityCol.width - 48) / 3; label: "Artifact"; value: root.detail("artifactKey", "—") }
+                        DetailField {
+                            width: (identityCol.width - 48) / 3
+                            label: "Artifact size"
+                            // Three states, and they are worth telling apart: the size, the reason
+                            // there is none, and the ellipsis of an answer still on its way. A bare
+                            // "—" while the request is in flight would say the file is missing when
+                            // nobody has looked yet; a bare "—" afterwards would hide why, and the
+                            // reasons are ordinary enough to act on - the bucket is in another
+                            // namespace, or the artifact was deleted out from under the definition.
+                            // DetailField elides, so a long message cannot widen the column.
+                            value: root.artifactSize >= 0
+                                   ? SizeFormat.format(root.artifactSize)
+                                   : (root.artifactSizeError.length > 0 ? "— " + root.artifactSizeError : "…")
+                        }
                         DetailField { width: (identityCol.width - 48) / 3; label: "Version"; value: root.detail("version", "—") }
                         DetailField {
                             width: (identityCol.width - 48) / 3

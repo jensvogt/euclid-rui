@@ -103,6 +103,18 @@ public:
                                   bool includeDirectories = false);
     Q_INVOKABLE void deleteObject(const QString &bucketErn, const QString &objectErn);
 
+    // How big one object is, for a caller that wants nothing else about it. ESM has no head-object
+    // or get-object-metadata action, so this is "list-objects" narrowed to the one key and read for
+    // its size - deliberately not fetchObjects(), whose objectsLoaded/objectsFailed carry a whole
+    // listing and are what the objects table binds to. A page asking about a single object would
+    // otherwise hand that table a one-row result for a bucket it is not even showing.
+    //
+    // `prefix` is a prefix and not an exact match, so the reply can hold neighbours - "app-1.4.jar"
+    // when asked about "app-1.4.ja" would not come up, but "app-1.4.jar.sha256" does. The exact key
+    // is picked out here, and its absence is reported as a failure rather than as a size of zero:
+    // an artifact that is not there is a different thing from an empty one.
+    Q_INVOKABLE void fetchObjectSize(const QString &bucketErn, const QString &key);
+
     // Reads a whole object back in one request, for showing it rather than saving it to disk -
     // "get-object" is the same call the CLI's download-file tries before falling back to the
     // multipart flow. `maxBytes` is the cutoff the server enforces: an object that size or larger
@@ -230,6 +242,12 @@ signals:
     // Objects
     void objectsLoaded(const QString &bucketErn, const QVariantList &objects, int total);
     void objectsFailed(const QString &bucketErn, const QString &message);
+
+    // Both carry the bucket and key back, because these reach every listener and a page showing one
+    // object's size has no other way to tell its own answer from somebody else's. qint64 rather
+    // than int: an artifact outgrows 2 GB long before it outgrows what ESM will store.
+    void objectSizeLoaded(const QString &bucketErn, const QString &key, qint64 size);
+    void objectSizeFailed(const QString &bucketErn, const QString &key, const QString &message);
     void objectsReload(const QString &bucketErn);
     void objectUploaded(const QString &bucketErn, const QString &key);
     void objectUploadFailed(const QString &message);
