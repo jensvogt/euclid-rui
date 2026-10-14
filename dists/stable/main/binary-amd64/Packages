@@ -846,6 +846,24 @@ Vendor: none
 
 Package: euclid-rui
 Architecture: amd64
+Version: 1.1.32
+Priority: optional
+Section: default
+Maintainer: <runner@runnervmwvtoz>
+Installed-Size: 93992
+Filename: pool/main/e/euclid-rui/euclid-rui-1.1.32-amd64.deb
+Size: 27565632
+MD5sum: 4e0cabe19d52b69283195439e4863ee5
+SHA1: 8d7050d88106d070d2fba419e2dc598332e0146c
+SHA256: b853ffba4d0049f2eff870a96f2781c15c60b796321ed6599c583a70fe8af45c
+SHA512: 56dabbfb944b27928822c012ccc64a14e8d348c1ca7618effe227eb2f37eeeb0eeb70c803bbc8fae20c3faff3628944090e8468f3e8257ea1acf5d2ddce85188
+Homepage: http://example.com/no-uri-given
+Description: no description given
+License: unknown
+Vendor: none
+
+Package: euclid-rui
+Architecture: amd64
 Version: 1.1.4
 Priority: optional
 Section: default
