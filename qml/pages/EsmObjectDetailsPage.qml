@@ -322,10 +322,7 @@ Item {
 
             Breadcrumb {
                 width: parent.width
-                segments: [
-                    { label: "Objects", action: () => root.back() },
-                    { label: root.objectKey }
-                ]
+                leaf: root.objectKey
             }
 
             Item {

@@ -494,10 +494,7 @@ Item {
 
             Breadcrumb {
                 width: parent.width
-                segments: [
-                    { label: "Applications", action: () => root.back() },
-                    { label: root.applicationId }
-                ]
+                leaf: root.applicationId
             }
 
             Item {

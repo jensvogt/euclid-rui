@@ -355,6 +355,13 @@ Item {
             width: scrollView.availableWidth
             spacing: 28
 
+            // One segment, and it is this page: the trail every other page ends up pointing at has
+            // to start somewhere, and that somewhere says so rather than being the one page with
+            // nothing above its heading.
+            Breadcrumb {
+                width: parent.width
+            }
+
             SectionHeader {
                 title: "Dashboard"
                 subtitle: "Welcome back, here's what's happening today."

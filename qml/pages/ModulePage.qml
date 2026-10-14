@@ -116,6 +116,12 @@ Item {
             width: parent.width
             spacing: 28
 
+            // Named by the route rather than by moduleName: one of these serves every module, and
+            // the route is what says which one is on screen.
+            Breadcrumb {
+                width: parent.width
+            }
+
             Item {
                 width: parent.width
                 height: sectionHeader.implicitHeight

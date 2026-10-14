@@ -307,10 +307,6 @@ Item {
 
             Breadcrumb {
                 width: parent.width
-                segments: [
-                    { label: "ETS", action: () => root.back() },
-                    { label: "Transfer Servers" }
-                ]
             }
 
             Item {

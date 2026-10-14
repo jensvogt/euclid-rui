@@ -389,10 +389,6 @@ Item {
 
             Breadcrumb {
                 width: parent.width
-                segments: [
-                    { label: "EQS", action: () => root.back() },
-                    { label: "Queues" }
-                ]
             }
 
             Item {

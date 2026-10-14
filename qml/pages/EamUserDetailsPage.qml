@@ -104,10 +104,7 @@ Item {
 
             Breadcrumb {
                 width: parent.width
-                segments: [
-                    { label: "Users", action: () => root.back() },
-                    { label: root.userId }
-                ]
+                leaf: root.userId
             }
 
             Item {

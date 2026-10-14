@@ -837,10 +837,7 @@ Item {
 
             Breadcrumb {
                 width: parent.width
-                segments: [
-                    { label: "ESM", action: () => root.back() },
-                    { label: root.bucketErn.length > 0 ? "Objects · " + root.bucketName : "Objects" }
-                ]
+                leaf: root.bucketErn.length > 0 ? "Objects · " + root.bucketName : "Objects"
             }
 
             Item {

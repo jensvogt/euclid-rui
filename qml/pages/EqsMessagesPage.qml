@@ -543,10 +543,7 @@ Item {
 
             Breadcrumb {
                 width: parent.width
-                segments: [
-                    { label: "EQS", action: () => root.back() },
-                    { label: root.queueErn.length > 0 ? "Messages · " + root.queueName : "Messages" }
-                ]
+                leaf: root.queueErn.length > 0 ? "Messages · " + root.queueName : "Messages"
             }
 
             Item {

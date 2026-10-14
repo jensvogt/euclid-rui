@@ -101,10 +101,7 @@ Item {
 
             Breadcrumb {
                 width: parent.width
-                segments: [
-                    { label: "Keys", action: () => root.back() },
-                    { label: root.keyName }
-                ]
+                leaf: root.keyName
             }
 
             Item {

@@ -448,10 +448,6 @@ Item {
 
             Breadcrumb {
                 width: parent.width
-                segments: [
-                    { label: "EAM", action: () => root.back() },
-                    { label: "Roles" }
-                ]
             }
 
             Item {

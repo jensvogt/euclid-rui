@@ -594,6 +594,10 @@ Item {
             width: parent.width
             spacing: 28
 
+            Breadcrumb {
+                width: parent.width
+            }
+
             Item {
                 width: parent.width
                 height: analyticsHeader.implicitHeight
