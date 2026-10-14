@@ -46,6 +46,38 @@ Item {
     // lands - the entry the list handed over on the way in has nothing in it.
     readonly property var applications: root.detail("applications", [])
 
+    // The one-minute load average the node last reported, and what it means on this particular
+    // machine. Divided by the core count because one per CPU is the saturation point whatever the
+    // hardware - the same comparison EAP publishes as "system-load-per-core" and the one worth
+    // alerting on. Negative when there is no core count to divide by, which reads as "cannot say"
+    // rather than as an idle machine.
+    readonly property real loadAverage: Number(root.detail("loadAverage", 0))
+    readonly property int loadCpuCount: Number(root.detail("cpuCount", 0))
+    readonly property real loadPerCpu: root.loadCpuCount > 0 ? root.loadAverage / root.loadCpuCount : -1
+
+    // Two decimals, the way uptime(1) and /proc/loadavg report it - this is a figure that is
+    // compared against 1, so the fraction is the whole of what it says.
+    function loadText() {
+        if (root.loadAverage < 0) return "—"
+        return root.loadAverage.toFixed(2)
+    }
+
+    function loadTrend() {
+        // Not "idle": the manager stores zero both for a machine with nothing to do and for a
+        // heartbeat that carried no reading at all, so this cannot promise which one it is.
+        if (root.loadAverage <= 0) return "idle, or not reported"
+        if (root.loadPerCpu < 0) return "one-minute average"
+        if (root.loadPerCpu >= 1) return root.loadPerCpu.toFixed(2) + " per CPU · saturated"
+        return root.loadPerCpu.toFixed(2) + " per CPU"
+    }
+
+    function loadColor() {
+        if (root.loadAverage <= 0 || root.loadPerCpu < 0) return "#9aa1ac"
+        if (root.loadPerCpu >= 1) return "#ff6b6b"
+        if (root.loadPerCpu >= 0.7) return "#ffb545"
+        return "#4cd97b"
+    }
+
     function nodeState() {
         if (!root.node || root.node.name === undefined) return "—"
         // Quiet first: a drained node that has also stopped renewing is a problem rather than a
@@ -240,6 +272,17 @@ Item {
                     accent: "#4f8cff"
                 }
                 StatCard {
+                    title: "Load"
+                    value: root.loadText()
+                    // Per CPU rather than the raw figure repeated: 4.0 is a busy machine on two
+                    // cores and a half-idle one on sixteen, and the card has already said the raw
+                    // number above.
+                    trend: root.loadTrend()
+                    // Below saturation is the healthy direction; at or above it is not.
+                    trendUp: root.loadPerCpu >= 0 && root.loadPerCpu < 1
+                    accent: root.loadColor()
+                }
+                StatCard {
                     title: "OS / Arch"
                     value: root.platformText()
                     trend: "what the worker was built for"
@@ -284,6 +327,17 @@ Item {
                         rowSpacing: 16
 
                         DetailField { width: (identityCol.width - 48) / 3; label: "Node"; value: root.nodeName; copyable: true }
+                        DetailField {
+                            width: (identityCol.width - 48) / 3
+                            label: "IP address"
+                            // Empty means the worker did not report one - it predates the field, or
+                            // could not tell - which is not the same as a node with no address, so
+                            // it reads as unknown rather than as a blank line.
+                            value: String(root.detail("address", "")).length > 0
+                                   ? root.detail("address", "") : "—"
+                            // The one thing anyone does with it is paste it into ssh.
+                            copyable: String(root.detail("address", "")).length > 0
+                        }
                         DetailField { width: (identityCol.width - 48) / 3; label: "Operating system"; value: root.detail("os", "—") }
                         DetailField { width: (identityCol.width - 48) / 3; label: "Architecture"; value: root.detail("arch", "—") }
                         DetailField {

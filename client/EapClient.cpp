@@ -277,11 +277,27 @@ namespace {
 QVariantMap nodeToMap(const QJsonObject &node) {
     QVariantMap entry;
     entry["name"] = node.value("name").toString();
+    // Where the worker said it was when it last registered - by default the local address of its
+    // own route to the master, which is the one the master's side of the network can reach it on,
+    // and overridable on the worker for a node behind NAT.
+    //
+    // Informational only: nothing on the master connects to it, so a wrong address here costs
+    // nothing but is also not something the master can notice. Empty for a worker older than the
+    // field, or one that could not work out its own address.
+    entry["address"] = node.value("address").toString();
     // The EAM principal the worker registered as. The name belongs to whoever claimed it first, so
     // this is also what says a second worker cannot take it over.
     entry["principal"] = node.value("principal").toString();
     entry["labels"] = node.value("labels").toObject().toVariantMap();
     entry["cpuCount"] = node.value("cpuCount").toInteger();
+    // The one-minute load average as of the node's last heartbeat, which is the same call and the
+    // same tick that keeps the node alive - so it is as current as `lastSeen` says it is.
+    //
+    // Zero is how the manager reads a heartbeat that carried no figure (EapServer: "Absent reads as
+    // zero, which is idle"), and it is also what an idle machine genuinely reports. The two cannot
+    // be told apart from here, which is why the page says "idle, or not reported" rather than
+    // claiming the machine is quiet.
+    entry["loadAverage"] = node.value("loadAverage").toDouble();
     entry["version"] = node.value("version").toString();
     // What the worker's binary was built for, reported by the worker itself rather than configured
     // - so unlike a label it cannot disagree with the machine it is running on. Both empty for a
