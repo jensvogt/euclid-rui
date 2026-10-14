@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.1.32](https://github.com/jensvogt/euclid-rui/compare/1.1.31...v1.1.32) (2026-10-14)
+
+
+### Bug Fixes
+
+* add artifact size ([f1e00a9](https://github.com/jensvogt/euclid-rui/commit/f1e00a9e4fa036d6b84649d639e2441a1d2221c1))
+* add artifact size ([657991f](https://github.com/jensvogt/euclid-rui/commit/657991ffc588474b49d91f41a6f6270c4357b84b))
+* add load to worker node details page ([9dfdaa0](https://github.com/jensvogt/euclid-rui/commit/9dfdaa005ce45d2ed95de452ffad61a989f9faa9))
+
 ## [1.1.31](https://github.com/jensvogt/euclid-rui/compare/1.1.30...v1.1.31) (2026-10-13)
 
 
