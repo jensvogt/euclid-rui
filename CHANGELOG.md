@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.1.33](https://github.com/jensvogt/euclid-rui/compare/1.1.32...v1.1.33) (2026-10-14)
+
+
+### Bug Fixes
+
+* add breadcrumbs ([36c321c](https://github.com/jensvogt/euclid-rui/commit/36c321c8d430654602d0f0ebe080bff5b50e440d))
+* add breadcrumbs ([90dcd6e](https://github.com/jensvogt/euclid-rui/commit/90dcd6e8b1abee7c9327b220b7dac1856c178273))
+
 ## [1.1.32](https://github.com/jensvogt/euclid-rui/compare/1.1.31...v1.1.32) (2026-10-14)
 
 
