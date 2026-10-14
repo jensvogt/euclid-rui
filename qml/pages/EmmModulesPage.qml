@@ -451,10 +451,6 @@ Item {
 
             Breadcrumb {
                 width: parent.width
-                segments: [
-                    { label: "Dashboard", action: () => root.back() },
-                    { label: "Modules" }
-                ]
             }
 
             SectionHeader {

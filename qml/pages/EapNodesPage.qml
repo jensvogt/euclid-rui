@@ -196,10 +196,6 @@ Item {
 
             Breadcrumb {
                 width: parent.width
-                segments: [
-                    { label: "EAP", action: () => root.back() },
-                    { label: "Worker Nodes" }
-                ]
             }
 
             SectionHeader {

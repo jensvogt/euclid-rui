@@ -114,10 +114,7 @@ Item {
 
             Breadcrumb {
                 width: parent.width
-                segments: [
-                    { label: "Accounts", action: () => root.back() },
-                    { label: root.accountName.length > 0 ? root.accountName : root.accountId }
-                ]
+                leaf: root.accountName.length > 0 ? root.accountName : root.accountId
             }
 
             Item {

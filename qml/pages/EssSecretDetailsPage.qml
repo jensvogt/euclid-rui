@@ -182,10 +182,7 @@ Item {
 
             Breadcrumb {
                 width: parent.width
-                segments: [
-                    { label: "Secrets", action: () => root.back() },
-                    { label: root.secretName }
-                ]
+                leaf: root.secretName
             }
 
             Item {

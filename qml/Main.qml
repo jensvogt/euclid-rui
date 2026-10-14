@@ -25,6 +25,26 @@ ApplicationWindow {
     property string currentNamespace: ""
     property string currentRoute: "dashboard"
 
+    // Kept in step with the breadcrumb's idea of where the window is, and the way back: a crumb
+    // asks for a route rather than setting one, because arriving somewhere is more than a string -
+    // see components/Nav.qml. Routes stay here, which is where the pages and their state are.
+    //
+    // A Binding rather than an assignment in onCurrentRouteChanged: the route the window starts on
+    // is never changed, so a handler would leave the first page's trail empty until the first
+    // navigation.
+    Binding {
+        target: Nav
+        property: "current"
+        value: window.currentRoute
+    }
+
+    Connections {
+        target: Nav
+        function onRequested(route) {
+            window.currentRoute = route
+        }
+    }
+
     // EAM
     property int eamAccountCount: -1
     property int eamNamespaceCount: -1

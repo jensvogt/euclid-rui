@@ -435,10 +435,6 @@ Item {
 
             Breadcrumb {
                 width: parent.width
-                segments: [
-                    { label: "EKV", action: () => root.back() },
-                    { label: "Tables" }
-                ]
             }
 
             Item {

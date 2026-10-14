@@ -963,10 +963,6 @@ Item {
 
             Breadcrumb {
                 width: parent.width
-                segments: [
-                    { label: "ESM", action: () => root.back() },
-                    { label: "Buckets" }
-                ]
             }
 
             Item {

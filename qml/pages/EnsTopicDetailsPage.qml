@@ -733,10 +733,7 @@ Item {
 
             Breadcrumb {
                 width: parent.width
-                segments: [
-                    { label: "Topics", action: () => root.back() },
-                    { label: root.topicName }
-                ]
+                leaf: root.topicName
             }
 
             Item {

@@ -165,10 +165,7 @@ Item {
 
             Breadcrumb {
                 width: parent.width
-                segments: [
-                    { label: "Queues", action: () => root.back() },
-                    { label: root.queueName }
-                ]
+                leaf: root.queueName
             }
 
             Item {

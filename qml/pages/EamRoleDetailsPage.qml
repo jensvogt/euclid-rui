@@ -747,10 +747,7 @@ Item {
 
             Breadcrumb {
                 width: parent.width
-                segments: [
-                    { label: "Roles", action: () => root.back() },
-                    { label: root.roleName }
-                ]
+                leaf: root.roleName
             }
 
             Item {

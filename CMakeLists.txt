@@ -73,6 +73,9 @@ set_source_files_properties(qml/components/DateFormat.qml PROPERTIES
 set_source_files_properties(qml/components/SizeFormat.qml PROPERTIES
         QT_QML_SINGLETON_TYPE TRUE
 )
+set_source_files_properties(qml/components/Nav.qml PROPERTIES
+        QT_QML_SINGLETON_TYPE TRUE
+)
 
 qt_add_qml_module(euclid-rui
         URI EuclidRui
@@ -150,6 +153,7 @@ qt_add_qml_module(euclid-rui
         qml/components/ApplicationConnectionsDialog.qml
         qml/components/ApplicationGraph.qml
         qml/components/ApplicationGraphDialog.qml
+        qml/components/Nav.qml
         qml/components/RouteEditDialog.qml
         qml/components/ServiceModuleTile.qml
         qml/components/Breadcrumb.qml

@@ -65,10 +65,7 @@ Item {
 
             Breadcrumb {
                 width: parent.width
-                segments: [
-                    { label: "Modules", action: () => root.back() },
-                    { label: root.moduleName }
-                ]
+                leaf: root.moduleName
             }
 
             SectionHeader {
