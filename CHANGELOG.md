@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.1.34](https://github.com/jensvogt/euclid-rui/compare/1.1.33...v1.1.34) (2026-10-15)
+
+
+### Bug Fixes
+
+* add breadcrumbs ([2999ae8](https://github.com/jensvogt/euclid-rui/commit/2999ae8aa889ff04071438315f5bc34f83e85e57))
+* fix ENS purge topic ([86a919c](https://github.com/jensvogt/euclid-rui/commit/86a919c2702ea8d8123eb08cd2525f8d04374503))
+
 ## [1.1.33](https://github.com/jensvogt/euclid-rui/compare/1.1.32...v1.1.33) (2026-10-14)
 
 
