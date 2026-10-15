@@ -127,9 +127,13 @@ Item {
     // How long the process has been up, as a person would say it. The exact start time is in the
     // column beside it; what an operator reads off a pool is whether an instance is minutes or
     // days old - a young one among old ones is one that has been restarting.
-    function uptimeText(created) {
-        if (!created) return "—"
-        const started = new Date(created)
+    //
+    // From the instance's "started", the running process's own start. It used to be "created",
+    // which is the slot's and outlives every process in it, so a pool replaced three hours earlier
+    // read as up for eleven. Empty, and shown as "—", for a slot with no process running.
+    function uptimeText(startedAt) {
+        if (!startedAt) return "—"
+        const started = new Date(startedAt)
         if (isNaN(started.getTime())) return "—"
         const seconds = Math.floor((Date.now() - started.getTime()) / 1000)
         if (seconds < 0) return "—"
@@ -150,7 +154,7 @@ Item {
     property string instanceFilter: ""
     property int instancePageIndex: 0
     property int instancePageSize: 10
-    property string instanceSortColumn: "created"
+    property string instanceSortColumn: "started"
     property bool instanceSortAscending: true
 
     readonly property var filteredInstances: {
@@ -242,11 +246,11 @@ Item {
             // operator scans, and a young instance among old ones is one that has been restarting.
             // Not sortable - it would order identically to "Started", which is.
             title: "Up",
-            key: "created",
+            key: "started",
             sortable: false,
             formatter: function (v) { return root.uptimeText(v) }
         },
-        { title: "Started", key: "created", formatter: function (v) { return DateFormat.format(v) } }
+        { title: "Started", key: "started", formatter: function (v) { return DateFormat.format(v) } }
     ]
 
     // What EAP accepts, in the order its own error message lists them. Java is the only one that

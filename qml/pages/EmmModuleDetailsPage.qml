@@ -250,7 +250,9 @@ Item {
                             }
                             Text {
                                 width: instancesCol.width * 0.24
-                                text: DateFormat.format(instanceRow.modelData.created)
+                                // The running process's start, not the slot's creation - see
+                                // EapApplicationDetailsPage.uptimeText(). "—" when nothing runs.
+                                text: DateFormat.format(instanceRow.modelData.started)
                                 color: "#c4c9d1"
                                 font.pixelSize: 12
                                 elide: Text.ElideRight
