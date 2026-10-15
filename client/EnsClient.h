@@ -56,6 +56,11 @@ public:
     // on each message, so shortening it does not reach back and re-stamp what is already there.
     Q_INVOKABLE void setTopicRetention(const QString &topicErn, qint64 retentionPeriod);
 
+    // Whether the topic deletes each message once it has been handed to every subscription, rather
+    // than keeping it for the retention period. Off by default. A message on a topic with no
+    // subscription is kept either way, and what is deleted is gone for resend-messages too.
+    Q_INVOKABLE void setTopicDeleteAfterDelivery(const QString &topicErn, bool deleteAfterDelivery);
+
     // The largest message the topic accepts, in bytes. Has to be positive - zero would be a topic
     // that takes nothing, which is what stopping it says, reversibly. Applies to what is published
     // from here on; a message already in the topic was accepted under the rule in force when it
@@ -96,7 +101,8 @@ signals:
     // The values the server recorded, read back from its answer rather than echoed from the ask.
     void topicRetentionChanged(const QString &topicErn, qint64 retentionPeriod);
     void topicMaxMessageLengthChanged(const QString &topicErn, qint64 maxMessageLength);
-    // Shared by both: they are set from one dialog, and it has one place to put an error.
+    void topicDeleteAfterDeliveryChanged(const QString &topicErn, bool deleteAfterDelivery);
+    // Shared by all three: they are set from one dialog, and it has one place to put an error.
     void topicConfigurationFailed(const QString &message);
     // What the resend did: `resent` went out to every subscription, `held` were skipped because they
     // were published while the topic was stopped and have never been delivered at all.

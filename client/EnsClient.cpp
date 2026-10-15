@@ -28,9 +28,9 @@ void EnsClient::fetchTopics(const QString &prefix, const int pageIndex, const in
                  // number once a byte count or a message count passes 2^31.
                  entry["size"] = topic.value("size").toInteger();
                  entry["messages"] = topic.value("messages").toInteger();
-                 // Lifetime totals, not current counts: unlike "messages" these do not fall when a
-                 // topic is purged or when retention removes what it held, which is what makes them
-                 // worth a column of their own.
+                 // Totals since the topic was created or last purged, not current counts: unlike
+                 // "messages" these do not fall when retention removes what it held, which is what
+                 // makes them worth a column of their own. A purge resets them to zero.
                  entry["send"] = topic.value("send").toInteger();
                  entry["resend"] = topic.value("resend").toInteger();
                  entry["maxMessageLength"] = topic.value("maxMessageLength").toInteger();
@@ -38,6 +38,10 @@ void EnsClient::fetchTopics(const QString &prefix, const int pageIndex, const in
                  // 0 means the topic follows euclid.modules.ens.retention-period rather than
                  // carrying a period of its own, and -1 means it keeps everything forever.
                  entry["retentionPeriod"] = topic.value("retentionPeriod").toInteger();
+                 // Whether a message is deleted once every subscription has it, rather than kept for
+                 // the retention period. Absent from a server older than the setting, which reads as
+                 // false - and false is what every topic on such a server does.
+                 entry["deleteAfterDelivery"] = topic.value("deleteAfterDelivery").toBool();
                  // "RUNNING" or "STOPPED". A stopped topic is invisible in every other field - it
                  // goes on accepting publishes and its message count goes on climbing - so this is
                  // the only one that says why the subscriptions have gone quiet.
@@ -164,6 +168,23 @@ void EnsClient::setTopicRetention(const QString &topicErn, const qint64 retentio
              // The period the server recorded, read back rather than assumed - it is the value the
              // page then shows, and the two should not be able to disagree.
              emit topicRetentionChanged(topicErn, response.value("retentionPeriod").toInteger());
+             emit topicsReload();
+         },
+         [this](const QString &message) {
+             emit topicConfigurationFailed(message);
+         });
+}
+
+void EnsClient::setTopicDeleteAfterDelivery(const QString &topicErn, const bool deleteAfterDelivery) {
+    QJsonObject body;
+    body["ern"] = topicErn;
+    body["deleteAfterDelivery"] = deleteAfterDelivery;
+
+    m_base->post("ens", "set-topic-delete-after-delivery", body, true,
+         [this, topicErn](const QJsonObject &response) {
+             // Read back from the answer, as the retention is: the page shows what the server
+             // recorded rather than what was asked for.
+             emit topicDeleteAfterDeliveryChanged(topicErn, response.value("deleteAfterDelivery").toBool());
              emit topicsReload();
          },
          [this](const QString &message) {

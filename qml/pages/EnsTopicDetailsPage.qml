@@ -9,7 +9,16 @@ Item {
     property string namespaceName: ""
     property string topicErn: ""
     property string topicName: ""
+    // The topic as Main.qml hands it over, bound to whichever topic is open. Never assigned here:
+    // writing to it breaks that binding for good, and every topic opened afterwards showed the one
+    // that was last changed - its retention, its state, its tags, its delete-after-delivery.
     property var details: ({})
+
+    // What this page has changed and the server has confirmed, applied over `details` - there is no
+    // single-topic read to fetch the topic again after a change. Dropped whenever another topic is
+    // opened, or the same one is handed over afresh, so it never outlives the topic it belongs to.
+    property var localChanges: ({})
+    onDetailsChanged: root.localChanges = ({})
 
     signal back()
     signal viewMessages(string topicErn, string topicName)
@@ -21,7 +30,16 @@ Item {
     }
 
     function detail(key, fallback) {
+        if (root.localChanges[key] !== undefined) return root.localChanges[key]
         return root.details && root.details[key] !== undefined ? root.details[key] : fallback
+    }
+
+    // Records one confirmed change. Reassigned rather than mutated in place, so the "var" property's
+    // change notification fires and everything reading detail() re-evaluates.
+    function patchLocally(key, value) {
+        const changes = Object.assign({}, root.localChanges)
+        changes[key] = value
+        root.localChanges = changes
     }
 
     function tagList() {
@@ -29,19 +47,18 @@ Item {
         return tags ? Object.keys(tags) : []
     }
 
-    // No "get single topic" action exists server-side to re-fetch after a mutation, so apply the
-    // now-confirmed change to the local details snapshot instead (reassigned, not mutated in
-    // place, so the "var" property change notification actually fires).
+    // No "get single topic" action exists server-side to re-fetch after a mutation, so the
+    // now-confirmed change is recorded locally instead - see localChanges.
     function addTagLocally(key, value) {
         const tags = Object.assign({}, detail("tags", {}))
         tags[key] = value
-        root.details = Object.assign({}, root.details, { tags: tags })
+        root.patchLocally("tags", tags)
     }
 
     function removeTagLocally(key) {
         const tags = Object.assign({}, detail("tags", {}))
         delete tags[key]
-        root.details = Object.assign({}, root.details, { tags: tags })
+        root.patchLocally("tags", tags)
     }
 
     readonly property int messages: Number(detail("messages", 0))
@@ -59,19 +76,20 @@ Item {
     // No "get single topic" read is wired up here, so the confirmed change is applied to the local
     // snapshot instead - the same thing addTagLocally does above, and for the same reason.
     function setStatusLocally(status) {
-        root.details = Object.assign({}, root.details, { status: status })
+        root.patchLocally("status", status)
     }
 
     function setDetailLocally(key, value) {
-        const patch = ({})
-        patch[key] = value
-        root.details = Object.assign({}, root.details, patch)
+        root.patchLocally(key, value)
     }
 
     // ── Configuration ────────────────────────────────────────────────────────
 
     readonly property int maxMessageLength: Number(detail("maxMessageLength", 0))
     readonly property int retentionPeriod: Number(detail("retentionPeriod", 0))
+    // Whether a message is deleted once every subscription has it, instead of being kept for the
+    // retention period. Off unless somebody turned it on, which is how every topic behaves.
+    readonly property bool deleteAfterDelivery: detail("deleteAfterDelivery", false) === true
 
     // The two values that are not durations. Zero is the absence of a period rather than a period
     // of none: the topic follows euclid.modules.ens.retention-period, and moves with it whenever
@@ -116,6 +134,8 @@ Item {
 
     onVisibleChanged: if (visible) refreshSubscriptions()
     onTopicErnChanged: {
+        // Another topic's confirmed changes are not this one's - see localChanges.
+        root.localChanges = ({})
         // The note describes the topic that was on screen when it was written, and nothing can
         // re-derive it for the next one.
         root.deliveryNote = ""
@@ -169,6 +189,11 @@ Item {
         function onTopicMaxMessageLengthChanged(topicErn, maxMessageLength) {
             if (topicErn !== root.topicErn) return
             root.setDetailLocally("maxMessageLength", maxMessageLength)
+            configurationDialog.settled()
+        }
+        function onTopicDeleteAfterDeliveryChanged(topicErn, deleteAfterDelivery) {
+            if (topicErn !== root.topicErn) return
+            root.setDetailLocally("deleteAfterDelivery", deleteAfterDelivery)
             configurationDialog.settled()
         }
         function onTopicConfigurationFailed(message) {
@@ -461,8 +486,8 @@ Item {
         standardButtons: Dialog.NoButton
 
         property string errorText: ""
-        // How many of the two calls are still outstanding. Only what actually changed is sent, so
-        // this is 0, 1 or 2, and the dialog closes when the last one has answered.
+        // How many of the three calls are still outstanding. Only what actually changed is sent, so
+        // this is 0 to 3, and the dialog closes when the last one has answered.
         property int pending: 0
         readonly property bool saving: configurationDialog.pending > 0
 
@@ -549,6 +574,8 @@ Item {
             }
             retentionUnitCombo.currentIndex = retentionUnit
             retentionValueField.text = retentionValue > 0 ? String(retentionValue) : ""
+
+            deleteAfterDeliveryBox.checked = root.deleteAfterDelivery
         }
 
         contentItem: Column {
@@ -560,7 +587,7 @@ Item {
                 spacing: 4
                 Text { text: "Topic Configuration"; color: "white"; font.pixelSize: 18; font.bold: true }
                 Text {
-                    text: "What this topic accepts, and how long it keeps it. Both apply to messages published "
+                    text: "What this topic accepts, and how long it keeps it. All three apply to messages published "
                           + "from now on - nothing already stored is re-checked or re-stamped."
                     color: "#9aa1ac"
                     font.pixelSize: 12
@@ -656,6 +683,34 @@ Item {
                 }
             }
 
+            Column {
+                width: parent.width
+                spacing: 2
+
+                CheckBox {
+                    id: deleteAfterDeliveryBox
+                    text: "Delete messages once every subscriber has them"
+                    leftPadding: 0
+                    Material.theme: Material.Dark
+                    Material.accent: "#4f8cff"
+                }
+
+                Text {
+                    width: parent.width
+                    wrapMode: Text.WordWrap
+                    color: deleteAfterDeliveryBox.checked ? "#ffb545" : "#6b7280"
+                    font.pixelSize: 11
+                    // The cost said where it is chosen: the topic's copy is what resend-messages
+                    // works from, and it is gone the moment the subscriptions have theirs.
+                    text: deleteAfterDeliveryBox.checked
+                          ? "Each message is deleted as soon as it has been handed to every subscription, so it "
+                            + "cannot be resent afterwards. A message on a topic with no subscription is kept for "
+                            + "the retention period."
+                          : "Messages are kept for the retention period after they have been delivered, so they "
+                            + "can still be resent."
+                }
+            }
+
             Text {
                 text: configurationDialog.errorText
                 color: "#ff6b6b"
@@ -704,17 +759,20 @@ Item {
                         // changes nothing would write a modification date for a change nobody made.
                         const wantedLength = configurationDialog.maxLengthBytes()
                         const wantedRetention = configurationDialog.retentionSeconds()
+                        const wantedDelete = deleteAfterDeliveryBox.checked
                         const lengthChanged = wantedLength !== root.maxMessageLength
                         const retentionChanged = wantedRetention !== root.retentionPeriod
+                        const deleteChanged = wantedDelete !== root.deleteAfterDelivery
 
-                        if (!lengthChanged && !retentionChanged) {
+                        if (!lengthChanged && !retentionChanged && !deleteChanged) {
                             configurationDialog.close()
                             return
                         }
 
-                        configurationDialog.pending = (lengthChanged ? 1 : 0) + (retentionChanged ? 1 : 0)
+                        configurationDialog.pending = (lengthChanged ? 1 : 0) + (retentionChanged ? 1 : 0) + (deleteChanged ? 1 : 0)
                         if (lengthChanged) ensClient.setTopicMaxMessageLength(root.topicErn, wantedLength)
                         if (retentionChanged) ensClient.setTopicRetention(root.topicErn, wantedRetention)
+                        if (deleteChanged) ensClient.setTopicDeleteAfterDelivery(root.topicErn, wantedDelete)
                     }
                 }
             }
@@ -904,6 +962,11 @@ Item {
                             label: "Retention"
                             value: root.retentionText()
                         }
+                        DetailField {
+                            width: (configCol.width - 48) / 3
+                            label: "After Delivery"
+                            value: root.deleteAfterDelivery ? "Deleted" : "Kept for retention"
+                        }
                     }
 
                     Text {
@@ -916,9 +979,9 @@ Item {
                         // messages that have not been published yet.
                         text: root.retentionDefault
                               ? "This topic has no retention of its own and follows the installation's setting, "
-                                + "moving with it whenever that changes. Both settings apply to messages published "
+                                + "moving with it whenever that changes. All three settings apply to messages published "
                                 + "from now on."
-                              : "Both settings apply to messages published from now on. Retention is stamped on each "
+                              : "All three settings apply to messages published from now on. Retention is stamped on each "
                                 + "message as it arrives, so changing it does not reach back to what is already stored."
                     }
                 }
