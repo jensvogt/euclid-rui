@@ -825,6 +825,7 @@ ApplicationWindow {
             height: parent.height
             currentRoute: window.currentRoute
             onNavigate: (route) => window.currentRoute = route
+            onAboutRequested: aboutDialog.open()
         }
 
         Column {
@@ -879,28 +880,6 @@ ApplicationWindow {
                             text: window.currentNamespace + " · " + appSettings.host + ":" + appSettings.port
                             color: "#9aa1ac"
                             font.pixelSize: 11
-                        }
-                    }
-
-                    Rectangle {
-                        id: aboutButton
-                        width: 40
-                        height: 40
-                        radius: 10
-                        color: aboutMouse.containsMouse ? "#2c3648" : "#20242e"
-                        anchors.verticalCenter: parent.verticalCenter
-                        Text {
-                            anchors.centerIn: parent
-                            text: "ⓘ"
-                            color: "#c4c9d1"
-                            font.pixelSize: 18
-                        }
-                        MouseArea {
-                            id: aboutMouse
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: aboutDialog.open()
                         }
                     }
 
