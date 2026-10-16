@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.35](https://github.com/jensvogt/euclid-rui/compare/1.1.34...v1.1.35) (2026-10-16)
+
+
+### Bug Fixes
+
+* clickable icon ([5349410](https://github.com/jensvogt/euclid-rui/commit/53494108928af46963632c6c5c57c1c8fb59f2e1))
+
 ## [1.1.34](https://github.com/jensvogt/euclid-rui/compare/1.1.33...v1.1.34) (2026-10-15)
 
 
