@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.36](https://github.com/jensvogt/euclid-rui/compare/1.1.35...v1.1.36) (2026-10-17)
+
+
+### Bug Fixes
+
+* native application upload ([26b96ea](https://github.com/jensvogt/euclid-rui/commit/26b96ea6620f1838a49d40e2e2c676da23385301))
+
 ## [1.1.35](https://github.com/jensvogt/euclid-rui/compare/1.1.34...v1.1.35) (2026-10-16)
 
 
