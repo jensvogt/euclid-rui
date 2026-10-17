@@ -11,8 +11,23 @@ Item {
     property string bucketErn: ""
     property string bucketName: ""
 
-    // Filter text, matched as a case-insensitive substring of the whole key by the tree.
+    // Filter text. Sent to the server as a key prefix - which is how list-objects matches it, an
+    // anchored match over every object in the bucket - and matched again by the tree as a
+    // case-insensitive substring of what came back, so a deeper path still narrows what is drawn.
     property string prefix: ""
+
+    // How many objects one listing asks for. A tree of more than this is not one anybody reads;
+    // what matters is that the filter reaches past it, which it now does.
+    readonly property int pageSize: 200
+
+    // Typing is not a query. Each keystroke restarts this, and the listing is asked for once the
+    // field has settled - otherwise "DEMODLI" is eight listings of a bucket with thousands of
+    // objects, seven of them already stale when they arrive.
+    Timer {
+        id: filterDebounce
+        interval: 350
+        onTriggered: root.refresh()
+    }
 
     property var allObjects: []
     property int totalCount: 0
@@ -72,8 +87,11 @@ Item {
         pendingBucketErns = []
         error = ""
         loading = true
+        // The filter goes to the server as the key prefix it is matched as there, rather than only
+        // sieving what was already fetched: a bucket of 8,000 objects is listed 200 at a time, and
+        // a filter that could only see those 200 could not reach - or even admit to - the rest.
         if (root.bucketErn.length > 0)
-            esmClient.fetchObjects(root.bucketErn, "", 0, 200, "key", "asc", true)
+            esmClient.fetchObjects(root.bucketErn, root.prefix, 0, root.pageSize, "key", "asc", true)
         else
             esmClient.fetchBuckets("", 0, 100)
     }
@@ -114,7 +132,7 @@ Item {
             root.bucketLookup = lookup
             root.pendingBucketErns = erns
             for (let i = 0; i < list.length; i++)
-                esmClient.fetchObjects(list[i].ern, "", 0, 200, "key", "asc", true)
+                esmClient.fetchObjects(list[i].ern, root.prefix, 0, root.pageSize, "key", "asc", true)
         }
         function onBucketsFailed(message) {
             if (!root.loading || root.bucketErn.length > 0)
@@ -916,11 +934,14 @@ Item {
                             width: Math.min(320, parent.width - 260)
                             height: 40
                             anchors.verticalCenter: parent.verticalCenter
-                            placeholderText: "Filter by any part of the key..."
+                            placeholderText: "Filter by key, from the start: DEMODLI/..."
                             Material.accent: "#4f8cff"
                             selectByMouse: true
                             rightPadding: clearFilter.width + 14
-                            onTextChanged: root.prefix = text
+                            onTextChanged: {
+                                root.prefix = text
+                                filterDebounce.restart()
+                            }
 
                             // Emptying the field is all this needs to do: the filter is bound to the
                             // text above, so the listing follows on its own.
@@ -979,7 +1000,13 @@ Item {
 
                     Text {
                         visible: !root.loading && root.error.length === 0 && objectTree.visibleRows.length === 0
-                        text: root.prefix.length > 0 ? "No objects match \"" + root.prefix + "\"." : "No objects found."
+                        // Said as what was actually asked: the filter is matched from the start of
+                        // the key, so "Catedral" finds nothing in a bucket that files it under
+                        // "DEMODLI/Catedral..." - and that reads as a missing object rather than as
+                        // the wrong question unless it is spelled out.
+                        text: root.prefix.length > 0
+                              ? "No object's key begins with \"" + root.prefix + "\"."
+                              : "No objects found."
                         color: "#6b7280"
                         font.pixelSize: 12
                     }
@@ -1003,13 +1030,15 @@ Item {
                         }
                     }
 
-                    // The listing is capped at 200 objects per bucket; without saying so, a
-                    // truncated tree looks like a complete one.
+                    // The listing is capped per bucket; without saying so, a truncated tree looks
+                    // like a complete one. The advice is now true: the filter is a key prefix the
+                    // server matches over every object, so a longer one does reach the rest.
                     Text {
                         visible: root.totalCount > root.allObjects.length
                         width: parent.width
                         text: "Showing the first " + root.allObjects.length + " of " + root.totalCount
-                              + " objects - narrow the filter to reach the rest."
+                              + (root.prefix.length > 0 ? " objects under \"" + root.prefix + "\"" : " objects")
+                              + " - type more of the key, from the start, to reach the rest."
                         color: "#ffb545"
                         font.pixelSize: 11
                         wrapMode: Text.WordWrap

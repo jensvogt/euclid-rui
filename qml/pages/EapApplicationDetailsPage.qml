@@ -19,6 +19,149 @@ Item {
     property bool savingRuntime: false
     property bool savingNodeLabels: false
 
+    // ── Command line ─────────────────────────────────────────────────────────
+    // What the process is actually started with. The rule is in Core::Launch::CommandLine(): a
+    // command the application names is the executable and the artifact becomes its first argument,
+    // overriding the runtime; otherwise it is the runtime's interpreter and its own leading
+    // arguments ("java -jar") and then the artifact. The application's arguments follow in every
+    // case, which is what makes them the thing worth editing here.
+    property bool savingArguments: false
+
+    readonly property var arguments: root.detail("arguments", [])
+
+    // The interpreter the runtime brings, for showing what the arguments will follow. Mirrors
+    // Core::Launch::InterpreterPrefix(); BINARY and anything unknown is the artifact itself.
+    function interpreterPrefix(runtime) {
+        if (runtime === "JAVA" || runtime === "JAVA21" || runtime === "JAVA25")
+            return (runtime === "JAVA" ? "java" : runtime.toLowerCase()) + " -jar"
+        if (runtime === "PYTHON") return "python3"
+        if (runtime === "NODEJS") return "node"
+        return ""
+    }
+
+    // The whole line, as the worker would assemble it. Shown rather than described: an argument
+    // list means little without the executable and the artifact it comes after.
+    function commandLineText(args) {
+        const command = String(root.detail("command", ""))
+        const artifact = String(root.detail("artifactKey", ""))
+        const head = command.length > 0
+                     ? command + " " + artifact
+                     : (root.interpreterPrefix(String(root.detail("runtime", ""))).length > 0
+                        ? root.interpreterPrefix(String(root.detail("runtime", ""))) + " " + artifact
+                        : artifact)
+        const tail = (args || []).join(" ")
+        return tail.length > 0 ? head + " " + tail : head
+    }
+
+    // Sent whole: update-application replaces the field it is given, and an argument list has no
+    // per-entry call - which is right, since what matters about these is their order.
+    function setArguments(args) {
+        root.error = ""
+        root.savingArguments = true
+        eapClient.updateApplication(root.applicationId, { arguments: args })
+    }
+
+    // ── Egress rate limits ───────────────────────────────────────────────────
+    // This application's: how fast it may call each outside site, and how many requests to one it
+    // may have in flight. Per application rather than per instance - the autoscaler would multiply
+    // a limit each instance kept, and the site on the other end counts requests per source, not
+    // per process. See EapClient::fetchEgressSites().
+    property var egressSites: []
+    property var egressDefaults: ({})
+    property bool egressLoading: false
+    property string egressError: ""
+
+    function limitText(requestsPerSecond, burst, concurrent) {
+        // Zero is a setting, not an absence: it is what says a site has no rate limit or no
+        // concurrency limit at all, so it is spelled out rather than shown as a bare 0.
+        const rate = Number(requestsPerSecond) > 0 ? Number(requestsPerSecond).toFixed(2) + "/s" : "unlimited"
+        const slots = Number(concurrent) > 0 ? Number(concurrent) + " at once" : "unlimited"
+        return rate + ", burst " + Number(burst).toFixed(0) + ", " + slots
+    }
+
+    readonly property string egressDefaultText: root.egressDefaults
+            && root.egressDefaults.requestsPerSecond !== undefined
+        ? root.limitText(root.egressDefaults.requestsPerSecond, root.egressDefaults.burst,
+                         root.egressDefaults.concurrent)
+        : "—"
+
+    readonly property var egressColumns: [
+        {
+            title: "Site",
+            key: "site",
+            fill: true,
+            // "*" is not a host: it is what this application is held to everywhere it has no
+            // limit of its own, so it is said rather than printed.
+            formatter: function (v) { return String(v) === root.allSites ? "All sites (this application's default)" : String(v) },
+            colorFor: function (v) { return String(v) === root.allSites ? "#9aa1ac" : "#c4c9d1" }
+        },
+        {
+            title: "Rate",
+            key: "requestsPerSecond",
+            formatter: function (v) { return Number(v) > 0 ? Number(v).toFixed(2) + "/s" : "unlimited" }
+        },
+        { title: "Burst", key: "burst", formatter: function (v) { return Number(v).toFixed(0) } },
+        {
+            title: "Concurrent",
+            key: "concurrent",
+            formatter: function (v) { return Number(v) > 0 ? String(v) : "unlimited" }
+        },
+        {
+            // Whose decision these limits are: the site's own, or nobody's yet.
+            title: "Limits",
+            key: "limitsSet",
+            formatter: function (v) { return v ? "set" : "default" },
+            colorFor: function (v) { return v ? "#4f8cff" : "#6b7280" }
+        },
+        {
+            // What is left of the bucket right now, which is what decides whether the next request
+            // waits. Blank for the "*" row: nothing acquires a permit for it, so it has no bucket.
+            title: "Tokens",
+            key: "tokens",
+            formatter: function (v, row) { return row && row.allSites ? "—" : Number(v).toFixed(1) }
+        },
+        {
+            title: "In flight",
+            key: "inFlight",
+            formatter: function (v, row) { return row && row.allSites ? "—" : String(v) }
+        },
+        {
+            // Only ever set when the site itself asked to be left alone - a 429 or 503 an
+            // application reported - and nothing is granted for it until then.
+            title: "Blocked until",
+            key: "blockedUntil",
+            formatter: function (v) { return String(v).length > 0 ? DateFormat.format(v) : "—" },
+            colorFor: function (v) { return String(v).length > 0 ? "#ff6b6b" : "#6b7280" }
+        },
+        {
+            title: "Last used",
+            key: "lastUsed",
+            formatter: function (v, row) { return row && row.allSites ? "—" : DateFormat.format(v) }
+        }
+    ]
+
+    function refreshEgress() {
+        if (!root.loggedIn || root.applicationId.length === 0) return
+        root.egressLoading = true
+        // Scoped to this application: the call answers for every application the account can see
+        // when asked for none, and this page is about one of them.
+        eapClient.fetchEgressSites(root.applicationId)
+    }
+
+    // The site an application's own default is stored under - Egress::kAllSites. It is a row like
+    // any other to the server and a setting rather than a site here, which is why it is named in
+    // the table instead of being shown as a host called "*".
+    readonly property string allSites: "*"
+
+    // What this application falls back to for a site it has no limit of its own for: its "*" row
+    // if it has one, and otherwise the installation's default.
+    readonly property var egressFallback: {
+        const all = root.egressSites.find(s => s.site === root.allSites)
+        return all ? all : root.egressDefaults
+    }
+    readonly property bool egressHasOwnDefault: root.egressSites.some(s => s.site === root.allSites
+                                                                      && s.limitsSet === true)
+
     // The processes actually running this application, from EMM rather than EAP: the manager runs
     // an application as a module pool named after its *runtime* name, and only that pool knows
     // which processes exist, what pids they have and which port each was given. EAP's own
@@ -333,6 +476,9 @@ Item {
         // The pool behind it. "list-modules" has no per-module read, so this asks for all of them
         // and picks its own out below - the same call the modules page makes.
         emmClient.fetchModules()
+        // Nothing to do with this application, and asked for with it all the same: it is the
+        // answer to "why is my application waiting on that site", which is asked here.
+        root.refreshEgress()
     }
 
     // Measures the artifact through ESM, for the one case that still needs it: a definition from
@@ -429,9 +575,11 @@ Item {
             root.savingEnvironment = false
             root.savingRuntime = false
             root.savingNodeLabels = false
+            root.savingArguments = false
             if (environmentDialog.opened) environmentDialog.errorText = message
             else if (runtimeDialog.opened) runtimeDialog.errorText = message
             else if (nodeLabelDialog.opened) nodeLabelDialog.errorText = message
+            else if (argumentsDialog.opened) argumentsDialog.errorText = message
             else root.error = message
         }
         function onApplicationStateChanged(applicationId, desiredState) {
@@ -439,10 +587,12 @@ Item {
             root.savingEnvironment = false
             root.savingRuntime = false
             root.savingNodeLabels = false
-            // All three are modal, so only the one that was open can have sent this.
+            root.savingArguments = false
+            // All of them are modal, so only the one that was open can have sent this.
             environmentDialog.close()
             runtimeDialog.close()
             nodeLabelDialog.close()
+            argumentsDialog.close()
             // Stored already; re-reading is what puts the new map on screen.
             root.refresh()
         }
@@ -459,6 +609,38 @@ Item {
             scaleDialog.scaling = false
             if (scaleDialog.opened) scaleDialog.errorText = message
             else root.error = message
+        }
+
+        function onEgressSitesLoaded(sites, defaults) {
+            root.egressLoading = false
+            root.egressError = ""
+            // Filtered even though the request was scoped: the same signal answers an unscoped
+            // listing of every application's sites, and one application's page shows one
+            // application's. It is also what stops the previous application's rows standing here
+            // for a moment after this page is pointed at another one.
+            root.egressSites = sites.filter(entry => entry.applicationId === root.applicationId)
+            root.egressDefaults = defaults
+        }
+        function onEgressSitesFailed(message) {
+            root.egressLoading = false
+            root.egressSites = []
+            // Kept out of the page's own error line: the application reads fine whether or not the
+            // installation's egress state can be asked for, and this belongs beside the table it
+            // is about. The call is administrator-only, so this is also what everyone else sees.
+            root.egressError = message
+        }
+        function onEgressSitesReload() {
+            root.refreshEgress()
+        }
+        function onEgressLimitChanged(applicationId, site, limits) {
+            if (applicationId !== root.applicationId) return
+            egressDialog.saving = false
+            egressDialog.close()
+        }
+        function onEgressLimitFailed(message) {
+            egressDialog.saving = false
+            if (egressDialog.opened) egressDialog.errorText = message
+            else root.egressError = message
         }
     }
 
@@ -724,12 +906,103 @@ Item {
                     DetailField {
                         width: identityCol.width
                         label: "Command"
-                        value: root.detail("command", "").length > 0
-                               ? root.detail("command", "") + " " + root.detail("arguments", []).join(" ")
-                               : "— (the runtime decides how to start the artifact)"
+                        // The whole line rather than the command field alone: what starts the
+                        // process is the executable, the artifact and the arguments together, and
+                        // an application that names no command still has the first two.
+                        value: root.commandLineText(root.arguments)
+                        copyable: true
                     }
                     DetailField { width: identityCol.width; label: "Bucket ERN"; value: root.detail("bucketErn", "—"); copyable: true }
                     DetailField { width: identityCol.width; label: "Application ERN"; value: root.detail("ern", "—"); copyable: true }
+                }
+            }
+
+            // The arguments the process is started with, after the executable and the artifact.
+            // Their own tile rather than a field in the identity grid: they are a list, they are
+            // ordered, and they are the one part of the command line an operator sets.
+            Rectangle {
+                width: parent.width
+                height: argumentsCol.implicitHeight + 40
+                radius: 14
+                color: "#20242e"
+                border.color: "#2c313c"
+                border.width: 1
+
+                Column {
+                    id: argumentsCol
+                    anchors.top: parent.top
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.margins: 20
+                    spacing: 14
+
+                    Item {
+                        width: parent.width
+                        height: argumentsHeader.implicitHeight
+
+                        Text {
+                            id: argumentsHeader
+                            text: "Command Line Arguments"
+                            color: "white"
+                            font.pixelSize: 15
+                            font.bold: true
+                        }
+
+                        Button {
+                            text: "Edit…"
+                            flat: true
+                            anchors.right: parent.right
+                            anchors.verticalCenter: argumentsHeader.verticalCenter
+                            Material.theme: Material.Dark
+                            Material.accent: "#4f8cff"
+                            onClicked: argumentsDialog.open()
+                        }
+                    }
+
+                    Text {
+                        width: parent.width
+                        wrapMode: Text.WordWrap
+                        color: "#6b7280"
+                        font.pixelSize: 11
+                        text: "Passed to the application after the artifact, in this order. What comes before "
+                              + "them is the runtime's interpreter - or the command this application names, which "
+                              + "replaces it - and the artifact itself."
+                    }
+
+                    // One per line, so an argument that contains a space is still one argument.
+                    Column {
+                        width: parent.width
+                        spacing: 4
+                        visible: root.arguments.length > 0
+
+                        Repeater {
+                            model: root.arguments
+                            Text {
+                                width: argumentsCol.width
+                                text: (index + 1) + ".  " + modelData
+                                color: "#c4c9d1"
+                                font.pixelSize: 12
+                                font.family: "monospace"
+                                elide: Text.ElideRight
+                            }
+                        }
+                    }
+
+                    Text {
+                        width: parent.width
+                        wrapMode: Text.WordWrap
+                        color: "#6b7280"
+                        font.pixelSize: 12
+                        visible: root.arguments.length === 0
+                        text: "None. The application is started with nothing after the artifact."
+                    }
+
+                    DetailField {
+                        width: argumentsCol.width
+                        label: "Started as"
+                        value: root.commandLineText(root.arguments)
+                        copyable: true
+                    }
                 }
             }
 
@@ -855,6 +1128,142 @@ Item {
                                 }
                             }
                         }
+                    }
+                }
+            }
+
+            // How fast this application may call the outside. It asks EAP for a permit before
+            // each request - a token from the site's bucket and a slot among its requests to that
+            // site in flight - so these are the numbers that decide whether it is made to wait.
+            //
+            // Per application and per site: another application calling the same site has its own
+            // bucket and is not slowed by this one. Per application rather than per instance,
+            // because the autoscaler would multiply a limit each instance kept.
+            Rectangle {
+                width: parent.width
+                height: egressCol.implicitHeight + 40
+                radius: 14
+                color: "#20242e"
+                border.color: "#2c313c"
+                border.width: 1
+
+                Column {
+                    id: egressCol
+                    anchors.top: parent.top
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.margins: 20
+                    spacing: 14
+
+                    Item {
+                        width: parent.width
+                        height: egressHeader.implicitHeight
+
+                        Text {
+                            id: egressHeader
+                            text: "Egress Rate Limits"
+                            color: "white"
+                            font.pixelSize: 15
+                            font.bold: true
+                        }
+
+                        Row {
+                            anchors.right: parent.right
+                            anchors.verticalCenter: egressHeader.verticalCenter
+                            spacing: 8
+
+                            BusyIndicator {
+                                running: root.egressLoading
+                                visible: root.egressLoading
+                                width: 18; height: 18
+                                anchors.verticalCenter: parent.verticalCenter
+                            }
+                            Button {
+                                // The application's own default, in between one site's limit and
+                                // the installation's. Offered as a button because it is a setting
+                                // rather than a site, and nothing will ever create its row by
+                                // being called.
+                                text: root.egressHasOwnDefault ? "Default for all sites…" : "Set a default…"
+                                flat: true
+                                Material.theme: Material.Dark
+                                Material.accent: "#4f8cff"
+                                onClicked: egressDialog.openFor(root.allSites, root.egressFallback)
+                            }
+                            Button {
+                                text: "Add site…"
+                                flat: true
+                                Material.theme: Material.Dark
+                                Material.accent: "#4f8cff"
+                                onClicked: egressDialog.openFor("")
+                            }
+                        }
+                    }
+
+                    Text {
+                        width: parent.width
+                        wrapMode: Text.WordWrap
+                        color: "#6b7280"
+                        font.pixelSize: 11
+                        text: "A site appears here the first time this application asks for a permit to call it. "
+                              + "What one is held to: its own limits, or this application's default for all sites, "
+                              + "or the installation's - "
+                              + (root.egressHasOwnDefault
+                                 ? "this application sets its own default, and the installation's is "
+                                 : "this application sets no default of its own, so the installation's applies: ")
+                              + root.egressDefaultText + "."
+                    }
+
+                    Text {
+                        width: parent.width
+                        wrapMode: Text.WordWrap
+                        color: "#ff6b6b"
+                        font.pixelSize: 12
+                        visible: root.egressError.length > 0
+                        text: root.egressError
+                    }
+
+                    Text {
+                        width: parent.width
+                        wrapMode: Text.WordWrap
+                        color: "#6b7280"
+                        font.pixelSize: 12
+                        visible: root.egressError.length === 0 && !root.egressLoading && root.egressSites.length === 0
+                        text: "This application has not called an outside site yet. One appears here the first "
+                              + "time it asks for a permit to reach one."
+                    }
+
+                    DataTable {
+                        width: parent.width
+                        visible: root.egressSites.length > 0
+                        columns: root.egressColumns
+                        rows: root.egressSites
+                        totalCount: root.egressSites.length
+                        // Everything at once: list-egress-sites answers with every site there is,
+                        // and there is no page to ask for.
+                        pageSize: Math.max(1, root.egressSites.length)
+                        pageIndex: 0
+                        pageSizeSelectable: false
+                        searchable: false
+                        emptyText: "This application has not called an outside site yet."
+                        onRefreshRequested: root.refreshEgress()
+
+                        contextMenuActions: [
+                            {
+                                text: "Set limits…",
+                                action: function(row) { egressDialog.openFor(row.site, row) }
+                            },
+                            {
+                                // Back to what it would be held to without a limit of its own -
+                                // this application's default for all sites, or the installation's.
+                                // Not "no limits", and refused by the server for a site that has
+                                // none of its own, which is why it is greyed out for those.
+                                text: "Use the inherited limits",
+                                enabled: function(row) { return !!row && row.limitsSet === true },
+                                action: function(row) {
+                                    eapClient.deleteEgressLimit(root.applicationId, row.site)
+                                }
+                            }
+                        ]
                     }
                 }
             }
@@ -1171,6 +1580,365 @@ Item {
         id: connectionsDialog
         applicationId: root.applicationId
         bucketErn: root.detail("bucketErn", "")
+    }
+
+    // One site's limits. The three are read and written together even though the server takes them
+    // one at a time: a dialog about a single number would be a dialog about a number rather than
+    // about what the site is allowed.
+    Dialog {
+        id: egressDialog
+        modal: true
+        anchors.centerIn: parent
+        width: 460
+        padding: 28
+        topPadding: 24
+        bottomPadding: 24
+        standardButtons: Dialog.NoButton
+
+        property string site: ""
+        property bool known: false
+        property bool saving: false
+        property string errorText: ""
+
+        // The application's default for all its sites, rather than one site. Named rather than
+        // typed: "*" is what the server stores it under, not something to ask anybody to spell.
+        readonly property bool allSitesRow: egressDialog.site === root.allSites
+
+        readonly property string wantedSite: siteField.text.trim()
+        readonly property real wantedRate: parseFloat(rateField.text)
+        readonly property real wantedBurst: parseFloat(burstField.text)
+        readonly property int wantedConcurrent: parseInt(concurrentField.text, 10)
+
+        // What the server would refuse, and one thing it would not: a burst below 1 is raised to 1
+        // rather than refused, which is worth saying before it happens rather than afterwards.
+        readonly property string problem: {
+            if (!egressDialog.allSitesRow && egressDialog.wantedSite.length === 0)
+                return "Name the site, e.g. downloads.example.com"
+            if (isNaN(egressDialog.wantedRate) || egressDialog.wantedRate < 0)
+                return "Requests per second cannot be negative - 0 is what says \"no rate limit\"."
+            if (isNaN(egressDialog.wantedBurst) || egressDialog.wantedBurst < 1)
+                return "The burst has to be at least 1: a bucket that cannot hold one token never grants a request."
+            if (isNaN(egressDialog.wantedConcurrent) || egressDialog.wantedConcurrent < 0)
+                return "Concurrent requests cannot be negative - 0 is what says \"no limit\"."
+            return ""
+        }
+
+        // Opened on the row's limits, or on the installation's default for a site that has none:
+        // a change is made against what is in force, not from an empty form.
+        function openFor(site, row) {
+            egressDialog.site = site === root.allSites ? root.allSites : site
+            egressDialog.known = site.length > 0
+            egressDialog.saving = false
+            egressDialog.errorText = ""
+            const limits = row ? row : root.egressDefaults
+            siteField.text = site
+            rateField.text = String(limits && limits.requestsPerSecond !== undefined ? limits.requestsPerSecond : 2)
+            burstField.text = String(limits && limits.burst !== undefined ? limits.burst : 2)
+            concurrentField.text = String(limits && limits.concurrent !== undefined ? limits.concurrent : 4)
+            egressDialog.open()
+            if (egressDialog.known || egressDialog.allSitesRow) rateField.forceActiveFocus()
+            else siteField.forceActiveFocus()
+        }
+
+        background: Rectangle {
+            radius: 16
+            color: "#1b1e25"
+            border.color: "#2c313c"
+            border.width: 1
+        }
+
+        contentItem: Column {
+            width: egressDialog.availableWidth
+            spacing: 16
+
+            Column {
+                width: parent.width
+                spacing: 4
+                Text {
+                    text: egressDialog.allSitesRow ? "Default Egress Limits" : "Egress Limits"
+                    color: "white"
+                    font.pixelSize: 18
+                    font.bold: true
+                }
+                Text {
+                    width: parent.width
+                    wrapMode: Text.WordWrap
+                    text: egressDialog.allSitesRow
+                          ? "What " + root.applicationId + " may do to any site it has no limits of its own for. "
+                            + "Between one site's limits and the installation's."
+                          : "What " + root.applicationId + " may do to this one site. Its own bucket and its own "
+                            + "slots - another application calling the same site is not slowed by it."
+                    color: "#9aa1ac"
+                    font.pixelSize: 12
+                }
+            }
+
+            Column {
+                width: parent.width
+                spacing: 6
+                visible: !egressDialog.allSitesRow
+                Text { text: "Site"; color: "#9aa1ac"; font.pixelSize: 12 }
+                TextField {
+                    id: siteField
+                    width: parent.width
+                    placeholderText: "downloads.example.com"
+                    // Fixed once the site exists: it is what the limits are keyed by, so editing it
+                    // would set limits on a different site rather than move these.
+                    enabled: !egressDialog.known
+                    Material.theme: Material.Dark
+                    Material.accent: "#4f8cff"
+                }
+            }
+
+            Row {
+                width: parent.width
+                spacing: 12
+
+                Column {
+                    width: (parent.width - 24) / 3
+                    spacing: 6
+                    Text { text: "Requests/s"; color: "#9aa1ac"; font.pixelSize: 12 }
+                    TextField {
+                        id: rateField
+                        width: parent.width
+                        validator: DoubleValidator { bottom: 0; top: 100000; decimals: 2; notation: DoubleValidator.StandardNotation }
+                        Material.theme: Material.Dark
+                        Material.accent: "#4f8cff"
+                    }
+                }
+                Column {
+                    width: (parent.width - 24) / 3
+                    spacing: 6
+                    Text { text: "Burst"; color: "#9aa1ac"; font.pixelSize: 12 }
+                    TextField {
+                        id: burstField
+                        width: parent.width
+                        validator: DoubleValidator { bottom: 1; top: 100000; decimals: 0; notation: DoubleValidator.StandardNotation }
+                        Material.theme: Material.Dark
+                        Material.accent: "#4f8cff"
+                    }
+                }
+                Column {
+                    width: (parent.width - 24) / 3
+                    spacing: 6
+                    Text { text: "Concurrent"; color: "#9aa1ac"; font.pixelSize: 12 }
+                    TextField {
+                        id: concurrentField
+                        width: parent.width
+                        validator: IntValidator { bottom: 0; top: 10000 }
+                        Material.theme: Material.Dark
+                        Material.accent: "#4f8cff"
+                    }
+                }
+            }
+
+            Text {
+                width: parent.width
+                wrapMode: Text.WordWrap
+                color: "#6b7280"
+                font.pixelSize: 11
+                text: "The rate is averaged; the burst is how many requests may go before it applies. "
+                      + "Concurrent is how many may be in flight at once, each holding a leased slot - so an "
+                      + "instance killed mid-download gives its slot back when the lease runs out rather than "
+                      + "never. Zero means no limit, for the rate and the concurrency alike."
+            }
+
+            Text {
+                width: parent.width
+                wrapMode: Text.WordWrap
+                color: "#ff6b6b"
+                font.pixelSize: 12
+                visible: egressDialog.problem.length > 0 || egressDialog.errorText.length > 0
+                text: egressDialog.errorText.length > 0 ? egressDialog.errorText : egressDialog.problem
+            }
+
+            Item {
+                width: parent.width
+                height: 40
+
+                Button {
+                    text: "Cancel"
+                    flat: true
+                    anchors.left: parent.left
+                    anchors.verticalCenter: parent.verticalCenter
+                    Material.theme: Material.Dark
+                    enabled: !egressDialog.saving
+                    onClicked: egressDialog.close()
+                }
+
+                Button {
+                    text: egressDialog.saving ? "Saving…" : "Apply"
+                    highlighted: true
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    Material.theme: Material.Dark
+                    Material.accent: "#4f8cff"
+                    enabled: !egressDialog.saving && egressDialog.problem.length === 0
+                    onClicked: {
+                        egressDialog.saving = true
+                        egressDialog.errorText = ""
+                        root.egressError = ""
+                        eapClient.setEgressLimit(root.applicationId,
+                                                 egressDialog.allSitesRow ? root.allSites : egressDialog.wantedSite,
+                                                 egressDialog.wantedRate, egressDialog.wantedBurst,
+                                                 egressDialog.wantedConcurrent)
+                    }
+                }
+            }
+        }
+    }
+
+    // One argument per line. A list editor with rows and arrows would be more ceremony than the
+    // thing deserves, and lines keep what matters: the order, and the fact that an argument may
+    // contain spaces - "--opt=a b" is one argument, and splitting the whole line on whitespace
+    // would quietly make it two.
+    Dialog {
+        id: argumentsDialog
+        modal: true
+        anchors.centerIn: parent
+        width: 560
+        padding: 28
+        topPadding: 24
+        bottomPadding: 24
+        standardButtons: Dialog.NoButton
+
+        property string errorText: ""
+
+        // Blank lines dropped, each line trimmed: a trailing newline is how a text area ends, not
+        // an empty argument somebody meant to pass.
+        readonly property var wanted: {
+            const out = []
+            for (const line of argumentsField.text.split("\n")) {
+                const argument = line.trim()
+                if (argument.length > 0) out.push(argument)
+            }
+            return out
+        }
+
+        readonly property bool changed: argumentsDialog.wanted.join("\u0000") !== root.arguments.join("\u0000")
+
+        onOpened: {
+            argumentsDialog.errorText = ""
+            // Assigned rather than bound, so the page's own refresh cannot rewrite what is being
+            // typed underneath the cursor.
+            argumentsField.text = root.arguments.join("\n")
+            argumentsField.forceActiveFocus()
+        }
+
+        background: Rectangle {
+            radius: 16
+            color: "#1b1e25"
+            border.color: "#2c313c"
+            border.width: 1
+        }
+
+        contentItem: Column {
+            width: argumentsDialog.availableWidth
+            spacing: 16
+
+            Column {
+                width: parent.width
+                spacing: 4
+                Text { text: "Command Line Arguments"; color: "white"; font.pixelSize: 18; font.bold: true }
+                Text {
+                    width: parent.width
+                    wrapMode: Text.WordWrap
+                    text: "One per line, in the order they are passed. They follow the artifact, so this is "
+                          + "where an application's own options go - not the interpreter's."
+                    color: "#9aa1ac"
+                    font.pixelSize: 12
+                }
+            }
+
+            Rectangle {
+                width: parent.width
+                height: 180
+                radius: 10
+                color: "#14161b"
+                border.color: "#2c313c"
+                border.width: 1
+
+                ScrollView {
+                    anchors.fill: parent
+                    anchors.margins: 8
+                    clip: true
+
+                    TextArea {
+                        id: argumentsField
+                        placeholderText: "--config\n/etc/orders.json\n--verbose"
+                        color: "#e5e7eb"
+                        font.pixelSize: 12
+                        font.family: "monospace"
+                        selectByMouse: true
+                        wrapMode: TextEdit.NoWrap
+                        background: null
+                    }
+                }
+            }
+
+            // What it will actually be started with, rebuilt as the lines are typed: an argument
+            // list is hard to read against an executable nobody restated.
+            Column {
+                width: parent.width
+                spacing: 4
+                Text { text: "Started as"; color: "#9aa1ac"; font.pixelSize: 12 }
+                Text {
+                    width: parent.width
+                    wrapMode: Text.WrapAnywhere
+                    text: root.commandLineText(argumentsDialog.wanted)
+                    color: "#c4c9d1"
+                    font.pixelSize: 11
+                    font.family: "monospace"
+                }
+            }
+
+            Text {
+                width: parent.width
+                wrapMode: Text.WordWrap
+                color: "#e0a458"
+                font.pixelSize: 12
+                // The part that is not visible from the dialog: this is a change to the definition
+                // like any other, and the manager restarts the pool onto a changed definition.
+                visible: argumentsDialog.changed
+                text: "⚠  Saving restarts the application's instances: an argument list is read when a "
+                      + "process starts, so the running ones are replaced to pick it up."
+            }
+
+            Text {
+                width: parent.width
+                wrapMode: Text.WordWrap
+                color: "#ff6b6b"
+                font.pixelSize: 12
+                visible: argumentsDialog.errorText.length > 0
+                text: argumentsDialog.errorText
+            }
+
+            Item {
+                width: parent.width
+                height: 40
+
+                Button {
+                    text: "Cancel"
+                    flat: true
+                    anchors.left: parent.left
+                    anchors.verticalCenter: parent.verticalCenter
+                    Material.theme: Material.Dark
+                    enabled: !root.savingArguments
+                    onClicked: argumentsDialog.close()
+                }
+
+                Button {
+                    text: root.savingArguments ? "Saving…" : "Save"
+                    highlighted: true
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    Material.theme: Material.Dark
+                    Material.accent: "#4f8cff"
+                    enabled: !root.savingArguments && argumentsDialog.changed
+                    onClicked: root.setArguments(argumentsDialog.wanted)
+                }
+            }
+        }
     }
 
     // Which interpreter the manager starts the artifact with. A change here is a change to the
