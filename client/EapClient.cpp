@@ -395,7 +395,8 @@ void EapClient::setNodeDrained(const QString &node, const bool drained) {
 }
 
 void EapClient::createApplication(const QString &applicationId, const QString &runtime, const QString &bucket,
-                                  const QString &artifact, const QString &userId, const QString &type,
+                                  const QString &artifact, const QString &version,
+                                  const QString &userId, const QString &type,
                                   const QString &schedule, const QStringList &buckets,
                                   const QStringList &queues, const QString &command,
                                   const QStringList &arguments, const QVariantMap &environment,
@@ -405,6 +406,11 @@ void EapClient::createApplication(const QString &applicationId, const QString &r
     body["runtime"] = runtime;
     body["bucket"] = bucket;
     body["artifact"] = artifact;
+    // Left out when empty rather than sent as "": the server then reads the version out of the
+    // artifact key itself, which is what a key like "orders-1.4.0.jar" is for. Sending an empty
+    // string would be the same thing, but a version nobody typed should not appear in the request.
+    if (!version.isEmpty())
+        body["version"] = version;
     // Only sent when named: an empty "user" is what tells EAP to create the application its own
     // technical principal, and sending the key with an empty string says the same thing, but
     // leaving it out keeps the request honest about what was asked for.
@@ -653,6 +659,109 @@ void EapClient::applyInfrastructure(const QString &applicationId) {
          },
          [this](const QString &message) {
              emit infrastructureApplyFailed(message);
+         });
+}
+
+// ── Egress rate limiting ─────────────────────────────────────────────────────
+
+namespace {
+// The site an application's own default is stored under - see Egress::kAllSites. Not a host name,
+// and nothing acquires a permit for it, so it is the one row in a listing with no state.
+const QString kAllSites = QStringLiteral("*");
+}
+
+void EapClient::fetchEgressSites(const QString &applicationId) {
+    QJsonObject body;
+    // Only when scoping to one: an absent applicationId is what asks for every application the
+    // caller can see, and sending it empty would be asking for an application called "".
+    if (!applicationId.isEmpty())
+        body["applicationId"] = applicationId;
+
+    m_base->post("eap", "list-egress-sites", body, true,
+         [this](const QJsonObject &response) {
+             // Flattened: the three limits sit under "limits" on the wire, and a table column
+             // cannot read into a nested object.
+             const auto limitsOf = [](const QJsonObject &source) {
+                 const QJsonObject limits = source.value("limits").toObject();
+                 QVariantMap entry;
+                 entry["requestsPerSecond"] = limits.value("requestsPerSecond").toDouble();
+                 entry["burst"] = limits.value("burst").toDouble();
+                 entry["concurrent"] = limits.value("concurrent").toInteger();
+                 return entry;
+             };
+
+             QVariantList sites;
+             for (const QJsonArray array = response.value("sites").toArray(); const auto &value: array) {
+                 const QJsonObject site = value.toObject();
+                 QVariantMap entry = limitsOf(site);
+                 entry["applicationId"] = site.value("applicationId").toString();
+                 entry["site"] = site.value("site").toString();
+                 // Whether the limits are this site's own or inherited - from the application's
+                 // "*", or from the installation's default. The difference between a decision
+                 // somebody made about this site and one nobody has.
+                 entry["limitsSet"] = site.value("limitsSet").toBool();
+                 // The application's own default rather than one of its sites. It carries no
+                 // state, so the four fields below stay at zero for it rather than reading as a
+                 // bucket that is empty and a site that has never been called.
+                 entry["allSites"] = site.value("site").toString() == kAllSites;
+                 // As of the answer rather than as of the last write: a bucket nobody has drawn on
+                 // for an hour is full, and slots whose lease ran out are free. The server
+                 // refreshes both before reporting.
+                 entry["tokens"] = site.value("tokens").toDouble();
+                 entry["inFlight"] = site.value("inFlight").toInteger();
+                 // Empty unless the site has asked to be left alone - a 429 or 503 the application
+                 // reported - in which case nothing is granted for it until then.
+                 entry["blockedUntil"] = site.value("blockedUntil").toString();
+                 entry["lastUsed"] = site.value("lastUsed").toString();
+                 sites << entry;
+             }
+
+             QJsonObject defaults;
+             defaults["limits"] = response.value("defaultLimits");
+             emit egressSitesLoaded(sites, limitsOf(defaults));
+         },
+         [this](const QString &message) {
+             emit egressSitesFailed(message);
+         });
+}
+
+void EapClient::setEgressLimit(const QString &applicationId, const QString &site,
+                               const double requestsPerSecond, const double burst, const int concurrent) {
+    QJsonObject body;
+    body["applicationId"] = applicationId;
+    body["site"] = site;
+    // Only what was asked for. Below zero means "leave this one as it is" - zero cannot, since it
+    // is what says a site has no rate limit or no concurrency limit at all.
+    if (requestsPerSecond >= 0)
+        body["requestsPerSecond"] = requestsPerSecond;
+    if (burst >= 0)
+        body["burst"] = burst;
+    if (concurrent >= 0)
+        body["concurrent"] = concurrent;
+
+    m_base->post("eap", "set-egress-limit", body, true,
+         [this, applicationId, site](const QJsonObject &response) {
+             emit egressLimitChanged(applicationId, site, response.value("limits").toObject().toVariantMap());
+             emit egressSitesReload();
+         },
+         [this](const QString &message) {
+             emit egressLimitFailed(message);
+         });
+}
+
+void EapClient::deleteEgressLimit(const QString &applicationId, const QString &site) {
+    QJsonObject body;
+    body["applicationId"] = applicationId;
+    body["site"] = site;
+
+    m_base->post("eap", "delete-egress-limit", body, true,
+         [this, applicationId, site](const QJsonObject &response) {
+             // What it is held to now, which is the inherited figure rather than what was removed.
+             emit egressLimitChanged(applicationId, site, response.value("limits").toObject().toVariantMap());
+             emit egressSitesReload();
+         },
+         [this](const QString &message) {
+             emit egressLimitFailed(message);
          });
 }
 
