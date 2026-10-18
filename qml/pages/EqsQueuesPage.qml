@@ -49,8 +49,8 @@ Item {
             // Approximate: counted periodically rather than maintained per message. Marked once
             // on the first column rather than on all three, which would only add noise.
             { title: "Available (approx.)", key: "available" },
-            { title: "Delayed", key: "delayed" },
             { title: "Invisible", key: "invisible" },
+            { title: "Delayed", key: "delayed" },
             { title: "Size", key: "size", formatter: function (v) { return SizeFormat.format(v) } },
             {
                 // A stopped queue is invisible in every other column: it goes on accepting sends

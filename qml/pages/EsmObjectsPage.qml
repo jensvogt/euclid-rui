@@ -16,9 +16,96 @@ Item {
     // case-insensitive substring of what came back, so a deeper path still narrows what is drawn.
     property string prefix: ""
 
-    // How many objects one listing asks for. A tree of more than this is not one anybody reads;
-    // what matters is that the filter reaches past it, which it now does.
+    // ── The folder being looked at ───────────────────────────────────────────
+    // A key's first segment is read as a directory: "DEMODLI/Catedral.jpg" sits in "DEMODLI/".
+    // ESM has no notion of one - list-objects takes a prefix and nothing else - so the levels are
+    // worked out here, and only the level on screen is read from the server.
+    //
+    // Empty is the bucket's root. Otherwise it always ends in "/", so it can be concatenated with
+    // a name without deciding each time whether a separator is needed.
+    property string directory: ""
+
+    readonly property var directorySegments: root.directory.length === 0
+        ? [] : root.directory.split("/").filter(part => part.length > 0)
+
+    // What the server is asked for: this folder, narrowed by whatever is typed in the filter. The
+    // filter is matched from the start of the key *within* the folder, which is what makes it
+    // usable - "Cat" in "DEMODLI/" asks for "DEMODLI/Cat".
+    readonly property string queryPrefix: root.directory + root.prefix
+
+    // The level asked for with a delimiter. Always the folder itself: the server refuses a prefix
+    // that does not end in "/" there, because that names a level rather than a partial key - and
+    // what is typed in the filter is a partial key.
+    readonly property string queryLevel: root.directory
+
+    // Which of the two listings this page is showing. Nothing typed is a level: the folders in it
+    // and the objects directly in it. Anything typed is a search under the folder instead, which
+    // is the prefix listing - it reaches the whole subtree, and a match deep inside is what
+    // somebody typing a name is looking for.
+    readonly property bool searching: root.prefix.length > 0
+
+    function enterDirectory(name) {
+        root.directory = root.directory + name + "/"
+        // The filter belongs to the folder it was typed in: carrying it down would hide most of
+        // what was just opened, for a reason two clicks back.
+        root.prefix = ""
+        filterField.text = ""
+        root.refresh()
+    }
+
+    function leaveToDepth(depth) {
+        root.directory = depth <= 0 ? "" : root.directorySegments.slice(0, depth).join("/") + "/"
+        root.prefix = ""
+        filterField.text = ""
+        root.refresh()
+    }
+
+    // How many keys one step of the walk reads. Measured against this installation: a page of
+    // 1,000 objects takes about four seconds to come back and one of 200 under two, because what
+    // costs is the payload - every key arrives as a whole object document and the walk only wants
+    // the names. Smaller pages also put the first folders on screen sooner, since the level fills
+    // in as the walk goes rather than when it ends.
     readonly property int pageSize: 200
+
+    // ── Reading one level ────────────────────────────────────────────────────
+    // One request. ESM keeps each object's parent path as a field and indexes it, so a level is
+    // asked for directly - "list-objects" with a delimiter answers with the objects whose parent
+    // is exactly this folder and, separately, the directories one step below it.
+    //
+    // This page used to walk the level instead: read a page of keys, work out where one folder's
+    // block ended, count it, skip over it, repeat. That was the only thing the API could answer
+    // before the delimiter existed, and on a bucket of 200,000 keys it cost a deep skip the
+    // database had to walk. Nothing of it is left here.
+    property var levelDirectories: []
+
+    // ── One level of the folder ──────────────────────────────────────────────
+    // What the tree draws: the directories the server named, then the objects that sit directly
+    // here. Both are handed over as objects, the directories as keys ending in "/" - what ESM
+    // itself calls a directory marker - and "displayKey" is the name with the path above it
+    // stripped off, so the tree draws one flat level rather than nesting the path inside itself.
+    readonly property var folderEntries: {
+        const out = []
+        for (const path of root.levelDirectories) {
+            out.push({
+                key: path,
+                displayKey: String(path).substring(root.directory.length),
+                bucketErn: root.bucketErn,
+                isFolder: true,
+                fileCount: 0,
+                size: 0
+            })
+        }
+        for (const object of root.allObjects) {
+            out.push(Object.assign({}, object, {
+                displayKey: String(object.key).substring(root.directory.length),
+                isFolder: false
+            }))
+        }
+        return out
+    }
+
+    readonly property int folderDirectoryCount: root.levelDirectories.length
+    readonly property int folderFileCount: root.allObjects.length
 
     // Typing is not a query. Each keystroke restarts this, and the listing is asked for once the
     // field has settled - otherwise "DEMODLI" is eight listings of a bucket with thousands of
@@ -87,11 +174,13 @@ Item {
         pendingBucketErns = []
         error = ""
         loading = true
-        // The filter goes to the server as the key prefix it is matched as there, rather than only
-        // sieving what was already fetched: a bucket of 8,000 objects is listed 200 at a time, and
-        // a filter that could only see those 200 could not reach - or even admit to - the rest.
+        // One level at a time, and only the level on screen: the folders in it are named and
+        // stepped over, and what is inside one is not read until it is opened.
         if (root.bucketErn.length > 0)
-            esmClient.fetchObjects(root.bucketErn, root.prefix, 0, root.pageSize, "key", "asc", true)
+            if (root.searching)
+                esmClient.fetchObjects(root.bucketErn, root.queryPrefix, 0, root.pageSize, "key", "asc", true)
+            else
+                esmClient.fetchObjectLevel(root.bucketErn, root.queryLevel, 0, root.pageSize, "asc", true)
         else
             esmClient.fetchBuckets("", 0, 100)
     }
@@ -143,15 +232,17 @@ Item {
         function onObjectsLoaded(ern, list, total) {
             if (!root.loading)
                 return
-            root.allObjects = root.allObjects.concat(list)
+            // The aggregate view collects every bucket's listing; a search inside one bucket is
+            // the one answer it asked for.
+            if (root.bucketErn.length === 0)
+                root.allObjects = root.allObjects.concat(list)
+            else
+                root.allObjects = list
             // Set before the single-bucket branch returns - it used to be assigned only on the
             // aggregate path below, so a single bucket always reported a total of 0.
             root.totalCount = root.bucketErn.length > 0 ? total : root.totalCount + total
             if (root.bucketErn.length > 0) {
-                if (ern === root.bucketErn) {
-                    root.loading = false
-                    root.lastUpdatedText = Qt.formatDateTime(new Date(), "hh:mm:ss")
-                }
+                if (ern !== root.bucketErn) return
                 return
             }
             root.pendingBucketErns = root.pendingBucketErns.filter(function (e) { return e !== ern })
@@ -159,6 +250,17 @@ Item {
                 root.loading = false
                 root.lastUpdatedText = Qt.formatDateTime(new Date(), "hh:mm:ss")
             }
+        }
+        function onObjectsLevelLoaded(ern, level, objects, directories, total) {
+            // Only this page's bucket, and only the level it is showing: a level that arrives
+            // after the page has been pointed somewhere else describes a folder nobody is in.
+            if (ern !== root.bucketErn || level !== root.queryLevel) return
+            root.loading = false
+            root.error = ""
+            root.allObjects = objects
+            root.levelDirectories = directories
+            root.totalCount = total
+            root.lastUpdatedText = Qt.formatDateTime(new Date(), "hh:mm:ss")
         }
         function onObjectsFailed(ern, message) {
             if (!root.loading)
@@ -925,6 +1027,67 @@ Item {
                     anchors.margins: 16
                     spacing: 12
 
+                    // Where in the bucket this level is, and the way back up. Its own strip rather
+                    // than the page's breadcrumb: that one says where the page is in the
+                    // application, and this says where the listing is inside one bucket - they
+                    // move for different reasons and at different rates.
+                    Flow {
+                        width: parent.width
+                        spacing: 6
+                        visible: root.bucketErn.length > 0
+
+                        Text {
+                            text: root.bucketName
+                            color: root.directorySegments.length > 0
+                                   ? (bucketRootArea.containsMouse ? "#4f8cff" : "#9aa1ac") : "#e5e7eb"
+                            font.pixelSize: 12
+                            font.bold: root.directorySegments.length === 0
+
+                            MouseArea {
+                                id: bucketRootArea
+                                anchors.fill: parent
+                                anchors.margins: -4
+                                enabled: root.directorySegments.length > 0
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: root.leaveToDepth(0)
+                            }
+                        }
+
+                        Repeater {
+                            model: root.directorySegments
+
+                            Row {
+                                id: segmentRow
+                                required property string modelData
+                                required property int index
+                                spacing: 6
+                                // The last one is where you are: stated, not offered, the same way
+                                // the page's own breadcrumb ends.
+                                readonly property bool last: segmentRow.index === root.directorySegments.length - 1
+
+                                Text { text: "/"; color: "#4a5160"; font.pixelSize: 12 }
+                                Text {
+                                    text: segmentRow.modelData
+                                    color: segmentRow.last ? "#e5e7eb"
+                                           : (segmentArea.containsMouse ? "#4f8cff" : "#9aa1ac")
+                                    font.pixelSize: 12
+                                    font.bold: segmentRow.last
+
+                                    MouseArea {
+                                        id: segmentArea
+                                        anchors.fill: parent
+                                        anchors.margins: -4
+                                        enabled: !segmentRow.last
+                                        hoverEnabled: true
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: root.leaveToDepth(segmentRow.index + 1)
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     Item {
                         width: parent.width
                         height: 36
@@ -934,7 +1097,7 @@ Item {
                             width: Math.min(320, parent.width - 260)
                             height: 40
                             anchors.verticalCenter: parent.verticalCenter
-                            placeholderText: "Filter by key, from the start: DEMODLI/..."
+                            placeholderText: "Filter this folder by the start of a name..."
                             Material.accent: "#4f8cff"
                             selectByMouse: true
                             rightPadding: clearFilter.width + 14
@@ -960,21 +1123,31 @@ Item {
                             spacing: 10
 
                             Text {
-                                text: root.loading ? "Loading…"
-                                      : root.allObjects.length + " of " + root.totalCount + " object(s) · updated " + root.lastUpdatedText
+                                text: root.loading
+                                      ? "Reading…"
+                                      : (root.bucketErn.length > 0 && !root.searching
+                                         ? root.folderDirectoryCount + " folder(s), " + root.folderFileCount
+                                           + " of " + root.totalCount + " object(s) here · updated "
+                                           + root.lastUpdatedText
+                                         : root.allObjects.length + " of " + root.totalCount
+                                           + " match(es) · updated " + root.lastUpdatedText)
                                 color: "#6b7280"
                                 font.pixelSize: 11
                                 anchors.verticalCenter: parent.verticalCenter
                             }
+                            // Only the aggregate view has a tree to fold: one folder's level has
+                            // nothing nested inside it to open.
                             Button {
                                 text: "Expand all"
                                 flat: true
+                                visible: root.bucketErn.length === 0 || root.searching
                                 Material.theme: Material.Dark
                                 onClicked: objectTree.expandAll()
                             }
                             Button {
                                 text: "Collapse all"
                                 flat: true
+                                visible: root.bucketErn.length === 0 || root.searching
                                 Material.theme: Material.Dark
                                 onClicked: objectTree.collapseAll()
                             }
@@ -1005,8 +1178,8 @@ Item {
                         // "DEMODLI/Catedral..." - and that reads as a missing object rather than as
                         // the wrong question unless it is spelled out.
                         text: root.prefix.length > 0
-                              ? "No object's key begins with \"" + root.prefix + "\"."
-                              : "No objects found."
+                              ? "Nothing here begins with \"" + root.prefix + "\"."
+                              : (root.directory.length > 0 ? "This folder is empty." : "No objects found.")
                         color: "#6b7280"
                         font.pixelSize: 12
                     }
@@ -1014,8 +1187,22 @@ Item {
                     ObjectTree {
                         id: objectTree
                         width: parent.width
-                        objects: root.allObjects
-                        filter: root.prefix
+                        // One level of the folder on screen, not the whole bucket: the keys under
+                        // it are grouped into directories and files above, and a directory is not
+                        // read until it is opened. The aggregate view across every bucket keeps
+                        // the old whole-tree behaviour, where there is no one folder to be in.
+                        // A level navigates; a search is a tree of what was found, which is where
+                        // folding is worth having again.
+                        lazy: root.bucketErn.length > 0 && !root.searching
+                        objects: (root.bucketErn.length > 0 && !root.searching) ? root.folderEntries : root.allObjects
+                        // Already applied by the server for this folder; left off the tree so it
+                        // does not sieve a second time by substring and hide a folder whose own
+                        // name does not contain what was typed.
+                        // Already applied by the server in both listings, so the tree is not asked
+                        // to sieve a second time - that would hide a folder whose own name does
+                        // not contain what was typed, along with everything found inside it.
+                        filter: ""
+                        onOpenDirectory: (name) => root.enterDirectory(name)
                         onOpenObject: (object) => root.openObjectDetails(object.ern, object.key, root.bucketNameFor(object), object)
                         onDeleteObject: (object) => esmClient.deleteObject(object.bucketErn, object.ern)
                         onRenameObject: (object) => transferDialog.openFor("rename", object)
@@ -1030,15 +1217,17 @@ Item {
                         }
                     }
 
-                    // The listing is capped per bucket; without saying so, a truncated tree looks
-                    // like a complete one. The advice is now true: the filter is a key prefix the
-                    // server matches over every object, so a longer one does reach the rest.
+                    // Only when a folder was too large to read all of. A level is grouped from the
+                    // keys under it, so a folder read only in part may be missing whole
+                    // subfolders - which looks exactly like a folder that does not have them.
+                    // Only the objects of this level are paged; the directories all come back at
+                    // once, so what is said here is about the files in the folder and not about
+                    // anything hidden below it.
                     Text {
                         visible: root.totalCount > root.allObjects.length
                         width: parent.width
-                        text: "Showing the first " + root.allObjects.length + " of " + root.totalCount
-                              + (root.prefix.length > 0 ? " objects under \"" + root.prefix + "\"" : " objects")
-                              + " - type more of the key, from the start, to reach the rest."
+                        text: "Showing " + root.allObjects.length + " of " + root.totalCount
+                              + " objects in this folder. Type the start of a name to narrow it."
                         color: "#ffb545"
                         font.pixelSize: 11
                         wrapMode: Text.WordWrap
