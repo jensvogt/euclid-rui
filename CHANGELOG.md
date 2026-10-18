@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.37](https://github.com/jensvogt/euclid-rui/compare/1.1.36...v1.1.37) (2026-10-18)
+
+
+### Bug Fixes
+
+* EAP application list pageable, ESM object tree with lazy loading, vcpkg bump. ([9aa47dd](https://github.com/jensvogt/euclid-rui/commit/9aa47dd567a15715a05f1807619f2898f74f9e75))
+
 ## [1.1.36](https://github.com/jensvogt/euclid-rui/compare/1.1.35...v1.1.36) (2026-10-17)
 
 
