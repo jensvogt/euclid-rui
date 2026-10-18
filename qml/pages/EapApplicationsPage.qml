@@ -14,6 +14,27 @@ Item {
 
     property string prefix: ""
     property var applications: []
+
+    // ── Paging ───────────────────────────────────────────────────────────────
+    // Done here rather than by the server: "list-applications" answers with every application in
+    // the namespace at once - it takes a prefix and nothing else - so the page is cut from a list
+    // that has already arrived. That is the whole of it: no request is made to turn a page, and
+    // the figures below describe the list, not a query.
+    //
+    // If an installation ever holds enough applications for the response itself to be the problem,
+    // the fix is pageSize/pageIndex on the action, and this becomes a re-query like every other
+    // table here.
+    property int pageIndex: 0
+    property int pageSize: 25
+
+    readonly property int pageCount: Math.max(1, Math.ceil(root.applications.length / root.pageSize))
+    // Clamped rather than left where it was: filtering or a refresh can shorten the list under a
+    // page that is now past its end, and that would read as "no applications" rather than as a
+    // page that is no longer there.
+    readonly property int clampedPageIndex: Math.min(Math.max(0, root.pageIndex), root.pageCount - 1)
+    readonly property var pagedApplications: root.applications.slice(
+        root.clampedPageIndex * root.pageSize,
+        root.clampedPageIndex * root.pageSize + root.pageSize)
     property int totalCount: 0
     property bool loading: false
     property string error: ""
@@ -1845,13 +1866,12 @@ Item {
             DataTable {
                 width: parent.width
                 columns: root.columns
-                // One page: list-applications returns everything at once, so there is no size to pick.
-                pageSizeSelectable: false
-                rows: root.applications
-                totalCount: root.totalCount
-                // One page: "list-applications" returns every application at once.
-                pageSize: root.totalCount > 0 ? root.totalCount : 1
-                pageIndex: 0
+                rows: root.pagedApplications
+                // The whole list, which is what the pager counts in: the rows above are one page
+                // of it, and both come from the same answer.
+                totalCount: root.applications.length
+                pageSize: root.pageSize
+                pageIndex: root.clampedPageIndex
                 loading: root.loading
                 error: root.error
                 lastUpdatedText: root.lastUpdatedText
@@ -1860,8 +1880,19 @@ Item {
                 rowsClickable: true
                 onRowClicked: (row) => root.openApplicationDetails(row.applicationId, row)
 
+                // No re-query: the page is cut from the list already in hand.
+                onPageChanged: (index) => root.pageIndex = index
+                // Back to the first page, which is where a different size starts - page four of
+                // fifty-row pages is not page four of ten-row ones.
+                onPageSizeRequested: (size) => {
+                    root.pageSize = size
+                    root.pageIndex = 0
+                }
                 onSearchChanged: (text) => {
                     root.prefix = text
+                    // The filter is the server's, so this is a different list - and page four of
+                    // the old one says nothing about the new one.
+                    root.pageIndex = 0
                     root.refresh()
                 }
                 onRefreshRequested: root.refresh()

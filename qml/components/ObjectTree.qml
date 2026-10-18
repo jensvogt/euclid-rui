@@ -34,6 +34,12 @@ Item {
             ? sizes : sizes.concat([root.pageSize]).sort(function (a, b) { return a - b })
     }
 
+    // One level at a time, each row's name taken from "displayKey" rather than the key: the caller
+    // has already worked out what sits in the folder on screen, so there is nothing to nest and
+    // nothing to expand. A folder row asks to be opened instead of unfolding in place.
+    property bool lazy: false
+
+    signal openDirectory(string name)
     signal openObject(var object)
     signal deleteObject(var object)
     signal renameObject(var object)
@@ -98,11 +104,15 @@ Item {
         const rootNode = { name: "", path: "", isDirectory: true, object: null, children: ({}), fileCount: 0, totalSize: 0 }
 
         for (const object of root.objects) {
-            if (needle.length > 0 && object.key.toLowerCase().indexOf(needle) < 0)
+            // What this row is called where it is drawn. In lazy mode that is the key with the
+            // folder above it stripped off, so "DEMODLI/sub/a.jpg" in "DEMODLI/" is "sub/" - one
+            // level, not the whole path repeated inside itself.
+            const drawnKey = String(root.lazy && object.displayKey !== undefined ? object.displayKey : object.key)
+            if (needle.length > 0 && drawnKey.toLowerCase().indexOf(needle) < 0)
                 continue
 
-            const directoryKey = object.key.charAt(object.key.length - 1) === "/"
-            const parts = object.key.split("/").filter(p => p.length > 0)
+            const directoryKey = drawnKey.charAt(drawnKey.length - 1) === "/"
+            const parts = drawnKey.split("/").filter(p => p.length > 0)
             let node = rootNode
             let path = ""
 
@@ -119,8 +129,17 @@ Item {
                     }
                 }
                 node = node.children[id]
-                if (last)
-                    node.object = object
+                if (last) {
+                    // A folder row in lazy mode is not an object anybody can act on: it stands for
+                    // keys that were not read. Its counts come from the caller, which did the
+                    // grouping and knows them.
+                    if (root.lazy && object.isFolder === true) {
+                        node.fileCount = Number(object.fileCount)
+                        node.totalSize = Number(object.size)
+                    } else {
+                        node.object = object
+                    }
+                }
                 // Roll the file up through every folder above it, so a collapsed folder can still
                 // say how much is inside.
                 if (!directoryKey) {
@@ -278,7 +297,10 @@ Item {
                         hoverEnabled: true
                         cursorShape: rowItem.isDirectory || rowItem.hasObject ? Qt.PointingHandCursor : Qt.ArrowCursor
                         onClicked: {
-                            if (rowItem.isDirectory) root.toggle(rowItem.modelData.path)
+                            // Opened rather than unfolded in lazy mode: what is inside has not
+                            // been read yet, and the caller is the one that can read it.
+                            if (rowItem.isDirectory && root.lazy) root.openDirectory(rowItem.modelData.name)
+                            else if (rowItem.isDirectory) root.toggle(rowItem.modelData.path)
                             else if (rowItem.hasObject) root.openObject(rowItem.modelData.object)
                         }
                     }
@@ -292,7 +314,9 @@ Item {
 
                         Text {
                             width: 12
-                            text: rowItem.isDirectory ? (rowItem.modelData.expanded ? "⌄" : "›") : ""
+                            // Always "›" in lazy mode: a folder here is a step sideways into it,
+                            // not something that opens downwards in place.
+                            text: rowItem.isDirectory ? ((!root.lazy && rowItem.modelData.expanded) ? "⌄" : "›") : ""
                             color: "#6b7280"
                             font.pixelSize: 12
                             anchors.verticalCenter: parent.verticalCenter
