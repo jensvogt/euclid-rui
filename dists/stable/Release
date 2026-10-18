@@ -1,23 +1,23 @@
 Architectures: amd64
 Codename: stable
 Components: main
-Date: Sat, 17 Oct 2026 14:49:15 +0000
+Date: Sun, 18 Oct 2026 15:26:17 +0000
 Label: Euclid RUI
 Origin: Euclid RUI
 Suite: stable
 MD5Sum:
- b5ef21b4572045126f0ee9c0f6e730ff              144 Release
- 9623cd000316a7659ad2c9f972a3fab4            36520 main/binary-amd64/Packages
- 7dbc27b7a5979f51af9ce3ddb39b9b61            11200 main/binary-amd64/Packages.gz
+ f8373d7713cf82d754733cf8f98b2c10              144 Release
+ 711edc218a4c46efe88ce528a94cf2ca            37150 main/binary-amd64/Packages
+ 3bdeb86fb575f3517eee753f40504e3f            11391 main/binary-amd64/Packages.gz
 SHA1:
- 24e547571ada14e89d4e4b4e0e85ce6790b947cc              144 Release
- b36239b007c5456b3e529022b1e055eba6017527            36520 main/binary-amd64/Packages
- 28ac9ea424b3048e76a6cea487f9d4618cbbb15a            11200 main/binary-amd64/Packages.gz
+ 30356312f2f259d09d48868b858b75f3c4fd283a              144 Release
+ ba250a24a91797a3449926416ca593e4ba3a1807            37150 main/binary-amd64/Packages
+ d49b5b0d1f6ef03b2c7c392352a69de128d24059            11391 main/binary-amd64/Packages.gz
 SHA256:
- 00b8e4e46f5ac546479290e25dbf55844a26893bc4f08ab7cdd01691d35cac76              144 Release
- 7c8a70470ac79f8fb04aca6f702da93afb2472a5395bd99d36f39f4378c41852            36520 main/binary-amd64/Packages
- 5cb46711de730fba31755668fcd1111a1929a8111f181a60e182edf9b7a1fcb8            11200 main/binary-amd64/Packages.gz
+ 6906d2bd16f8e7b47812583023f358073f2651ef86bf2f6b24a7cb8e573ff6a7              144 Release
+ 5736f62dd39ab90563c149c1e1ade32ee1573b434d8d61c782571a48c397a5eb            37150 main/binary-amd64/Packages
+ ee53717d912bccce85b90e7303eea46cfe241b9d26601ce0c45b237ee5c82ced            11391 main/binary-amd64/Packages.gz
 SHA512:
- 1c5f70552caebde68460242a345b392ce5e8919c9409af648c9c5d8d5beff6d620274e4e922cd669be3c94db864bdc5d678be8a0d4bd466c73a67c4cd4deff95              144 Release
- 5a90b52bcc647aa5b763b3b35c709ad63ba17abf9d20970d01f95e30b0621c05aabf22591f7dc4ea5b5dc3d47087692bc4a62e13fecb05c813bae0648eb2ccef            36520 main/binary-amd64/Packages
- 7a4f579abac4cb23a6b9dd4882bd73da0648cd76e31b4db15e3b288d0214e1f900cd1d88feae080f9b55368b7517cb97c7b834a13464d3ca9b9cac3647953b79            11200 main/binary-amd64/Packages.gz
+ 7329a793e7e8a82cc2a1d9ec550b090878146d194cfd9e4af015b54b8bfe9b24fb7f3d657df04b42748cb7fd03796275b0825c49fd979382ddae32d96fa2785e              144 Release
+ 60afe9b26f8148aa6107b0c2beb357162b88d437d7109b695035ff9ff23131d9d940a3b011ded2ff6a3ed348d59e6808e695fb2c24f6982f02b3028ea1564fa9            37150 main/binary-amd64/Packages
+ 727c1adae993aa7613caf226fa82cab182f1b9d1724c614c52dbbb3146d16556177a2f2b4350895983bad47cffa394a28359ccf67ab4139a438e5c74fcddc75f            11391 main/binary-amd64/Packages.gz
