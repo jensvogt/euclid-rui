@@ -383,6 +383,24 @@ void EamClient::renameUser(const QString &userId, const QString &newUserId) {
          });
 }
 
+void EamClient::changeEmail(const QString &userId, const QString &email) {
+    QJsonObject body;
+    body["userId"] = userId;
+    body["email"] = email;
+
+    m_base->post("eam", "change-email", body, true,
+         [this, userId](const QJsonObject &response) {
+             // The stored user rather than the address alone: the modified timestamp moved with it,
+             // and a details page showing both would otherwise have one of them stale until the
+             // next time somebody opened the page.
+             emit emailChanged(userId, userToMap(response.value("user").toObject()));
+             emit usersReload();
+         },
+         [this](const QString &message) {
+             emit emailChangeFailed(message);
+         });
+}
+
 void EamClient::changePassword(const QString &userId, const QString &oldPassword, const QString &newPassword) {
     QJsonObject body;
     // Sent even when it is the caller's own, rather than left out: the server reads an absent

@@ -71,6 +71,25 @@ public:
     // resolving.
     Q_INVOKABLE void renameUser(const QString &userId, const QString &newUserId);
 
+    // Gives a user a different email address. Wire action is "change-email". Admin-only, and it
+    // names the user outright for the same reason renameUser() does: login accepts an address in
+    // place of a user id, so an address is a way in rather than a detail recorded about somebody,
+    // and a request that could mean the caller by saying nothing is one keystroke from pointing the
+    // wrong account at an address.
+    //
+    // Nothing else about the user moves: the user id, the ERN built from it, the grants, the group
+    // memberships and the access keys are all untouched - nothing is keyed on the address. So
+    // unlike renameUser() this needs no re-pointing of anything holding an ERN; emailChanged()
+    // carries the whole user only so a page showing their details can show what was stored rather
+    // than what was typed.
+    //
+    // Three refusals worth telling apart in the UI: another user already holds the address (409),
+    // it is the address this user already has (400, rather than a success that changed nothing),
+    // and it is not an address at all (400). Clearing an address is not offered - an empty one is
+    // refused, because an account with no address and one stored with an empty address are not the
+    // same thing to the index that keeps addresses unique.
+    Q_INVOKABLE void changeEmail(const QString &userId, const QString &email);
+
     // Replaces a password. Which of the two things this is - somebody changing their own, or an
     // administrator resetting somebody else's - is decided server-side by the userId alone and not
     // by what the request carries, so a caller cannot reach the reset path just by omitting the old
@@ -213,6 +232,12 @@ signals:
     // the new id because the ERN changed with it and the page needs that too.
     void userRenamed(const QString &userId, const QString &newUserId, const QVariantMap &user);
     void userRenameFailed(const QString &message);
+    // The user as they are now, in the same shape userRenamed() carries. The userId is named so a
+    // dialog can tell its own result from one belonging to another open on the same client, and
+    // the map is sent so a details page shows what EAM stored - including the modified timestamp,
+    // which changed with it.
+    void emailChanged(const QString &userId, const QVariantMap &user);
+    void emailChangeFailed(const QString &message);
     // Carries the userId back so a dialog can tell its own result from one belonging to another
     // open on the same client - these signals reach every listener, not just the caller.
     void passwordChanged(const QString &userId);
