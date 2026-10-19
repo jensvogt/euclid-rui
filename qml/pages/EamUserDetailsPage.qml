@@ -4,10 +4,12 @@ import QtQuick.Controls.Material
 import "../components"
 
 // What EAM actually lets an admin change about an existing user: group membership, namespace
-// grants, and the password - the last through its own action rather than as a field, because
-// replacing a password is not editing a record. Everything else (email, region, home account, the
-// admin flag) is fixed at registration - there is no "update-user" action server-side - so those
-// are shown read-only rather than as fields that would silently do nothing.
+// grants, the user ID, the email address, and the password. The last three go through actions of
+// their own rather than being fields on a form - each is a way in rather than a detail recorded
+// about somebody, and each is refused on its own terms (an id or an address another user holds, a
+// password that has to be proved). Region, home account and the admin flag are fixed at
+// registration - there is no "update-user" action server-side - so those stay read-only rather
+// than becoming fields that would silently do nothing.
 Item {
     id: root
     property bool loggedIn: false
@@ -33,6 +35,12 @@ Item {
     // userErn and details are bound to properties of the window - see Main.qml - and writing to
     // them from inside would break those bindings for good.
     signal renamed(string newUserId, string newUserErn, var user)
+
+    // The same user, with something about them rewritten - an email address, so far. Nothing is
+    // keyed on it, so unlike renamed() this re-points nothing; it exists because `details` is bound
+    // to a property of the window (see Main.qml) and assigning to it from here would break that
+    // binding for good.
+    signal updated(var user)
 
     function detail(key, fallback) {
         return root.details && root.details[key] !== undefined ? root.details[key] : fallback
@@ -134,6 +142,18 @@ Item {
                     }
 
                     Button {
+                        text: "Change Email…"
+                        Material.theme: Material.Dark
+                        Material.accent: "#4f8cff"
+                        enabled: !root.deleting && root.userId.length > 0
+                        onClicked: {
+                            changeEmailDialog.userId = root.userId
+                            changeEmailDialog.currentEmail = root.detail("email", "")
+                            changeEmailDialog.open()
+                        }
+                    }
+
+                    Button {
                         text: "Change Password…"
                         Material.theme: Material.Dark
                         Material.accent: "#4f8cff"
@@ -218,8 +238,9 @@ Item {
 
                     Text {
                         width: parent.width
-                        text: "Email, region and home account are set at registration and cannot be changed here. "
-                              + "The password can be replaced with \"Change Password\" above."
+                        text: "Region and home account are set at registration and cannot be changed here. The user ID, "
+                              + "the email address and the password are changed with the buttons above - the address has "
+                              + "to be one no other user holds, since sign-in accepts it in place of the user ID."
                         color: "#6b7280"
                         font.pixelSize: 11
                         wrapMode: Text.WordWrap
@@ -329,6 +350,11 @@ Item {
     RenameUserDialog {
         id: renameUserDialog
         onRenamed: (oldUserId, newUserId, user) => root.renamed(newUserId, user.ern, user)
+    }
+
+    ChangeEmailDialog {
+        id: changeEmailDialog
+        onEmailUpdated: (userId, user) => root.updated(user)
     }
 
     Dialog {

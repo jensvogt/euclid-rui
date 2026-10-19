@@ -1114,6 +1114,9 @@ ApplicationWindow {
                         window.selectedUserId = newUserId
                         window.selectedUserDetails = user
                     }
+                    // Same person under the same id and ERN, with something about them rewritten -
+                    // only the details the page reads have to be replaced.
+                    onUpdated: (user) => window.selectedUserDetails = user
                 }
                 EamUserGroupsPage {
                     anchors.fill: parent
