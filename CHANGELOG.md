@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.1.38](https://github.com/jensvogt/euclid-rui/compare/1.1.37...v1.1.38) (2026-10-19)
+
+
+### Bug Fixes
+
+* auto-scaler problems ([a07dbf5](https://github.com/jensvogt/euclid-rui/commit/a07dbf57e64fd9793c1a061eeaa09df0d9e1b68c))
+* fix auto-scaler ([17c6fdb](https://github.com/jensvogt/euclid-rui/commit/17c6fdbaad054f2a85fab7c1d5ffee82b793ccf9))
+
 ## [1.1.37](https://github.com/jensvogt/euclid-rui/compare/1.1.36...v1.1.37) (2026-10-18)
 
 
