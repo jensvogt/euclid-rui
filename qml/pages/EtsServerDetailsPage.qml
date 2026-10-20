@@ -245,10 +245,7 @@ Item {
 
             Breadcrumb {
                 width: parent.width
-                segments: [
-                    { label: "Transfer Servers", action: () => root.back() },
-                    { label: root.serverId }
-                ]
+                leaf: root.serverId
             }
 
             Item {

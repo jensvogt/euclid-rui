@@ -195,10 +195,7 @@ Item {
 
             Breadcrumb {
                 width: parent.width
-                segments: [
-                    { label: "Worker Nodes", action: () => root.back() },
-                    { label: root.nodeName }
-                ]
+                leaf: root.nodeName
             }
 
             Item {

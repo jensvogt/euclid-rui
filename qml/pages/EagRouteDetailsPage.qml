@@ -160,10 +160,7 @@ Item {
 
             Breadcrumb {
                 width: parent.width
-                segments: [
-                    { label: "Routes", action: () => root.back() },
-                    { label: root.routeId }
-                ]
+                leaf: root.routeId
             }
 
             Item {

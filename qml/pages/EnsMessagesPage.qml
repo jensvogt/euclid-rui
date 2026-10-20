@@ -485,10 +485,7 @@ Item {
 
             Breadcrumb {
                 width: parent.width
-                segments: [
-                    { label: "ENS", action: () => root.back() },
-                    { label: root.topicErn.length > 0 ? "Messages · " + root.topicName : "Messages" }
-                ]
+                leaf: root.topicErn.length > 0 ? "Messages · " + root.topicName : "Messages"
             }
 
             Item {

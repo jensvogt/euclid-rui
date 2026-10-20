@@ -25,6 +25,26 @@ ApplicationWindow {
     property string currentNamespace: ""
     property string currentRoute: "dashboard"
 
+    // Kept in step with the breadcrumb's idea of where the window is, and the way back: a crumb
+    // asks for a route rather than setting one, because arriving somewhere is more than a string -
+    // see components/Nav.qml. Routes stay here, which is where the pages and their state are.
+    //
+    // A Binding rather than an assignment in onCurrentRouteChanged: the route the window starts on
+    // is never changed, so a handler would leave the first page's trail empty until the first
+    // navigation.
+    Binding {
+        target: Nav
+        property: "current"
+        value: window.currentRoute
+    }
+
+    Connections {
+        target: Nav
+        function onRequested(route) {
+            window.currentRoute = route
+        }
+    }
+
     // EAM
     property int eamAccountCount: -1
     property int eamNamespaceCount: -1
@@ -805,6 +825,7 @@ ApplicationWindow {
             height: parent.height
             currentRoute: window.currentRoute
             onNavigate: (route) => window.currentRoute = route
+            onAboutRequested: aboutDialog.open()
         }
 
         Column {
@@ -859,28 +880,6 @@ ApplicationWindow {
                             text: window.currentNamespace + " · " + appSettings.host + ":" + appSettings.port
                             color: "#9aa1ac"
                             font.pixelSize: 11
-                        }
-                    }
-
-                    Rectangle {
-                        id: aboutButton
-                        width: 40
-                        height: 40
-                        radius: 10
-                        color: aboutMouse.containsMouse ? "#2c3648" : "#20242e"
-                        anchors.verticalCenter: parent.verticalCenter
-                        Text {
-                            anchors.centerIn: parent
-                            text: "ⓘ"
-                            color: "#c4c9d1"
-                            font.pixelSize: 18
-                        }
-                        MouseArea {
-                            id: aboutMouse
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: aboutDialog.open()
                         }
                     }
 
@@ -1115,6 +1114,9 @@ ApplicationWindow {
                         window.selectedUserId = newUserId
                         window.selectedUserDetails = user
                     }
+                    // Same person under the same id and ERN, with something about them rewritten -
+                    // only the details the page reads have to be replaced.
+                    onUpdated: (user) => window.selectedUserDetails = user
                 }
                 EamUserGroupsPage {
                     anchors.fill: parent

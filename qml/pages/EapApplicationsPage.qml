@@ -14,6 +14,27 @@ Item {
 
     property string prefix: ""
     property var applications: []
+
+    // ── Paging ───────────────────────────────────────────────────────────────
+    // Done here rather than by the server: "list-applications" answers with every application in
+    // the namespace at once - it takes a prefix and nothing else - so the page is cut from a list
+    // that has already arrived. That is the whole of it: no request is made to turn a page, and
+    // the figures below describe the list, not a query.
+    //
+    // If an installation ever holds enough applications for the response itself to be the problem,
+    // the fix is pageSize/pageIndex on the action, and this becomes a re-query like every other
+    // table here.
+    property int pageIndex: 0
+    property int pageSize: 25
+
+    readonly property int pageCount: Math.max(1, Math.ceil(root.applications.length / root.pageSize))
+    // Clamped rather than left where it was: filtering or a refresh can shorten the list under a
+    // page that is now past its end, and that would read as "no applications" rather than as a
+    // page that is no longer there.
+    readonly property int clampedPageIndex: Math.min(Math.max(0, root.pageIndex), root.pageCount - 1)
+    readonly property var pagedApplications: root.applications.slice(
+        root.clampedPageIndex * root.pageSize,
+        root.clampedPageIndex * root.pageSize + root.pageSize)
     property int totalCount: 0
     property bool loading: false
     property string error: ""
@@ -448,8 +469,12 @@ Item {
             const path = fileUrl.toString()
             redeployDialog.fileName = path.substring(path.lastIndexOf("/") + 1)
             // What this build calls itself, read out of its own file name ("orders-1.4.0.jar" is
-            // 1.4.0). Left editable for a build whose name does not carry one.
-            const derived = redeployDialog.versionFromName(redeployDialog.fileName)
+            // 1.4.0), else out of the key it is being uploaded under - the same two places and the
+            // same order the CLI looks in, since a build staged as "orders" and deployed as
+            // "orders-1.4.0.jar" carries its version in the key alone. Left editable, and left
+            // empty for a native build that carries one in neither: that one is typed.
+            let derived = redeployDialog.versionFromName(redeployDialog.fileName)
+            if (derived.length === 0) derived = redeployDialog.versionFromName(redeployArtifactField.text.trim())
             if (derived.length > 0) redeployVersionField.text = derived
         }
 
@@ -577,8 +602,10 @@ Item {
                     // The same version can be deployed again - a rebuilt snapshot keeps its number.
                     // What EAP refuses is a build that is byte for byte the one already running,
                     // and only the server can see that, after the upload.
-                    text: "Read out of the build's file name where it has one. Deploying the same version again is "
-                          + "fine; a build identical to the one already deployed is refused, since nothing would change."
+                    text: "Read out of the build's file name, or the artifact key, where either has one; a native "
+                          + "build whose name carries no version needs one typed here. Deploying the same version "
+                          + "again is fine; a build identical to the one already deployed is refused, since nothing "
+                          + "would change."
                     color: "#6b7280"
                     font.pixelSize: 11
                     wrapMode: Text.WordWrap
@@ -1211,6 +1238,26 @@ Item {
         // once rather than three times.
         readonly property bool isJob: typeCombo.currentText === "JOB"
 
+        // Set as soon as somebody types in the version field, and what stops the derivation below
+        // from overwriting what they typed when the artifact key is then edited.
+        property bool versionEdited: false
+
+        // Same rule the server and the CLI use: the first x.y.z anywhere in the name.
+        function versionFromName(name) {
+            const match = /(\d+)\.(\d+)\.(\d+)/.exec(name)
+            return match ? match[0] : ""
+        }
+
+        // The version the artifact key carries, kept in step with it while nobody has typed one of
+        // their own - so "orders-1.4.0.jar" fills the field in and a native build called
+        // "image-processing" leaves it empty, which is the case that has to be filled in by hand.
+        // Cleared rather than left behind when the key stops carrying one: a version derived from a
+        // key that is no longer there belongs to no build.
+        function deriveVersion() {
+            if (createApplicationDialog.versionEdited) return
+            versionField.text = createApplicationDialog.versionFromName(artifactField.text.trim())
+        }
+
         function addDeclarationSources(picked) {
             let sources = createApplicationDialog.declarationSources.slice()
             for (const source of picked) {
@@ -1272,7 +1319,8 @@ Item {
             // schedule on a PROCESS, and being refused for a field nobody could see would be a
             // puzzle.
             eapClient.createApplication(applicationIdField.text.trim(), runtimeCombo.currentText,
-                root.applicationsBucket, artifactField.text.trim(), userField.text.trim(),
+                root.applicationsBucket, artifactField.text.trim(), versionField.text.trim(),
+                userField.text.trim(),
                 typeCombo.currentText,
                 createApplicationDialog.isJob ? scheduleField.text.trim() : "")
         }
@@ -1295,6 +1343,8 @@ Item {
             applicationIdField.text = ""
             runtimeCombo.currentIndex = 0
             artifactField.text = ""
+            versionField.text = ""
+            createApplicationDialog.versionEdited = false
             createApplicationDialog.pendingFile = ""
             createApplicationDialog.uploading = false
             createApplicationDialog.declarationSources = []
@@ -1503,7 +1553,11 @@ Item {
                                 placeholderText: "object key, e.g. euclid-inbox-app.jar"
                                 Material.accent: "#4f8cff"
                                 selectByMouse: true
-                                Keys.onReturnPressed: userField.forceActiveFocus()
+                                Keys.onReturnPressed: versionField.forceActiveFocus()
+                                // onTextChanged rather than onTextEdited: the key is also set from
+                                // the file picker, and a file picked for its name should fill the
+                                // version in exactly as typing that name would.
+                                onTextChanged: createApplicationDialog.deriveVersion()
                             }
                             Button {
                                 id: uploadButton
@@ -1533,6 +1587,41 @@ Item {
                                   + SizeFormat.format(createApplicationDialog.bytesTotal) + "…"
                             color: "#9aa1ac"
                             font.pixelSize: 11
+                        }
+                    }
+
+                    // Beside the artifact rather than on the left with the name, because it is
+                    // about the build and not about the application: which bytes these are, which
+                    // is what a redeploy later is measured against.
+                    Column {
+                        width: parent.width
+                        spacing: 6
+                        Text { text: "Version"; color: "#9aa1ac"; font.pixelSize: 12 }
+                        TextField {
+                            id: versionField
+                            width: parent.width
+                            placeholderText: "e.g. 1.4.0"
+                            Material.accent: "#4f8cff"
+                            selectByMouse: true
+                            // Typing here takes the field over: the artifact key no longer fills
+                            // it in, so a key edited afterwards cannot quietly replace a version
+                            // somebody chose. onTextEdited fires for a person and not for the
+                            // derivation, which is the whole distinction being drawn.
+                            onTextEdited: createApplicationDialog.versionEdited = true
+                            Keys.onReturnPressed: if (createApplicationButton.enabled) createApplicationButton.clicked()
+                        }
+                        Text {
+                            width: parent.width
+                            wrapMode: Text.WordWrap
+                            color: "#6b7280"
+                            font.pixelSize: 11
+                            // Said where it is needed, because the reason is not obvious from the
+                            // field: EAP refuses a create it cannot date, and a native build's name
+                            // carries nothing to read - "image-processing" is not "orders-1.4.0.jar".
+                            text: "Read out of the artifact key where it carries one "
+                                  + "(\"orders-1.4.0.jar\" is 1.4.0). A build whose name has no version - a native "
+                                  + "executable, usually - needs one typed here: EAP stores it on the definition, and "
+                                  + "a redeploy is measured against it."
                         }
                     }
 
@@ -1668,8 +1757,12 @@ Item {
                     anchors.verticalCenter: parent.verticalCenter
                     Material.theme: Material.Dark
                     Material.accent: "#4f8cff"
+                    // The version is required here rather than left to the server, which refuses a
+                    // create it cannot read one from - and would refuse it *after* the artifact had
+                    // been uploaded, leaving a build in the bucket and no application to run it.
                     enabled: !createApplicationDialog.creating && applicationIdField.text.trim().length > 0
                              && artifactField.text.trim().length > 0
+                             && versionField.text.trim().length > 0
                     onClicked: {
                         createApplicationDialog.errorText = ""
                         createApplicationDialog.creating = true
@@ -1731,10 +1824,6 @@ Item {
 
             Breadcrumb {
                 width: parent.width
-                segments: [
-                    { label: "EAP", action: () => root.back() },
-                    { label: "Applications" }
-                ]
             }
 
             Item {
@@ -1777,13 +1866,12 @@ Item {
             DataTable {
                 width: parent.width
                 columns: root.columns
-                // One page: list-applications returns everything at once, so there is no size to pick.
-                pageSizeSelectable: false
-                rows: root.applications
-                totalCount: root.totalCount
-                // One page: "list-applications" returns every application at once.
-                pageSize: root.totalCount > 0 ? root.totalCount : 1
-                pageIndex: 0
+                rows: root.pagedApplications
+                // The whole list, which is what the pager counts in: the rows above are one page
+                // of it, and both come from the same answer.
+                totalCount: root.applications.length
+                pageSize: root.pageSize
+                pageIndex: root.clampedPageIndex
                 loading: root.loading
                 error: root.error
                 lastUpdatedText: root.lastUpdatedText
@@ -1792,8 +1880,19 @@ Item {
                 rowsClickable: true
                 onRowClicked: (row) => root.openApplicationDetails(row.applicationId, row)
 
+                // No re-query: the page is cut from the list already in hand.
+                onPageChanged: (index) => root.pageIndex = index
+                // Back to the first page, which is where a different size starts - page four of
+                // fifty-row pages is not page four of ten-row ones.
+                onPageSizeRequested: (size) => {
+                    root.pageSize = size
+                    root.pageIndex = 0
+                }
                 onSearchChanged: (text) => {
                     root.prefix = text
+                    // The filter is the server's, so this is a different list - and page four of
+                    // the old one says nothing about the new one.
+                    root.pageIndex = 0
                     root.refresh()
                 }
                 onRefreshRequested: root.refresh()

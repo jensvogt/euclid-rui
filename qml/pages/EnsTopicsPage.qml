@@ -29,10 +29,11 @@ Item {
         let cols = [
             { title: "Name", key: "name", fill: true },
             { title: "Messages", key: "messages" },
-            // Lifetime totals beside the current count, and the pair is the point: "Messages" falls
-            // when a topic is purged or when retention removes what it held, so a topic that has
-            // published steadily for a fortnight and one that has never published at all both read
-            // as zero there. "Send" does not fall, and says which of the two it is.
+            // Totals since the topic was created or last purged, beside the current count, and the
+            // pair is the point: "Messages" falls when retention removes what it held, so a topic
+            // that has published steadily for a fortnight and one that has never published at all
+            // can both read as zero there. "Send" does not fall with retention, and says which of
+            // the two it is. A purge starts both over.
             { title: "Send", key: "send" },
             // Above zero means somebody has had to replay this topic - a subscriber that was down,
             // or one added after the fact - which is worth seeing next to what it has delivered.
@@ -398,10 +399,6 @@ Item {
 
             Breadcrumb {
                 width: parent.width
-                segments: [
-                    { label: "ENS", action: () => root.back() },
-                    { label: "Topics" }
-                ]
             }
 
             Item {

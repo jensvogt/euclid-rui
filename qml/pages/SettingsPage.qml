@@ -76,6 +76,10 @@ Item {
             width: parent.width
             spacing: 28
 
+            Breadcrumb {
+                width: parent.width
+            }
+
             SectionHeader {
                 title: "Settings"
                 subtitle: "Manage your preferences and account options."

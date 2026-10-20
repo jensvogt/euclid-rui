@@ -94,10 +94,7 @@ Item {
 
             Breadcrumb {
                 width: parent.width
-                segments: [
-                    { label: "Namespaces", action: () => root.back() },
-                    { label: root.namespaceName }
-                ]
+                leaf: root.namespaceName
             }
 
             Item {

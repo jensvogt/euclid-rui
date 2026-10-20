@@ -171,10 +171,7 @@ Item {
 
             Breadcrumb {
                 width: parent.width
-                segments: [
-                    { label: "Buckets", action: () => root.back() },
-                    { label: root.bucketName }
-                ]
+                leaf: root.bucketName
             }
 
             Item {

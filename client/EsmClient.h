@@ -101,6 +101,21 @@ public:
                                   const QString &sortColumn = QStringLiteral("key"),
                                   const QString &sortDirection = QStringLiteral("asc"),
                                   bool includeDirectories = false);
+    // One level of a bucket: the objects whose key sits directly in `level`, and the directories
+    // one step below it. `level` ends in "/" - "DEMODLI/" - or is empty for the bucket's root.
+    //
+    // This is "list-objects" with a delimiter, which is a different question from the prefix
+    // listing above: that one answers with everything beneath a prefix, this one with what is in
+    // it. ESM keeps each object's parent path as a field and indexes it, so a level is a lookup
+    // rather than a match over every key - and the directories come back whether or not anything
+    // was ever written to mark them, including ones that hold only other directories.
+    //
+    // Answers through objectsLevelLoaded(); the directories are full paths, each ending in "/".
+    Q_INVOKABLE void fetchObjectLevel(const QString &bucketErn, const QString &level = QString(),
+                                      int pageIndex = 0, int pageSize = 200,
+                                      const QString &sortDirection = QStringLiteral("asc"),
+                                      bool includeDirectories = false);
+
     Q_INVOKABLE void deleteObject(const QString &bucketErn, const QString &objectErn);
 
     // How big one object is, for a caller that wants nothing else about it. ESM has no head-object
@@ -241,6 +256,10 @@ signals:
 
     // Objects
     void objectsLoaded(const QString &bucketErn, const QVariantList &objects, int total);
+    // One level: the objects in it, the directories below it, and how many objects the level
+    // holds in all - which is what the pager counts, and is not the size of the subtree.
+    void objectsLevelLoaded(const QString &bucketErn, const QString &level, const QVariantList &objects,
+                            const QStringList &directories, int total);
     void objectsFailed(const QString &bucketErn, const QString &message);
 
     // Both carry the bucket and key back, because these reach every listener and a page showing one

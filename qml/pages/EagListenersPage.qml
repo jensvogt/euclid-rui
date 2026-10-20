@@ -224,10 +224,6 @@ Item {
 
             Breadcrumb {
                 width: parent.width
-                segments: [
-                    { label: "EAG", action: () => root.back() },
-                    { label: "Listeners" }
-                ]
             }
 
             Item {

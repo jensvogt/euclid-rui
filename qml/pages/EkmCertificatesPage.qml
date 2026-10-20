@@ -520,10 +520,6 @@ Item {
 
             Breadcrumb {
                 width: parent.width
-                segments: [
-                    { label: "EKM", action: () => root.back() },
-                    { label: "Certificates" }
-                ]
             }
 
             Item {

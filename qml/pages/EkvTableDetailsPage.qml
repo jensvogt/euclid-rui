@@ -501,10 +501,7 @@ Item {
 
             Breadcrumb {
                 width: parent.width
-                segments: [
-                    { label: "Tables", action: () => root.back() },
-                    { label: root.tableName }
-                ]
+                leaf: root.tableName
             }
 
             Item {

@@ -48,8 +48,16 @@ public:
     // demand. Only valid on a JOB: a PROCESS is held at its instance count for as long as it is
     // RUNNING, so a schedule on one would be stored, listed, and never fire - which is why the
     // server refuses that pair rather than keeping it.
+    //
+    // `version` is which build this is, and the server needs it to be answerable from the
+    // definition alone: it reads one out of the artifact key where the key carries an x.y.z
+    // ("orders-1.4.0.jar"), and refuses the create outright where it cannot - a native executable
+    // called "image-processing" carries nothing to read, and a redeploy later has nothing to
+    // compare against if the first build was never recorded. Sent only when given, so a key that
+    // names its own version still answers for itself.
     Q_INVOKABLE void createApplication(const QString &applicationId, const QString &runtime, const QString &bucket,
-                                       const QString &artifact, const QString &userId = QString(),
+                                       const QString &artifact, const QString &version = QString(),
+                                       const QString &userId = QString(),
                                        const QString &type = QString(), const QString &schedule = QString(),
                                        const QStringList &buckets = QStringList(), const QStringList &queues = QStringList(),
                                        const QString &command = QString(), const QStringList &arguments = QStringList(),
@@ -169,6 +177,45 @@ public:
     // Administrators only.
     Q_INVOKABLE void applyInfrastructure(const QString &applicationId);
 
+    // ── Egress rate limiting ─────────────────────────────────────────────────
+    // How fast one application may call one outside site - the token bucket and the slots it is
+    // held to, and what it is allowed.
+    //
+    // Per application and per site: two applications calling the same site each have their own
+    // bucket, so the downloader that must go gently does not slow down the one that need not. Per
+    // *application* rather than per instance, because a limit each instance kept would be
+    // multiplied by the autoscaler exactly when there is the most to fetch - the site on the other
+    // end counts requests per source, not per process.
+    //
+    // A site appears once the application has asked for a permit to call it. The site "*" is the
+    // application's own default for every site it has no limit of its own for, and carries no
+    // state - nobody acquires a permit for it. What a site is held to, in order: its own limit,
+    // then the application's "*", then the installation's euclid.modules.eap.egress.default.
+    //
+    // `applicationId` empty lists every application's sites that the caller's account and
+    // namespace can see; naming one lists that application's.
+    //
+    // Administrators only, like everything else that decides what euclid runs and how.
+    Q_INVOKABLE void fetchEgressSites(const QString &applicationId = QString());
+
+    // Sets what one application may do to one site, or to all of its sites with "*". Each limit is
+    // left as it stands when passed below zero, which is how one of the three is changed without
+    // restating the others - and why the sentinel is negative: zero is a value with a meaning of
+    // its own, "no limit", for the rate and for the concurrency alike.
+    //
+    // `burst` is raised to 1 server-side if asked for less: a bucket that cannot hold one token
+    // never grants a request.
+    Q_INVOKABLE void setEgressLimit(const QString &applicationId, const QString &site,
+                                    double requestsPerSecond = -1, double burst = -1, int concurrent = -1);
+
+    // Takes one of an application's sites back to what it would be held to without a limit of its
+    // own - the application's "*", or the installation's default. Not "no limits", and not a
+    // reset: the tokens, the slots in flight and any block the site asked for all stay, since
+    // forgetting the slots would let the site be overrun the moment this is called.
+    //
+    // Refused with 404 if that application has no limit of its own for the site.
+    Q_INVOKABLE void deleteEgressLimit(const QString &applicationId, const QString &site);
+
     // Both only write desiredState; the reconciler is what acts on it.
     Q_INVOKABLE void startApplication(const QString &applicationId);
     Q_INVOKABLE void stopApplication(const QString &applicationId);
@@ -238,6 +285,21 @@ signals:
     // that is not one of the known ones, a "uses" entry naming something that does not exist, or a
     // file that declares a different application than the one it is stored under.
     void infrastructureApplyFailed(const QString &message);
+    // Every site an application has asked a permit for, and what the installation falls back to
+    // for one with no limit anywhere above it. Each entry: {applicationId, site, requestsPerSecond,
+    // burst, concurrent, limitsSet, allSites, tokens, inFlight, blockedUntil, lastUsed}.
+    //
+    // The "*" entry - allSites true - is the application's own default and has no state: its
+    // tokens, inFlight and blockedUntil are absent on the wire and zero here, because nothing
+    // acquires a permit for it.
+    void egressSitesLoaded(const QVariantList &sites, const QVariantMap &defaultLimits);
+    void egressSitesFailed(const QString &message);
+    // A limit was written: the listing is stale, since a site's row carries what it is held to.
+    void egressSitesReload();
+    // The limits that application's site is held to now, after a set or a clear.
+    void egressLimitChanged(const QString &applicationId, const QString &site, const QVariantMap &limits);
+    void egressLimitFailed(const QString &message);
+
     // The bounds as the server stored them, which is both of them even when only one was sent.
     void applicationScaled(const QString &applicationId, int minInstances, int maxInstances);
     // Carries the server's own wording: it is the side that decides what a bound may be, and it

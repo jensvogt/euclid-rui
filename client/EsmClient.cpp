@@ -290,6 +290,57 @@ void EsmClient::fetchObjects(const QString &bucketErn, const QString &prefix, co
          });
 }
 
+void EsmClient::fetchObjectLevel(const QString &bucketErn, const QString &level, const int pageIndex,
+                                 const int pageSize, const QString &sortDirection, const bool includeDirectories) {
+    QJsonObject body;
+    body["bucketErn"] = bucketErn;
+    // The level is the prefix; the delimiter is what turns "everything beneath this" into "what is
+    // in this". Only "/" is accepted server-side, which is the separator a key's parent is cut at.
+    body["prefix"] = level;
+    body["delimiter"] = QStringLiteral("/");
+    body["pageSize"] = pageSize;
+    body["pageIndex"] = pageIndex;
+    // No sortColumn: a level is read from the index on (bucketErn, parent, key), so it comes back
+    // in key order and any other column would throw that away. The direction is still the
+    // caller's.
+    body["sortDirection"] = sortDirection;
+    body["includeDirectories"] = includeDirectories;
+
+    m_base->post("esm", "list-objects", body, true,
+         [this, bucketErn, level](const QJsonObject &response) {
+             QVariantList objects;
+             for (const QJsonArray array = response.value("objects").toArray(); const auto &value : array) {
+                 const QJsonObject object = value.toObject();
+                 QVariantMap entry;
+                 const QString key = object.value("key").toString();
+                 entry["key"] = key;
+                 // Derived, not sent: the wire format has no directory flag, the trailing "/" in
+                 // the key IS the flag (Entity::ESM::IsDirectoryKey server-side).
+                 entry["isDirectory"] = key.endsWith(QLatin1Char('/'));
+                 entry["ern"] = object.value("ern").toString();
+                 entry["bucketErn"] = object.value("bucketErn").toString();
+                 entry["size"] = object.value("size").toInteger();
+                 entry["status"] = object.value("status").toString();
+                 entry["contentType"] = object.value("contentType").toString();
+                 entry["md5Sum"] = object.value("md5Sum").toString();
+                 // {name: {type, value}} - user-defined attributes, typed server-side by
+                 // Dto::COM::Variant rather than being plain strings.
+                 entry["attributes"] = object.value("attributes").toObject().toVariantMap();
+                 entry["created"] = object.value("created").toString();
+                 entry["modified"] = object.value("modified").toString();
+                 objects << entry;
+             }
+             QStringList directories;
+             for (const QJsonArray array = response.value("commonPrefixes").toArray(); const auto &value: array)
+                 directories << value.toString();
+
+             emit objectsLevelLoaded(bucketErn, level, objects, directories, response.value("total").toInt());
+         },
+         [this, bucketErn](const QString &message) {
+             emit objectsFailed(bucketErn, message);
+         });
+}
+
 void EsmClient::fetchObjectSize(const QString &bucketErn, const QString &key) {
     QJsonObject body;
     body["bucketErn"] = bucketErn;

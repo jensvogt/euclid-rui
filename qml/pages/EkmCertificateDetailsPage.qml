@@ -123,10 +123,7 @@ Item {
 
             Breadcrumb {
                 width: parent.width
-                segments: [
-                    { label: "Certificates", action: () => root.back() },
-                    { label: root.certificateName }
-                ]
+                leaf: root.certificateName
             }
 
             Item {

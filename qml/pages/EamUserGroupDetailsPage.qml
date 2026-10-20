@@ -147,10 +147,7 @@ Item {
 
             Breadcrumb {
                 width: parent.width
-                segments: [
-                    { label: "User Groups", action: () => root.back() },
-                    { label: root.groupName }
-                ]
+                leaf: root.groupName
             }
 
             Item {

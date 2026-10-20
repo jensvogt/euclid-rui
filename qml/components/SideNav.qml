@@ -8,6 +8,10 @@ Rectangle {
     property string currentRoute: "dashboard"
     property bool modulesExpanded: currentRoute.indexOf("modules-") === 0
     signal navigate(string route)
+    // The mark at the top asks for the About box. A signal rather than the dialog itself, for the
+    // reason navigate() is one: the dialog belongs to the window, and this is a component that
+    // knows nothing about what is in it.
+    signal aboutRequested()
 
     Column {
         anchors.top: parent.top
@@ -16,27 +20,52 @@ Rectangle {
         anchors.topMargin: 24
         spacing: 26
 
-        Row {
+        // The mark and the name, and the way to the About box. Nothing says so on sight, which is
+        // the usual bargain for a logo: it is where people try first, and the version it shows is
+        // not something anybody needs to be led to.
+        //
+        // An Item around the Row, rather than the click handler inside it: a positioner lays its
+        // children out and refuses one that anchors itself, so a MouseArea filling the Row made
+        // the Row collapse and took the mark off the screen with it. The handler belongs to a
+        // plain Item, which is free to be filled, and the Row sizes that Item from its content.
+        Item {
             anchors.left: parent.left
             anchors.leftMargin: 20
-            spacing: 10
+            width: brand.width
+            height: brand.height
 
-            Image {
-                source: "qrc:/EuclidRui/dist/branding/euclid-icon.svg"
-                width: 30
-                height: 30
-                // An SVG is rasterised once at sourceSize and scaled after, so this is what keeps
-                // the mark crisp on a high-DPI screen rather than blurred up from 30px.
-                sourceSize.width: 60
-                sourceSize.height: 60
-                fillMode: Image.PreserveAspectFit
+            Row {
+                id: brand
+                spacing: 10
+
+                Image {
+                    source: "qrc:/EuclidRui/dist/branding/euclid-icon.svg"
+                    width: 30
+                    height: 30
+                    // An SVG is rasterised once at sourceSize and scaled after, so this is what
+                    // keeps the mark crisp on a high-DPI screen rather than blurred up from 30px.
+                    sourceSize.width: 60
+                    sourceSize.height: 60
+                    fillMode: Image.PreserveAspectFit
+                    opacity: brandMouse.containsMouse ? 0.8 : 1.0
+                    Behavior on opacity { NumberAnimation { duration: 120 } }
+                }
+                Text {
+                    text: "Euclid"
+                    color: brandMouse.containsMouse ? "#4f8cff" : "white"
+                    Behavior on color { ColorAnimation { duration: 120 } }
+                    font.pixelSize: 17
+                    font.bold: true
+                    anchors.verticalCenter: parent.verticalCenter
+                }
             }
-            Text {
-                text: "Euclid"
-                color: "white"
-                font.pixelSize: 17
-                font.bold: true
-                anchors.verticalCenter: parent.verticalCenter
+
+            MouseArea {
+                id: brandMouse
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.aboutRequested()
             }
         }
 

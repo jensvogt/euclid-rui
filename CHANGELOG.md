@@ -1,5 +1,59 @@
 # Changelog
 
+## [1.1.38](https://github.com/jensvogt/euclid-rui/compare/1.1.37...v1.1.38) (2026-10-19)
+
+
+### Bug Fixes
+
+* auto-scaler problems ([a07dbf5](https://github.com/jensvogt/euclid-rui/commit/a07dbf57e64fd9793c1a061eeaa09df0d9e1b68c))
+* fix auto-scaler ([17c6fdb](https://github.com/jensvogt/euclid-rui/commit/17c6fdbaad054f2a85fab7c1d5ffee82b793ccf9))
+
+## [1.1.37](https://github.com/jensvogt/euclid-rui/compare/1.1.36...v1.1.37) (2026-10-18)
+
+
+### Bug Fixes
+
+* EAP application list pageable, ESM object tree with lazy loading, vcpkg bump. ([9aa47dd](https://github.com/jensvogt/euclid-rui/commit/9aa47dd567a15715a05f1807619f2898f74f9e75))
+
+## [1.1.36](https://github.com/jensvogt/euclid-rui/compare/1.1.35...v1.1.36) (2026-10-17)
+
+
+### Bug Fixes
+
+* native application upload ([26b96ea](https://github.com/jensvogt/euclid-rui/commit/26b96ea6620f1838a49d40e2e2c676da23385301))
+
+## [1.1.35](https://github.com/jensvogt/euclid-rui/compare/1.1.34...v1.1.35) (2026-10-16)
+
+
+### Bug Fixes
+
+* clickable icon ([5349410](https://github.com/jensvogt/euclid-rui/commit/53494108928af46963632c6c5c57c1c8fb59f2e1))
+
+## [1.1.34](https://github.com/jensvogt/euclid-rui/compare/1.1.33...v1.1.34) (2026-10-15)
+
+
+### Bug Fixes
+
+* add breadcrumbs ([2999ae8](https://github.com/jensvogt/euclid-rui/commit/2999ae8aa889ff04071438315f5bc34f83e85e57))
+* fix ENS purge topic ([86a919c](https://github.com/jensvogt/euclid-rui/commit/86a919c2702ea8d8123eb08cd2525f8d04374503))
+
+## [1.1.33](https://github.com/jensvogt/euclid-rui/compare/1.1.32...v1.1.33) (2026-10-14)
+
+
+### Bug Fixes
+
+* add breadcrumbs ([36c321c](https://github.com/jensvogt/euclid-rui/commit/36c321c8d430654602d0f0ebe080bff5b50e440d))
+* add breadcrumbs ([90dcd6e](https://github.com/jensvogt/euclid-rui/commit/90dcd6e8b1abee7c9327b220b7dac1856c178273))
+
+## [1.1.32](https://github.com/jensvogt/euclid-rui/compare/1.1.31...v1.1.32) (2026-10-14)
+
+
+### Bug Fixes
+
+* add artifact size ([f1e00a9](https://github.com/jensvogt/euclid-rui/commit/f1e00a9e4fa036d6b84649d639e2441a1d2221c1))
+* add artifact size ([657991f](https://github.com/jensvogt/euclid-rui/commit/657991ffc588474b49d91f41a6f6270c4357b84b))
+* add load to worker node details page ([9dfdaa0](https://github.com/jensvogt/euclid-rui/commit/9dfdaa005ce45d2ed95de452ffad61a989f9faa9))
+
 ## [1.1.31](https://github.com/jensvogt/euclid-rui/compare/1.1.30...v1.1.31) (2026-10-13)
 
 
