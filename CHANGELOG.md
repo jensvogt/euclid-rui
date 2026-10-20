@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.39](https://github.com/jensvogt/euclid-rui/compare/1.1.38...v1.1.39) (2026-10-20)
+
+
+### Bug Fixes
+
+* user group member list ([4e479b5](https://github.com/jensvogt/euclid-rui/commit/4e479b559affd2de8c2a549d09a957fdc7a9f3a5))
+
 ## [1.1.38](https://github.com/jensvogt/euclid-rui/compare/1.1.37...v1.1.38) (2026-10-19)
 
 
