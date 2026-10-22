@@ -765,6 +765,23 @@ void EapClient::deleteEgressLimit(const QString &applicationId, const QString &s
          });
 }
 
+void EapClient::deleteEgressSite(const QString &applicationId, const QString &site) {
+    QJsonObject body;
+    body["applicationId"] = applicationId;
+    body["site"] = site;
+
+    m_base->post("eap", "delete-egress-site", body, true,
+         [this, applicationId, site](const QJsonObject &) {
+             emit egressSiteDeleted(applicationId, site);
+             emit egressSitesReload();
+         },
+         [this](const QString &message) {
+             // The same channel a failed set or clear reports on: the tile shows one error line,
+             // and which of the three was refused is in the message.
+             emit egressLimitFailed(message);
+         });
+}
+
 void EapClient::startApplication(const QString &applicationId) {
     QJsonObject body;
     body["applicationId"] = applicationId;
