@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.40](https://github.com/jensvogt/euclid-rui/compare/1.1.39...v1.1.40) (2026-10-22)
+
+
+### Bug Fixes
+
+* ESM object list page size, paging for all pages. ([f9879ac](https://github.com/jensvogt/euclid-rui/commit/f9879ac97f200ed5b445606ea6952b5dd450cf2d))
+
 ## [1.1.39](https://github.com/jensvogt/euclid-rui/compare/1.1.38...v1.1.39) (2026-10-20)
 
 
