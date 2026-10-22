@@ -1262,6 +1262,18 @@ Item {
                                 action: function(row) {
                                     eapClient.deleteEgressLimit(root.applicationId, row.site)
                                 }
+                            },
+                            {
+                                // The whole row rather than the decision behind it: the limit, the
+                                // tokens, the slots in flight and when it was last called. Not a
+                                // ban - a site this application still calls is listed again the
+                                // next time it asks for a permit - so this is for the one that is
+                                // finished with, where a row left standing says somebody is still
+                                // deciding something about it.
+                                text: "Delete",
+                                action: function(row) {
+                                    eapClient.deleteEgressSite(root.applicationId, row.site)
+                                }
                             }
                         ]
                     }

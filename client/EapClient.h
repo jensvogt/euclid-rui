@@ -216,6 +216,18 @@ public:
     // Refused with 404 if that application has no limit of its own for the site.
     Q_INVOKABLE void deleteEgressLimit(const QString &applicationId, const QString &site);
 
+    // Forgets one of an application's sites outright: its limit, its tokens, the slots it holds and
+    // when it was last called. deleteEgressLimit()'s bigger sibling - that one takes back a
+    // decision and leaves the site listed, this one leaves nothing.
+    //
+    // Not a ban, and worth saying so where a user can read it: a site is listed because the
+    // application asked for a permit to call it, so one it still calls is listed again on its next
+    // request, held to whatever it inherits. What goes for good is only the state - which is why
+    // anything in flight for that site loses its slots the moment this is called.
+    //
+    // Refused with 404 if that application has no state for the site at all.
+    Q_INVOKABLE void deleteEgressSite(const QString &applicationId, const QString &site);
+
     // Both only write desiredState; the reconciler is what acts on it.
     Q_INVOKABLE void startApplication(const QString &applicationId);
     Q_INVOKABLE void stopApplication(const QString &applicationId);
@@ -299,6 +311,9 @@ signals:
     // The limits that application's site is held to now, after a set or a clear.
     void egressLimitChanged(const QString &applicationId, const QString &site, const QVariantMap &limits);
     void egressLimitFailed(const QString &message);
+    // The site is gone from the listing, not merely back to what it inherits. Separate from
+    // egressLimitChanged() because there are no limits to report afterwards - there is no row.
+    void egressSiteDeleted(const QString &applicationId, const QString &site);
 
     // The bounds as the server stored them, which is both of them even when only one was sent.
     void applicationScaled(const QString &applicationId, int minInstances, int maxInstances);

@@ -22,7 +22,7 @@ Item {
     // Rows per page, and the page being shown. Both are the tree's own: the objects are all in hand
     // already, so a page is a slice of what would be drawn rather than a query, and there is no
     // owner to ask - unlike DataTable, whose pages come from the server.
-    property int pageSize: 50
+    property int pageSize: 25
     property int pageIndex: 0
     property bool pageSizeSelectable: true
 

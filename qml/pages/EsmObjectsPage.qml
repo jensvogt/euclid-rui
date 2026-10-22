@@ -107,9 +107,7 @@ Item {
     readonly property int folderDirectoryCount: root.levelDirectories.length
     readonly property int folderFileCount: root.allObjects.length
 
-    // Typing is not a query. Each keystroke restarts this, and the listing is asked for once the
-    // field has settled - otherwise "DEMODLI" is eight listings of a bucket with thousands of
-    // objects, seven of them already stale when they arrive.
+    // Typing is not a query. Each keystroke restarts this, and the listing is asked for once the field has settled.
     Timer {
         id: filterDebounce
         interval: 350
@@ -193,8 +191,7 @@ Item {
         interval: appSettings.autoRefreshSeconds * 1000
         // Live updates are off by default: a table that reloads while it is being read
         // moves rows out from under the pointer. See AppSettings::liveListUpdates().
-        running: appSettings.liveListUpdates && appSettings.autoRefreshSeconds > 0
-                 && root.visible && root.loggedIn
+        running: appSettings.liveListUpdates && appSettings.autoRefreshSeconds > 0 && root.visible && root.loggedIn
         repeat: true
         onTriggered: root.refresh()
     }
