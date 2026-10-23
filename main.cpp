@@ -1,6 +1,7 @@
 #include <QCommandLineOption>
 #include <QCommandLineParser>
 #include <QGuiApplication>
+#include <QLibrary>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QQuickStyle>
@@ -23,7 +24,87 @@
 #include "client/EtsClient.h"
 #include "client/EuclidBaseClient.h"
 
+namespace {
+
+    /**
+     * @brief Settles the size of the cursors this application loads, before Qt loads any.
+     *
+     * @par
+     * Qt's X11 plugin loads cursor images through xcb-util-cursor, which decides how big they
+     * should be from, in order: the XCURSOR_SIZE environment variable, the X resource
+     * "Xcursor.size", "Xft.dpi" - and, when none of those answers, one forty-eighth of the smaller
+     * dimension of the X screen. That last rule is a guess from a time when one X screen meant one
+     * monitor. A workstation whose screen spans five of them and stands 2160 tall makes it 45, and
+     * the nearest cursor a theme ships is 48: twice the size of every other cursor on the desktop.
+     *
+     * @par
+     * Which is seen, oddly, as a huge crosshair over the charts and a huge hand over anything
+     * clickable, while the ordinary arrow stays the right size - because a cursor this application
+     * never sets is not one it loaded. That one belongs to the compositor and was never in doubt.
+     *
+     * @par
+     * The context those cursors come from is built once, while the platform plugin starts, and is
+     * not revisited. So the answer is settled here rather than left to whether the resource
+     * database can be read at that instant, and taken from where the desktop keeps it. An
+     * XCURSOR_SIZE already in the environment is left alone: somebody who sets it means it.
+     */
+    void settleCursorSize() {
+
+        if (qEnvironmentVariableIsSet("XCURSOR_SIZE")) return;
+
+        // Nothing to read and nothing to fix without an X server - a Wayland client is told its
+        // cursor size by the compositor, and there is no XCURSOR_SIZE in that conversation.
+        if (!qEnvironmentVariableIsSet("DISPLAY")) return;
+
+        // Resolved rather than linked: this is one lookup on one platform, and libX11 is already
+        // in the process on any desktop that has an X server to ask. If it is not, the default
+        // below is still better than a number worked out from how many monitors are plugged in.
+        QLibrary x11(QStringLiteral("X11"), 6);
+        const auto openDisplay = reinterpret_cast<void *(*) (const char *)>(x11.resolve("XOpenDisplay"));
+        const auto resourceString = reinterpret_cast<char *(*) (void *)>(x11.resolve("XResourceManagerString"));
+        const auto closeDisplay = reinterpret_cast<int (*)(void *)>(x11.resolve("XCloseDisplay"));
+
+        int size = 0;
+        if (openDisplay && resourceString && closeDisplay) {
+            if (void *display = openDisplay(nullptr)) {
+                if (const char *resources = resourceString(display)) {
+                    // The same two resources xcb-util-cursor reads, in the same order, so this
+                    // agrees with it whenever it had an answer of its own.
+                    for (const QByteArray &line: QByteArray(resources).split('\n')) {
+                        const int colon = line.indexOf(':');
+                        if (colon < 0) continue;
+                        const QByteArray key = line.left(colon).trimmed();
+                        const QByteArray value = line.mid(colon + 1).trimmed();
+                        if (key == "Xcursor.size") {
+                            size = value.toInt();
+                            break;
+                        }
+                        // Not a cursor size but the size of everything else, which is what a
+                        // desktop that states neither has been scaled by. 16 points at 72 to
+                        // the inch is the cursor the specification describes.
+                        if (key == "Xft.dpi" && size == 0) {
+                            size = value.toInt() * 16 / 72;
+                        }
+                    }
+                }
+                closeDisplay(display);
+            }
+        }
+
+        // What an X11 desktop has meant by a cursor for as long as there have been cursor themes,
+        // and what GNOME, KDE and the themes themselves still ship as their first size.
+        if (size <= 0) size = 24;
+
+        qputenv("XCURSOR_SIZE", QByteArray::number(size));
+    }
+
+}// namespace
+
 int main(int argc, char *argv[]) {
+
+    // Before the QGuiApplication, deliberately: constructing it starts the platform plugin, and
+    // the plugin builds the cursor context on the way up.
+    settleCursorSize();
 
     const QGuiApplication app(argc, argv);
     QGuiApplication::setOrganizationName("Euclid");
