@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.41](https://github.com/jensvogt/euclid-rui/compare/1.1.40...v1.1.41) (2026-10-23)
+
+
+### Bug Fixes
+
+* drag/drop, new legend for analytics ([47d4b71](https://github.com/jensvogt/euclid-rui/commit/47d4b7116ff2abae0ae409e0216e605ebe79ceb4))
+
 ## [1.1.40](https://github.com/jensvogt/euclid-rui/compare/1.1.39...v1.1.40) (2026-10-22)
 
 
