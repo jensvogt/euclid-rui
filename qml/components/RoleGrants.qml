@@ -39,7 +39,11 @@ Item {
         eamClient.fetchGrants(root.principalErn)
         // For the dialog's picker. Asked for alongside rather than on open, so the roles are
         // already there when somebody reaches for them.
-        eamClient.fetchRoles()
+        //
+        // Named with the account this session is in, because a role is defined per account: asking
+        // without one answers for the caller's own account, which is not where the grant below is
+        // about to be written once somebody has signed in somewhere else.
+        eamClient.fetchRoles(euclidClient.accountId)
     }
 
     onPrincipalErnChanged: refresh()
@@ -315,7 +319,9 @@ Item {
                 Text { text: "Grant Role"; color: "white"; font.pixelSize: 18; font.bold: true }
                 Text {
                     text: "To " + (root.principalLabel.length > 0 ? root.principalLabel : root.principalErn)
-                          + ". Administrator rights are required, and the grant takes effect on the next request."
+                          + ", in account " + euclidClient.accountId + " - the one this session is working in, "
+                          + "which is where the grant lands. Administrator rights are required, and it takes "
+                          + "effect on the next request."
                     color: "#9aa1ac"
                     font.pixelSize: 12
                     wrapMode: Text.WordWrap
@@ -434,9 +440,15 @@ Item {
                     onClicked: {
                         grantDialog.errorText = ""
                         grantDialog.saving = true
+                        // Named outright rather than left to the server, which falls back to the
+                        // *caller's home account* - not to the account the session is working in.
+                        // An administrator signed into another account granted a role there and
+                        // got one written in their own, which the row below then reported
+                        // truthfully and confusingly.
                         eamClient.grantRole(grantDialog.selectedRole.name, root.principalErn,
                                             grantDialog.listFrom(namespacesField.text),
-                                            grantDialog.listFrom(resourcesField.text))
+                                            grantDialog.listFrom(resourcesField.text),
+                                            euclidClient.accountId)
                     }
                 }
             }

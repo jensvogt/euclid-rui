@@ -38,6 +38,8 @@ Item {
     readonly property string targetText: root.moduleRoute
         ? root.moduleTarget.toUpperCase() + " · " + root.moduleAction : root.applicationId
     readonly property string authentication: String(detail("authentication", "NONE"))
+    // Seconds, or 0 for the gateway's own backend-timeout - see Entity::EAG::Route::timeout.
+    readonly property int timeoutSeconds: Number(detail("timeout", 0)) || 0
     readonly property var methods: detail("methods", [])
     readonly property string methodsText: !root.methods || root.methods.length === 0 ? "ALL" : root.methods.join(", ")
 
@@ -339,6 +341,16 @@ Item {
                             // it on both.
                             label: "Served on"
                             value: root.servedOnText
+                        }
+                        DetailField {
+                            width: (routingCol.width - 48) / 3
+                            label: "Backend timeout"
+                            // A zero is the gateway's default rather than "no timeout", and the two
+                            // read very differently to somebody deciding whether a slow route is
+                            // being cut off here or further in.
+                            value: root.timeoutSeconds > 0
+                                   ? root.timeoutSeconds + " s"
+                                   : "gateway default"
                         }
                     }
 

@@ -1,6 +1,8 @@
 #include "EagClient.h"
 #include "EuclidBaseClient.h"
 
+#include <cmath>
+
 namespace {
 // Turns one "list-routes"/"get-route"/"update-route" entry into the map the QML pages read.
 QVariantMap routeToMap(const QJsonObject &route) {
@@ -20,6 +22,10 @@ QVariantMap routeToMap(const QJsonObject &route) {
     // them, so a route written before a verb existed still answers for it.
     entry["methods"] = route.value("methods").toArray().toVariantList();
     entry["authentication"] = route.value("authentication").toString();
+    // Seconds the backend has to answer on this route, or 0 for the gateway's own
+    // backend-timeout. Per route because it describes what is behind the path: a search that
+    // answers in milliseconds and a bulk job that walks a table for minutes share one gateway.
+    entry["timeout"] = route.value("timeout").toInt();
     entry["active"] = route.value("active").toBool();
     entry["created"] = route.value("created").toString();
     entry["modified"] = route.value("modified").toString();
@@ -95,7 +101,8 @@ void EagClient::fetchRoute(const QString &routeId) {
 
 void EagClient::createRoute(const QString &routeId, const QString &path, const QString &applicationId,
                             const QString &moduleTarget, const QString &moduleAction,
-                            const QStringList &methods, const QString &authentication, const bool active) {
+                            const QStringList &methods, const QString &authentication, const bool active,
+                            const int timeout) {
     QJsonObject body;
     body["routeId"] = routeId;
     body["path"] = path;
@@ -111,6 +118,10 @@ void EagClient::createRoute(const QString &routeId, const QString &path, const Q
     body["methods"] = toJsonArray(methods);
     body["authentication"] = authentication;
     body["active"] = active;
+    // Sent even at zero, which is "the gateway's default" rather than "no timeout" - the server
+    // stores the zero and follows euclid.gateway.http.backend-timeout, so a route that never chose
+    // one keeps following that setting when it changes.
+    body["timeout"] = timeout;
 
     m_base->post("eag", "create-route", body, true,
          [this, routeId](const QJsonObject &response) {
@@ -133,6 +144,15 @@ void EagClient::updateRoute(const QString &routeId, const QVariantMap &changes) 
             body[it.key()] = value.toBool();
         } else if (value.typeId() == QMetaType::QStringList || value.typeId() == QMetaType::QVariantList) {
             body[it.key()] = toJsonArray(value.toStringList());
+        } else if (value.typeId() == QMetaType::Int || value.typeId() == QMetaType::LongLong
+                   || value.typeId() == QMetaType::UInt || value.typeId() == QMetaType::ULongLong
+                   || (value.typeId() == QMetaType::Double && value.toDouble() == std::floor(value.toDouble()))) {
+            // As a number, not as its digits. The server's numeric fields - a route's timeout, an
+            // upload's maxBytes and partSize - are read with is_int64() and refuse a string, so
+            // "300" would come back as "timeout must be a whole number of seconds". QML hands
+            // whole numbers over as doubles, which is why one is taken apart here rather than
+            // trusted to arrive as an int.
+            body[it.key()] = static_cast<qint64>(value.toLongLong());
         } else {
             body[it.key()] = value.toString();
         }

@@ -40,11 +40,13 @@ public:
     // Pass either `applicationId` or `moduleTarget` + `moduleAction`, leaving the other empty:
     // create-route refuses both and refuses neither, and a module route without an action would
     // have nothing to dispatch on.
+    // `timeout` is the seconds the backend has to answer on this route, 0 being the gateway's own
+    // default - see Entity::EAG::Route::timeout. The server refuses anything above 3600.
     Q_INVOKABLE void createRoute(const QString &routeId, const QString &path, const QString &applicationId,
                                  const QString &moduleTarget = QString(), const QString &moduleAction = QString(),
                                  const QStringList &methods = QStringList(),
                                  const QString &authentication = QStringLiteral("NONE"),
-                                 bool active = true);
+                                 bool active = true, int timeout = 0);
 
     // Only the fields named are changed server-side, so a caller can send one of them without
     // restating the rest. Pass "methods" as a list, "active" as a bool.

@@ -461,12 +461,50 @@ void EuclidBaseClient::login(const QString &userId, const QString &password) {
              emit accountIdChanged();
              emit regionChanged();
              emit loginSucceeded();
-             fetchNamespaces();
+             // The accounts rather than the namespaces: a namespace belongs to an account, so
+             // which account this session works in has to be settled first. Whoever asked for the
+             // login decides - see LoginDialog - and calls fetchNamespaces() once it is.
+             fetchAccounts();
          },
          [this](const QString &message) {
              setBusy(false);
              emit loginFailed(message);
          });
+}
+
+void EuclidBaseClient::fetchAccounts() {
+    setBusy(true);
+
+    post("eam", "list-my-accounts", QJsonObject(), true,
+         [this](const QJsonObject &response) {
+             setBusy(false);
+             const QString home = response.value("homeAccountId").toString();
+             QVariantList accounts;
+             for (const QJsonArray array = response.value("accounts").toArray(); const auto &value : array) {
+                 const QJsonObject account = value.toObject();
+                 QVariantMap entry;
+                 entry["accountId"] = account.value("accountId").toString();
+                 entry["name"] = account.value("name").toString();
+                 entry["description"] = account.value("description").toString();
+                 entry["ern"] = account.value("ern").toString();
+                 // Flagged here rather than compared in QML: whoever shows the list wants to mark
+                 // one row, and the comparison is the server's answer, not the view's business.
+                 entry["home"] = account.value("accountId").toString() == home;
+                 accounts << entry;
+             }
+             emit accountsLoaded(accounts, home);
+         },
+         [this](const QString &message) {
+             setBusy(false);
+             emit accountsFailed(message);
+         });
+}
+
+void EuclidBaseClient::setAccountId(const QString &accountId) {
+    if (m_accountId == accountId)
+        return;
+    m_accountId = accountId;
+    emit accountIdChanged();
 }
 
 void EuclidBaseClient::fetchNamespaces() {
