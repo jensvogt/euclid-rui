@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.42](https://github.com/jensvogt/euclid-rui/compare/1.1.41...v1.1.42) (2026-10-24)
+
+
+### Bug Fixes
+
+* EAG route timeout added ([eba9dba](https://github.com/jensvogt/euclid-rui/commit/eba9dbaabaceaa6bff7888769929998ec40b74bc))
+
 ## [1.1.41](https://github.com/jensvogt/euclid-rui/compare/1.1.40...v1.1.41) (2026-10-23)
 
 
