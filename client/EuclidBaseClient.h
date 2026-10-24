@@ -79,6 +79,24 @@ public:
     // rather than revoked there. It stays valid for whatever is left of its hour - which matters
     // only to somebody who already has a copy of it.
     Q_INVOKABLE void logout();
+
+    // Every account this user may work in, asked of the server after login. Their home account -
+    // the one they were registered in, which is what login() picked up on its own - plus every
+    // account a role granted to them, or to a group they are in, names. An administrator gets all
+    // of them, being permitted everywhere rather than granted anywhere.
+    //
+    // Needs no privileges, unlike EamClient::fetchAccounts(): "list-accounts" is an
+    // administrator's view of the installation, while this is the caller asking where they may
+    // work. The session has to be able to ask that before it can offer a choice.
+    Q_INVOKABLE void fetchAccounts();
+
+    // The account this session works in: every request from here on carries it as
+    // x-euclid-account-id, and the server decides what the caller may do there from the role
+    // bindings they hold. Set between logging in and asking for namespaces, since a namespace
+    // belongs to an account - changing one without the other asks for a namespace of an account
+    // the session is no longer in.
+    Q_INVOKABLE void setAccountId(const QString &accountId);
+
     Q_INVOKABLE void fetchNamespaces();
     Q_INVOKABLE void setNamespace(const QString &namespaceName);
 
@@ -138,6 +156,10 @@ signals:
     // from here on. Emitted so whoever owns the stored credentials can keep them in step: the key
     // belongs to the installation just signed into, and the stored one may belong to another.
     void accessKeyIssued(const QString &accessKeyId, const QString &secretAccessKey);
+    // Each entry: {accountId, name, description, ern, home: bool}. homeAccountId is the one to
+    // select when the user has not said otherwise - it is where their own things are.
+    void accountsLoaded(const QVariantList &accounts, const QString &homeAccountId);
+    void accountsFailed(const QString &message);
     void namespacesLoaded(const QStringList &namespaces);
     void namespacesFailed(const QString &message);
 

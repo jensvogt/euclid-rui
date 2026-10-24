@@ -555,7 +555,7 @@ ApplicationWindow {
         x = Screen.width / 2 - width / 2
         y = Screen.height / 2 - height / 2
         if (cliUser.length > 0 && cliPassword.length > 0)
-            loginDialog.autoLogin(cliUser, cliPassword, cliNamespace)
+            loginDialog.autoLogin(cliUser, cliPassword, cliNamespace, cliAccount)
         else
             loginDialog.open()
     }

@@ -127,9 +127,14 @@ int main(int argc, char *argv[]) {
     const QCommandLineOption userOption(QStringList{"user", "u"}, "Username or email to sign in with, skipping the login dialog.", "user");
     const QCommandLineOption passwordOption(QStringList{"password", "p"}, "Password to sign in with.", "password");
     const QCommandLineOption namespaceOption(QStringList{"namespace", "n"}, "Namespace to select after signing in; defaults to the first available.", "namespace");
+    // The counterpart to --namespace, for a user who may work in more than one account: without it
+    // a session starts in the account the user was registered in, which is what every session did
+    // before an account could be chosen at all.
+    const QCommandLineOption accountOption(QStringList{"account", "a"}, "Account to work in after signing in; defaults to your home account.", "account");
     parser.addOption(userOption);
     parser.addOption(passwordOption);
     parser.addOption(namespaceOption);
+    parser.addOption(accountOption);
     parser.process(app);
 
     QQuickStyle::setStyle("Material");
@@ -204,6 +209,7 @@ int main(int argc, char *argv[]) {
     engine.rootContext()->setContextProperty("cliUser", parser.value(userOption));
     engine.rootContext()->setContextProperty("cliPassword", parser.value(passwordOption));
     engine.rootContext()->setContextProperty("cliNamespace", parser.value(namespaceOption));
+    engine.rootContext()->setContextProperty("cliAccount", parser.value(accountOption));
     QObject::connect(&engine, &QQmlApplicationEngine::objectCreationFailed, &app, [] { QGuiApplication::exit(-1); }, Qt::QueuedConnection);
 
     engine.load(QUrl(QStringLiteral("qrc:/EuclidRui/qml/Main.qml")));

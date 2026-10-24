@@ -3,10 +3,16 @@ import QtQuick.Controls
 import QtQuick.Controls.Material
 import "../components"
 
-// What EAM lets an admin change about an existing account: the namespaces inside it. Name and
-// description are fixed at creation - there is no "update-account" action - so they are shown
-// read-only. The user list is read-only too: who reaches this account is decided per namespace,
-// which is what the namespace details page edits.
+// What EAM lets an admin change about an existing account: the namespaces inside it, and who may
+// work in it. Name and description are fixed at creation - there is no "update-account" action -
+// so they are shown read-only.
+//
+// Adding a user here writes a role grant scoped to this account, which is the only way somebody
+// comes to work in more than one: a user is registered in exactly one home account and that is
+// not editable, so every further account they reach, they reach through a grant. It is also what
+// puts the account in their picker at sign-in - the login dialog offers the accounts a grant
+// names. Narrowing or withdrawing a grant is still done where the grant is shown: on the user's
+// own page, or per namespace on the namespace page.
 Item {
     id: root
     property bool loggedIn: false
@@ -22,6 +28,11 @@ Item {
     property var users: []
     property string usersError: ""
 
+    // The roles this account can bind, read when the add-user dialog opens rather than with the
+    // page: nothing else here needs them, and they are the one thing on this page that is about
+    // what is being written rather than about what is there.
+    property var roles: []
+
     property bool deleting: false
 
     signal back()
@@ -35,6 +46,13 @@ Item {
     // namespace grant in it.
     function relatedUsers() {
         return root.users.filter(u => u.home || u.namespaces.length > 0)
+    }
+
+    // Everyone who is not in this account yet - the only people a grant here would change anything
+    // for. Somebody registered in it already works here, and somebody who holds a grant is better
+    // served by editing the grant they have than by being given a second one beside it.
+    function addableUsers() {
+        return root.users.filter(u => !u.home && u.namespaces.length === 0)
     }
 
     function refresh() {
@@ -68,6 +86,31 @@ Item {
         }
         function onAccountUsersFailed(message) {
             root.usersError = message
+        }
+
+        // Guarded on the dialog being open, not on the page being visible: rolesLoaded and
+        // roleGranted are installation-wide signals, and a user details page with a grants tile
+        // asks for the same things.
+        function onRolesLoaded(list) {
+            if (!addUserDialog.opened) return
+            root.roles = list
+        }
+        function onRolesFailed(message) {
+            if (!addUserDialog.opened) return
+            addUserDialog.errorText = message
+        }
+        function onRoleGranted(principalErn, grantId) {
+            if (!addUserDialog.saving) return
+            addUserDialog.saving = false
+            addUserDialog.close()
+            // Re-read rather than patch: the tile shows what the account's grants say, and the
+            // server is the one that just wrote one.
+            root.refresh()
+        }
+        function onRoleGrantFailed(message) {
+            if (!addUserDialog.saving) return
+            addUserDialog.saving = false
+            addUserDialog.errorText = message
         }
 
         // create/deleteNamespace report success by asking the namespaces table to reload; this
@@ -342,12 +385,35 @@ Item {
                     anchors.margins: 20
                     spacing: 14
 
-                    Text { text: "Users"; color: "white"; font.pixelSize: 15; font.bold: true }
+                    Item {
+                        width: parent.width
+                        height: usersHeader.implicitHeight
+
+                        Text {
+                            id: usersHeader
+                            text: "Users"
+                            color: "white"
+                            font.pixelSize: 15
+                            font.bold: true
+                        }
+
+                        Button {
+                            text: "Add User…"
+                            anchors.right: parent.right
+                            anchors.verticalCenter: usersHeader.verticalCenter
+                            flat: true
+                            Material.theme: Material.Dark
+                            Material.accent: "#4f8cff"
+                            enabled: root.loggedIn && root.accountId.length > 0 && root.addableUsers().length > 0
+                            onClicked: addUserDialog.open()
+                        }
+                    }
 
                     Text {
                         width: parent.width
-                        text: "Users registered in this account, or holding a namespace grant in it. Grants are edited "
-                              + "on the namespace, or on the user."
+                        text: "Users registered in this account, or holding a grant in it. A user's home account is "
+                              + "where they were registered and cannot be changed; a grant is how they come to work "
+                              + "in a second account, and is what puts this account in their picker at sign-in."
                         color: "#6b7280"
                         font.pixelSize: 11
                         wrapMode: Text.WordWrap
@@ -428,6 +494,214 @@ Item {
                                 anchors.verticalCenter: parent.verticalCenter
                             }
                         }
+                    }
+                }
+            }
+        }
+    }
+
+    // Gives a user who was registered elsewhere a grant in this account - which is what "having
+    // rights in several accounts" is made of. There is no second home account to hand out: a user
+    // is registered in one account and holds grants in the others, and this writes one of those.
+    Dialog {
+        id: addUserDialog
+        modal: true
+        parent: Overlay.overlay
+        anchors.centerIn: parent
+        width: 480
+        padding: 28
+        topPadding: 24
+        bottomPadding: 24
+        standardButtons: Dialog.NoButton
+
+        property bool saving: false
+        property string errorText: ""
+
+        // Snapshotted when the dialog opens rather than read live: the page refreshes underneath
+        // it, and a list that reorders while somebody is choosing from it changes who they picked.
+        property var candidates: []
+
+        readonly property var selectedUser: addUserDialog.candidates.length > 0 && userCombo.currentIndex >= 0
+                                            ? addUserDialog.candidates[userCombo.currentIndex] : null
+        readonly property var selectedRole: root.roles.length > 0 && roleCombo.currentIndex >= 0
+                                            ? root.roles[roleCombo.currentIndex] : null
+
+        // Both are required by the server and both default to everything, as in the grants tile on
+        // a user's own page - "*" here is what puts the user in the whole account rather than in
+        // one namespace of it.
+        function listFrom(text) {
+            const parts = String(text).split(",").map(p => p.trim()).filter(p => p.length > 0)
+            return parts.length > 0 ? parts : ["*"]
+        }
+
+        background: Rectangle {
+            radius: 16
+            color: "#1b1e25"
+            border.color: "#2c313c"
+            border.width: 1
+        }
+
+        onOpened: {
+            addUserDialog.errorText = ""
+            addUserDialog.saving = false
+            addUserDialog.candidates = root.addableUsers()
+            root.roles = []
+            userCombo.currentIndex = 0
+            roleCombo.currentIndex = 0
+            addNamespacesField.text = "*"
+            addResourcesField.text = "*"
+            eamClient.fetchRoles(root.accountId)
+        }
+
+        contentItem: Column {
+            width: addUserDialog.availableWidth
+            spacing: 16
+
+            Column {
+                width: parent.width
+                spacing: 4
+                Text { text: "Add User to Account"; color: "white"; font.pixelSize: 18; font.bold: true }
+                Text {
+                    width: parent.width
+                    text: "Grants a role in " + (root.accountName.length > 0 ? root.accountName : root.accountId)
+                          + " to a user registered elsewhere. They keep their own home account; this is what lets "
+                          + "them choose this one when they sign in."
+                    color: "#9aa1ac"
+                    font.pixelSize: 12
+                    wrapMode: Text.WordWrap
+                }
+            }
+
+            Column {
+                id: userColumn
+                width: parent.width
+                spacing: 6
+                Text { text: "User"; color: "#9aa1ac"; font.pixelSize: 12 }
+                ComboBox {
+                    id: userCombo
+                    width: userColumn.width
+                    model: addUserDialog.candidates.map(u => u.userId + (u.email.length > 0 ? "  ·  " + u.email : ""))
+                    Material.theme: Material.Dark
+                    Material.accent: "#4f8cff"
+                }
+                Text {
+                    width: parent.width
+                    wrapMode: Text.WordWrap
+                    color: "#6b7280"
+                    font.pixelSize: 11
+                    text: addUserDialog.candidates.length > 0
+                          ? "Everyone not already in this account. Somebody registered here, or already holding a "
+                            + "grant, is edited through the grant they have rather than given a second one."
+                          : "Everyone is already registered in or granted access to this account."
+                }
+            }
+
+            Column {
+                id: addRoleColumn
+                width: parent.width
+                spacing: 6
+                Text { text: "Role"; color: "#9aa1ac"; font.pixelSize: 12 }
+                ComboBox {
+                    id: roleCombo
+                    width: addRoleColumn.width
+                    model: root.roles.map(r => r.name)
+                    Material.theme: Material.Dark
+                    Material.accent: "#4f8cff"
+                }
+                Text {
+                    width: parent.width
+                    wrapMode: Text.WordWrap
+                    color: "#6b7280"
+                    font.pixelSize: 11
+                    text: addUserDialog.selectedRole
+                          ? addUserDialog.selectedRole.description + " · "
+                            + addUserDialog.selectedRole.permissionCount + " permission(s)"
+                            + (addUserDialog.selectedRole.builtin ? " · built in" : "")
+                          : "Reading the roles this account can bind…"
+                }
+            }
+
+            Column {
+                width: parent.width
+                spacing: 6
+                Text { text: "Namespaces"; color: "#9aa1ac"; font.pixelSize: 12 }
+                TextField {
+                    id: addNamespacesField
+                    width: parent.width
+                    placeholderText: "* for every namespace, or a comma-separated list"
+                    Material.accent: "#4f8cff"
+                    selectByMouse: true
+                }
+                Text {
+                    text: "Where the role applies. \"*\" is every namespace of this account, including its root - "
+                          + "which is what it means to be in the account rather than in one namespace of it."
+                    color: "#6b7280"
+                    font.pixelSize: 11
+                    wrapMode: Text.WordWrap
+                    width: parent.width
+                }
+            }
+
+            Column {
+                width: parent.width
+                spacing: 6
+                Text { text: "Resources"; color: "#9aa1ac"; font.pixelSize: 12 }
+                TextField {
+                    id: addResourcesField
+                    width: parent.width
+                    placeholderText: "* for every resource, or ERN patterns"
+                    Material.accent: "#4f8cff"
+                    selectByMouse: true
+                }
+                Text {
+                    text: "ERN patterns, each exact or ending in \"*\". This is what makes a wide role narrow."
+                    color: "#6b7280"
+                    font.pixelSize: 11
+                    wrapMode: Text.WordWrap
+                    width: parent.width
+                }
+            }
+
+            Text {
+                text: addUserDialog.errorText
+                color: "#ff6b6b"
+                font.pixelSize: 12
+                wrapMode: Text.WordWrap
+                width: parent.width
+                visible: text.length > 0
+            }
+
+            Item {
+                width: parent.width
+                height: 40
+
+                Button {
+                    text: "Cancel"
+                    flat: true
+                    anchors.left: parent.left
+                    anchors.verticalCenter: parent.verticalCenter
+                    Material.theme: Material.Dark
+                    enabled: !addUserDialog.saving
+                    onClicked: addUserDialog.close()
+                }
+
+                Button {
+                    text: addUserDialog.saving ? "Adding…" : "Add User"
+                    highlighted: true
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    Material.theme: Material.Dark
+                    Material.accent: "#4f8cff"
+                    enabled: !addUserDialog.saving && addUserDialog.selectedUser !== null
+                             && addUserDialog.selectedRole !== null
+                    onClicked: {
+                        addUserDialog.errorText = ""
+                        addUserDialog.saving = true
+                        eamClient.grantRole(addUserDialog.selectedRole.name,
+                                            addUserDialog.selectedUser.ern,
+                                            addUserDialog.listFrom(addNamespacesField.text),
+                                            addUserDialog.listFrom(addResourcesField.text),
+                                            root.accountId)
                     }
                 }
             }
