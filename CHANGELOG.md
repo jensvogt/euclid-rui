@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.43](https://github.com/jensvogt/euclid-rui/compare/1.1.42...v1.1.43) (2026-10-25)
+
+
+### Bug Fixes
+
+* ESM start/stop actions ([ac990af](https://github.com/jensvogt/euclid-rui/commit/ac990afefc963d892cade075aa000b2a2c2a7dc5))
+
 ## [1.1.42](https://github.com/jensvogt/euclid-rui/compare/1.1.41...v1.1.42) (2026-10-24)
 
 
