@@ -21,6 +21,18 @@ constexpr auto kDefaultBaseUrl = "https://localhost:5566/";
 // connection surfaces as a normal, retryable error instead.
 constexpr int kTransferTimeoutMs = 15000;
 
+// How long this client keeps an idle connection in its pool. Under the gateway's own keep-alive
+// (euclid.gateway.http.keep-alive-seconds, 75 by default) so that *this side* is always the one
+// that closes first.
+//
+// The timeout above turns a stale connection into an error; this is what stops it becoming one.
+// A connection the gateway has already closed still accepts a write - no reset comes back - so
+// the request simply never gets an answer and the user is told "Operation timed out" fifteen
+// seconds later, having lost whatever they were saving. Qt does not retry a POST, and it cannot:
+// it has no way to know the request was never received. Seen when a form is open for longer than
+// the keep-alive, which is to say any dialog somebody actually reads before saving.
+constexpr int kConnectionIdleSeconds = 30;
+
 // A reply that never received a body - a connection the gateway had already closed, a TLS
 // handshake that failed, a request the transfer timeout aborted - finishes *closed*. Calling
 // readAll() on it is harmless but makes Qt print "QIODevice::read (QNetworkReplyHttpImpl): device
@@ -321,6 +333,7 @@ QNetworkReply *EuclidBaseClient::post(const QString &target, const QString &acti
     sslConfig.setPeerVerifyMode(QSslSocket::VerifyNone);
     request.setSslConfiguration(sslConfig);
     request.setTransferTimeout(timeoutMs > 0 ? timeoutMs : kTransferTimeoutMs);
+    request.setAttribute(QNetworkRequest::ConnectionCacheExpiryTimeoutSecondsAttribute, kConnectionIdleSeconds);
 
     QNetworkReply *reply = m_networkManager.post(request, payload);
     connect(reply, &QNetworkReply::finished, this, [reply, onSuccess, onError]() {
@@ -359,6 +372,7 @@ QNetworkReply *EuclidBaseClient::postRaw(const QString &target, const QString &a
     sslConfig.setPeerVerifyMode(QSslSocket::VerifyNone);
     request.setSslConfiguration(sslConfig);
     request.setTransferTimeout(timeoutMs > 0 ? timeoutMs : kTransferTimeoutMs);
+    request.setAttribute(QNetworkRequest::ConnectionCacheExpiryTimeoutSecondsAttribute, kConnectionIdleSeconds);
 
     QNetworkReply *reply = m_networkManager.post(request, body);
     connect(reply, &QNetworkReply::finished, this, [reply, onSuccess, onError]() {
@@ -396,6 +410,7 @@ QNetworkReply *EuclidBaseClient::postForBytes(const QString &target, const QStri
     sslConfig.setPeerVerifyMode(QSslSocket::VerifyNone);
     request.setSslConfiguration(sslConfig);
     request.setTransferTimeout(timeoutMs > 0 ? timeoutMs : kTransferTimeoutMs);
+    request.setAttribute(QNetworkRequest::ConnectionCacheExpiryTimeoutSecondsAttribute, kConnectionIdleSeconds);
 
     QNetworkReply *reply = m_networkManager.post(request, QByteArray());
     connect(reply, &QNetworkReply::finished, this, [reply, onSuccess, onError]() {

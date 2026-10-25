@@ -50,6 +50,10 @@ void EsmClient::fetchBuckets(const QString &prefix, const int pageIndex, const i
                  // the same as MEDIUM, and is why this stays a string rather than being defaulted.
                  entry["priority"] = bucket.value("priority").toString();
                  entry["encrypted"] = bucket.value("encrypted").toBool();
+                 // Whether the bucket's events are being held - see Entity::ESM::Bucket::stopped.
+                 // The objects are untouched either way: a stopped bucket is read and written as
+                 // before, it is only what it announces that waits.
+                 entry["stopped"] = bucket.value("stopped").toBool();
                  // Only ever true in a listing an administrator asked to include them in, so a row
                  // can be marked as euclid's own rather than sitting unexplained among the user's.
                  entry["internal"] = bucket.value("internal").toBool();
@@ -111,6 +115,26 @@ void EsmClient::purgeBucket(const QString &bucketErn, const bool async, const bo
          },
          [this](const QString &message) {
              emit bucketsFailed(message);
+         });
+}
+
+void EsmClient::setBucketStopped(const QString &bucketErn, const bool stopped) {
+    QJsonObject body;
+    body["ern"] = bucketErn;
+
+    m_base->post("esm", stopped ? "stop-bucket" : "start-bucket", body, true,
+         [this, bucketErn, stopped](const QJsonObject &response) {
+             // What the server recorded rather than what was asked for, as the queue calls do -
+             // they agree today, and reading it back is what keeps that from being an assumption.
+             // The count is the point of the answer: how many events are being held now, or how
+             // many were just let go.
+             emit bucketStoppedChanged(bucketErn, response.value("stopped").toBool(),
+                                       stopped ? response.value("held").toInt()
+                                               : response.value("released").toInt());
+             emit bucketsReload();
+         },
+         [this](const QString &message) {
+             emit bucketStoppedFailed(message);
          });
 }
 

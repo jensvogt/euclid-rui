@@ -54,6 +54,16 @@ public:
     // `async` hands the announcing to a background thread inside ESM and answers at once with the
     // count as it stood, for a selection large enough that doing it inline outlasts the request's
     // own timeout.
+    // Holds a bucket's events in EES, or lets the held ones go: "stop-bucket"/"start-bucket".
+    //
+    // Only the announcements wait. The objects are read and written exactly as before, which is
+    // what makes this different from stopping a queue - a stopped bucket still accepts uploads,
+    // it just does not tell anybody about them until it is started again.
+    //
+    // Idempotent on both sides: stopping a stopped bucket changes nothing, and starting one that
+    // was never stopped releases nothing.
+    Q_INVOKABLE void setBucketStopped(const QString &bucketErn, bool stopped);
+
     Q_INVOKABLE void touchObjects(const QString &bucketErn, const QString &prefix = QString(), bool async = false);
     // A bucket's name is part of its ERN and of every object ERN inside it, so a rename rewrites
     // all of them server-side and repoints subscriptions; the counts come back in bucketRenamed().
@@ -237,6 +247,9 @@ signals:
     // The priority as the server stored it - uppercased, or empty for a bucket that now says
     // nothing. `name` comes back with it because the answer is about the bucket, not the ERN.
     void bucketPriorityChanged(const QString &bucketErn, const QString &name, const QString &priority);
+    // `count` is how many events are held now (stopping) or how many were released (starting).
+    void bucketStoppedChanged(const QString &bucketErn, bool stopped, int count);
+    void bucketStoppedFailed(const QString &message);
     void bucketPriorityFailed(const QString &message);
     void bucketTagAdded(const QString &bucketErn, const QString &key, const QString &value);
     void bucketTagAddFailed(const QString &message);
