@@ -81,6 +81,14 @@ Item {
         return cols
     }
 
+    // A bucket whose events are being held - see Entity::ESM::Bucket::stopped. A listing from a
+    // server too old to send the field at all reads as running, which is the safe way round: it
+    // offers "Stop", which such a server can answer, rather than "Start" on a bucket that was
+    // never stopped.
+    function isStopped(row) {
+        return !!row && row.stopped === true
+    }
+
     // The colours EQS gives the same three words, so a bucket's priority and the priority of the
     // messages it ends up producing read as the one scale they are.
     function priorityColor(priority) {
@@ -221,6 +229,20 @@ Item {
                     ? "Announcing " + objects + " object(s) in the background. Subscribers receive them over the "
                       + "next few minutes; nothing in this table changes."
                     : "Announced " + objects + " object(s). Nothing about them was modified."
+        }
+
+        // What a stop or a start actually did, which the table cannot show: the objects are
+        // untouched either way, and the number that matters is how many announcements are waiting.
+        function onBucketStoppedChanged(bucketErn, stopped, count) {
+            if (!root.visible) return
+            root.actionNote = stopped
+                    ? "Bucket stopped. " + count + " event(s) are being held; the objects themselves are untouched "
+                      + "and uploads carry on as before."
+                    : "Bucket started. " + count + " held event(s) released to their subscribers, oldest first."
+        }
+        function onBucketStoppedFailed(message) {
+            if (!root.visible) return
+            root.error = message
         }
 
         function onBucketCreated(name) {
@@ -1095,6 +1117,26 @@ Item {
                         },
                         action: function(row) {
                             root.purge(row)
+                        }
+                    },
+                    {
+                        // Two entries rather than one that changes its meaning with the row under
+                        // the cursor: each is greyed out when the bucket is already in that state,
+                        // which also says which state it is in before anything is clicked. The
+                        // same arrangement the queue list uses.
+                        text: "Stop",
+                        enabled: function(row) { return !root.isStopped(row) },
+                        action: function(row) {
+                            root.actionNote = ""
+                            esmClient.setBucketStopped(row.ern, true)
+                        }
+                    },
+                    {
+                        text: "Start",
+                        enabled: function(row) { return root.isStopped(row) },
+                        action: function(row) {
+                            root.actionNote = ""
+                            esmClient.setBucketStopped(row.ern, false)
                         }
                     },
                     {
