@@ -177,6 +177,15 @@ public:
     // Administrators only.
     Q_INVOKABLE void applyInfrastructure(const QString &applicationId);
 
+    // Asks EAP what applying this merged declaration would do, without storing or changing anything
+    // - "eap apply --dry-run". The dialog calls it before it uploads, so a declaration EAP will not
+    // accept - an unknown kind, a setting out of range, a "uses" entry naming something that does
+    // not exist - is refused while nothing has been stored, in EAP's own words, rather than stored
+    // beside the artifact and refused on every deploy after. Answers infrastructurePlanned or
+    // infrastructurePlanFailed. Needs an EAP that knows plan-infrastructure; an older one refuses it
+    // as unknown, which is also a failure here rather than an apply.
+    Q_INVOKABLE void planInfrastructure(const QString &applicationId, const QString &document);
+
     // ── Egress rate limiting ─────────────────────────────────────────────────
     // How fast one application may call one outside site - the token bucket and the slots it is
     // held to, and what it is allowed.
@@ -297,6 +306,10 @@ signals:
     // that is not one of the known ones, a "uses" entry naming something that does not exist, or a
     // file that declares a different application than the one it is stored under.
     void infrastructureApplyFailed(const QString &message);
+    // What applying would do, by ERN: created, adopted, updated, deleted, kept, granted, revoked.
+    void infrastructurePlanned(const QString &applicationId, const QVariantMap &plan);
+    // EAP's reason the declaration cannot be applied.
+    void infrastructurePlanFailed(const QString &message);
     // Every site an application has asked a permit for, and what the installation falls back to
     // for one with no limit anywhere above it. Each entry: {applicationId, site, requestsPerSecond,
     // burst, concurrent, limitsSet, allSites, tokens, inFlight, blockedUntil, lastUsed}.
