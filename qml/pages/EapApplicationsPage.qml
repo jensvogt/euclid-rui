@@ -347,6 +347,20 @@ Item {
         // deploying and will not stop a release over a JSON typo, so the application exists and
         // owns nothing. Said plainly, because the alternative is finding out from the first thing
         // that cannot reach its queue.
+        // EAP accepted the merged folder, so it is stored - and the apply follows the upload.
+        function onInfrastructurePlanned(applicationId, plan) {
+            if (!deployInfrastructureDialog.planning || applicationId !== deployInfrastructureDialog.applicationId) return
+            deployInfrastructureDialog.planning = false
+            deployInfrastructureDialog.uploading = true
+            esmClient.saveObjectContent(deployInfrastructureDialog.bucketErn,
+                                        deployInfrastructureDialog.declarationKey, deployInfrastructureDialog.checkedDocument)
+        }
+        // EAP's reason, in its words, while the files are still picked: nothing was stored.
+        function onInfrastructurePlanFailed(message) {
+            if (!deployInfrastructureDialog.planning) return
+            deployInfrastructureDialog.planning = false
+            deployInfrastructureDialog.errorText = message
+        }
         function onInfrastructureApplyFailed(message) {
             // Into the dialog while it is up: the files this is about are still on screen there, and
             // a "uses" entry naming something that does not exist is fixed by picking different
@@ -760,16 +774,19 @@ Item {
         property var sources: []
         property var fileNames: []
         property string summary: ""
-        // Two steps, reported apart: the upload is ESM's and the apply is EAP's, and a failure in
-        // the first leaves nothing behind while a failure in the second leaves the document stored.
+        // Three steps, reported apart: EAP checks the merged folder, ESM stores it, EAP applies it.
+        // A failure in the first two leaves nothing behind; one in the third leaves it stored.
+        property bool planning: false
         property bool uploading: false
         property bool applying: false
         property string errorText: ""
+        // The merged document between the check and the upload: what was checked is what is stored.
+        property string checkedDocument: ""
 
         readonly property string applicationId: application ? application.applicationId : ""
         readonly property string bucketErn: application ? application.bucketErn : ""
         readonly property string declarationKey: applicationId.length > 0 ? applicationId + ".euclid.json" : ""
-        readonly property bool busy: uploading || applying
+        readonly property bool busy: planning || uploading || applying
         readonly property bool hasSources: sources.length > 0
 
         function openFor(row) {
@@ -821,9 +838,12 @@ Item {
                 return
             }
             deployInfrastructureDialog.errorText = ""
-            deployInfrastructureDialog.uploading = true
-            esmClient.saveObjectContent(deployInfrastructureDialog.bucketErn,
-                                        deployInfrastructureDialog.declarationKey, merged.document)
+            // Checked by EAP before it is stored: the rules of what a declaration may say are EAP's,
+            // and a document it refuses must not end up beside the artifact, to be refused again on
+            // every deploy. The upload follows in onInfrastructurePlanned.
+            deployInfrastructureDialog.checkedDocument = merged.document
+            deployInfrastructureDialog.planning = true
+            eapClient.planInfrastructure(deployInfrastructureDialog.applicationId, merged.document)
         }
 
         background: Rectangle {

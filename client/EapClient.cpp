@@ -97,20 +97,20 @@ QJsonObject toJsonObject(const QVariantMap &values) {
 }
 
 // ── Infrastructure declarations ──────────────────────────────────────────────
-// A mirror of Database::Entity::EAP::Infrastructure in the euclid backend, as far as merging goes.
-// The server is still the authority: it re-reads this document when it applies it and refuses what
-// it does not accept. What is done here is what only the client can do - reading local files and
-// putting them together - plus the errors worth having before an upload rather than after one.
-
-// Spelled plural, the way they appear in the file. A kind that is not one of these is an error
-// rather than an ignored section: the silent no-op is how somebody's queues never get created.
-const QStringList kResourceKinds{QStringLiteral("queues"), QStringLiteral("topics"), QStringLiteral("buckets")};
+// What only the client can do: read local files and put them together. The rules of what a file may
+// say - which kinds exist, what each kind's settings are, which access levels a kind has - are EAP's,
+// and EAP checks them: the dialog asks plan-infrastructure before it uploads anything.
+//
+// This used to keep a copy of those rules, and the copy drifted. It knew three kinds, so a folder
+// declaring a table was refused here although EAP accepted it; and it rebuilt every entry from its
+// name, owner and access, so every setting - a queue's visibility, a table's key, a route's path -
+// was silently dropped on the way to the server. Entries are now carried exactly as written.
 
 struct DeclaredResource {
     QString kind;
     QString name;
-    QString owner;
-    QStringList access;
+    // The entry as the file wrote it, every field included.
+    QJsonObject entry;
 };
 
 struct Declaration {
@@ -119,37 +119,8 @@ struct Declaration {
     QList<DeclaredResource> uses;
 };
 
-// One entry of one section. `error` non-empty means the rest is meaningless.
-QString readResource(const QString &kind, const QJsonValue &value, DeclaredResource &resource) {
-    if (!value.isObject())
-        return kind + " entry is not an object";
-    const QJsonObject object = value.toObject();
-
-    resource.kind = kind;
-    resource.name = object.value("name").toString();
-    if (resource.name.isEmpty())
-        return kind + " entry has no name";
-    resource.owner = object.value("owner").toString();
-
-    // A string or an array of them, because one level is the common case and writing it as a
-    // one-element array would be noise.
-    const QJsonValue access = object.value("access");
-    if (access.isString()) {
-        resource.access << access.toString();
-    } else if (access.isArray()) {
-        for (const QJsonArray array = access.toArray(); const auto &entry: array) {
-            if (!entry.isString())
-                return resource.name + ": access entries have to be strings";
-            resource.access << entry.toString();
-        }
-    } else if (!access.isUndefined() && !access.isNull()) {
-        return resource.name + ": access has to be a string or an array of strings";
-    }
-    return {};
-}
-
-// One file. The version is refused rather than defaulted: a file that does not say which schema it
-// is written against is not one to guess at and apply to somebody's installation.
+// One file: its shape, and nothing about what its entries mean. `error` non-empty means the rest is
+// meaningless.
 QString readDeclaration(const QJsonDocument &document, Declaration &declaration) {
     if (!document.isObject())
         return "declaration is not a JSON object";
@@ -168,29 +139,16 @@ QString readDeclaration(const QJsonDocument &document, Declaration &declaration)
 
         const QJsonObject kinds = sectionValue.toObject();
         for (auto it = kinds.constBegin(); it != kinds.constEnd(); ++it) {
-            if (!kResourceKinds.contains(it.key()))
-                return section + ": unknown resource kind \"" + it.key() + "\"";
             if (!it.value().isArray())
-                return it.key() + " has to be an array";
+                return section + ": " + it.key() + " has to be an array";
 
             for (const QJsonArray entries = it.value().toArray(); const auto &entry: entries) {
-                DeclaredResource resource;
-                if (const auto error = readResource(it.key(), entry, resource); !error.isEmpty())
-                    return section + ": " + error;
-
-                if (section == QLatin1String("creates")) {
-                    // Not wrong so much as meaningless, and ignoring it would leave somebody
-                    // believing they had narrowed their own access to something they own outright.
-                    if (!resource.access.isEmpty())
-                        return "creates: " + resource.name + " names an access level; owning it is the access";
-                    declaration.creates << resource;
-                } else {
-                    // Which levels exist is the server's table, not this one's - but an entry that
-                    // names none cannot mean anything on any table.
-                    if (resource.access.isEmpty())
-                        return "uses: " + resource.name + " names no access";
-                    declaration.uses << resource;
-                }
+                if (!entry.isObject())
+                    return section + ": " + it.key() + " entry is not an object";
+                DeclaredResource resource{it.key(), entry.toObject().value("name").toString(), entry.toObject()};
+                if (resource.name.isEmpty())
+                    return section + ": " + it.key() + " entry has no name";
+                (section == QLatin1String("creates") ? declaration.creates : declaration.uses) << resource;
             }
         }
     }
@@ -198,7 +156,7 @@ QString readDeclaration(const QJsonDocument &document, Declaration &declaration)
 }
 
 // The document as the sidecar object holds it. Sorted by kind and then name so that the same files
-// produce the same bytes however they were listed.
+// produce the same bytes however they were listed; each entry exactly as its file wrote it.
 QJsonObject writeDeclaration(const Declaration &declaration) {
     const auto section = [](QList<DeclaredResource> resources) {
         std::sort(resources.begin(), resources.end(), [](const DeclaredResource &a, const DeclaredResource &b) {
@@ -206,13 +164,8 @@ QJsonObject writeDeclaration(const Declaration &declaration) {
         });
         QJsonObject out;
         for (const auto &resource: resources) {
-            QJsonObject entry{{"name", resource.name}};
-            if (!resource.owner.isEmpty())
-                entry["owner"] = resource.owner;
-            if (!resource.access.isEmpty())
-                entry["access"] = toJsonArray(resource.access);
             QJsonArray kind = out.value(resource.kind).toArray();
-            kind.append(entry);
+            kind.append(resource.entry);
             out[resource.kind] = kind;
         }
         return out;
@@ -641,6 +594,37 @@ QVariantMap EapClient::mergeDeclaration(const QList<QUrl> &sources, const QStrin
                        {"fileNames", fileNames},
                        {"creates", static_cast<int>(merged.creates.size())},
                        {"uses", static_cast<int>(merged.uses.size())}};
+}
+
+void EapClient::planInfrastructure(const QString &applicationId, const QString &document) {
+    QJsonParseError parse{};
+    const QJsonDocument parsed = QJsonDocument::fromJson(document.toUtf8(), &parse);
+    if (parse.error != QJsonParseError::NoError || !parsed.isObject()) {
+        emit infrastructurePlanFailed("the declaration is not JSON: " + parse.errorString());
+        return;
+    }
+
+    QJsonObject body;
+    body["applicationId"] = applicationId;
+    body["declaration"] = parsed.object();
+
+    m_base->post("eap", "plan-infrastructure", body, true,
+         [this, applicationId](const QJsonObject &response) {
+             const auto ernList = [&response](const QString &name) {
+                 QStringList erns;
+                 for (const QJsonArray array = response.value(name).toArray(); const auto &value: array)
+                     erns << (value.isObject() ? value.toObject().value("ern").toString() : value.toString());
+                 return erns;
+             };
+             emit infrastructurePlanned(applicationId, QVariantMap{
+                     {"created", ernList("created")}, {"adopted", ernList("adopted")},
+                     {"updated", ernList("updated")}, {"deleted", ernList("deleted")},
+                     {"kept", ernList("kept")}, {"granted", ernList("granted")},
+                     {"revoked", ernList("revoked")}});
+         },
+         [this](const QString &message) {
+             emit infrastructurePlanFailed(message);
+         });
 }
 
 void EapClient::applyInfrastructure(const QString &applicationId) {
