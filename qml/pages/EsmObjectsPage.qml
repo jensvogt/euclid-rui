@@ -279,6 +279,22 @@ Item {
                 ? "Purging " + objects + " object(s) in the background. The bucket empties over the next few refreshes."
                 : "Purged " + objects + " object(s)."
         }
+        // The listing carries each object's lifecycle state, so the row's badge is only right
+        // again once it has been re-read - the server is the one that knows whether the archive
+        // actually took the bytes.
+        function onObjectLifecycleChanged(objectErn, lifecycleState, restoredUntil) {
+            if (!root.visible) return
+            root.actionNote = lifecycleState === "ARCHIVED"
+                    ? "Archived. The object is listed and sized as before; its bytes are in the archive until it is restored."
+                    : "Restored" + (restoredUntil.length > 0 ? ", online until " + DateFormat.format(restoredUntil) : "")
+                      + ". It is archived again if it goes unused for that long."
+            root.refresh()
+        }
+        function onObjectLifecycleFailed(message) {
+            if (!root.visible) return
+            root.error = message
+        }
+
         function onObjectsTouched(bucketErn, prefix, async, objects) {
             // Only while this page is on screen: the bucket list can start a touch too, and its
             // note belongs there rather than waiting here to be found on the next visit.
@@ -1211,6 +1227,17 @@ Item {
                         onTouchObject: (object) => {
                             root.actionNote = ""
                             esmClient.touchObjects(object.bucketErn, object.key, false)
+                        }
+                        // No confirmation on either: archiving is undone by restoring, and the
+                        // object itself - its key, size, attributes and history - is untouched in
+                        // both directions. What changes is whether the bytes are online.
+                        onArchiveObject: (object) => {
+                            root.actionNote = ""
+                            esmClient.setObjectArchived(object.ern, true)
+                        }
+                        onRestoreObject: (object) => {
+                            root.actionNote = ""
+                            esmClient.setObjectArchived(object.ern, false)
                         }
                     }
 

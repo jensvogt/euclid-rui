@@ -46,6 +46,10 @@ Item {
     signal copyObject(var object)
     signal moveObject(var object)
     signal touchObject(var object)
+    // Out of the online store and back. Archiving is what an operator does to something they know
+    // is not wanted online; a lifecycle rule does the same thing on a schedule.
+    signal archiveObject(var object)
+    signal restoreObject(var object)
 
     implicitHeight: layout.implicitHeight
 
@@ -290,6 +294,11 @@ Item {
                     // A directory marker object can be deleted like any other; a folder that exists
                     // only because some key contains a "/" has no object of its own to delete.
                     readonly property bool hasObject: !!rowItem.modelData.object
+                    // Out of the online store - see Entity::ESM::LifecycleState. A listing from a
+                    // server that does not send the field reads as STANDARD, which is what every
+                    // object stored before lifecycle states existed is.
+                    readonly property bool archived: rowItem.hasObject
+                                                     && String(rowItem.modelData.object.lifecycleState) === "ARCHIVED"
 
                     MouseArea {
                         id: rowMouse
@@ -329,9 +338,29 @@ Item {
                         }
                         Text {
                             text: rowItem.modelData.name + (rowItem.isDirectory ? "/" : "")
-                            color: "#e5e7eb"
+                            color: rowItem.archived ? "#9aa1ac" : "#e5e7eb"
                             font.pixelSize: 13
                             anchors.verticalCenter: parent.verticalCenter
+                        }
+                        // Only when it is not the ordinary state: a column reading "standard" on
+                        // every row says nothing, while the one archived object among a hundred is
+                        // the thing somebody is looking for. Getting it back is a restore, which
+                        // takes time - so this is worth seeing before clicking, not after.
+                        Rectangle {
+                            visible: rowItem.archived
+                            width: archivedLabel.implicitWidth + 12
+                            height: 16
+                            radius: 8
+                            color: "#3a2f1c"
+                            anchors.verticalCenter: parent.verticalCenter
+
+                            Text {
+                                id: archivedLabel
+                                anchors.centerIn: parent
+                                text: "archived"
+                                color: "#ffb545"
+                                font.pixelSize: 10
+                            }
                         }
                     }
 
@@ -345,7 +374,10 @@ Item {
                             text: rowItem.isDirectory
                                   ? (rowItem.modelData.fileCount > 0
                                      ? rowItem.modelData.fileCount + " file(s) · " + SizeFormat.format(rowItem.modelData.totalSize)
-                                     : (rowItem.modelData.childCount === 0 ? "empty" : ""))
+                                     // "empty" only when the contents are actually known to be
+                                     // empty. In lazy mode a folder's keys have not been read yet,
+                                     // and a folder full of objects was calling itself empty.
+                                     : (!root.lazy && rowItem.modelData.childCount === 0 ? "empty" : ""))
                                   : SizeFormat.format(rowItem.modelData.object.size)
                             color: "#6b7280"
                             font.pixelSize: 11
@@ -531,6 +563,13 @@ Item {
 
         property var currentObject: null
 
+        // A real object rather than a folder: a directory marker's key ends in "/" and has no
+        // bytes behind it.
+        readonly property bool isObject: !!rowMenu.currentObject
+                                         && !String(rowMenu.currentObject.key).endsWith("/")
+        readonly property bool isArchived: rowMenu.isObject
+                                           && String(rowMenu.currentObject.lifecycleState) === "ARCHIVED"
+
         MenuItem {
             text: "Rename…"
             onTriggered: root.renameObject(rowMenu.currentObject)
@@ -550,6 +589,24 @@ Item {
         MenuItem {
             text: "Touch"
             onTriggered: root.touchObject(rowMenu.currentObject)
+        }
+        // Two entries rather than one that changes with the row, as the queue and bucket lists do:
+        // each is greyed out when the object is already in that state, which says which state it
+        // is in before anything is clicked.
+        //
+        // A directory marker has nothing to archive - there are no bytes behind it - and the
+        // server refuses one, so neither is offered for a folder row.
+        MenuItem {
+            text: "Archive"
+            enabled: rowMenu.isObject && !rowMenu.isArchived
+            onTriggered: root.archiveObject(rowMenu.currentObject)
+        }
+        MenuItem {
+            // No ellipsis: the grace period is the one the covering lifecycle rule states, or the
+            // installation's default where no rule covers the key, so there is nothing to ask.
+            text: "Restore"
+            enabled: rowMenu.isArchived
+            onTriggered: root.restoreObject(rowMenu.currentObject)
         }
         MenuItem {
             text: "Delete"

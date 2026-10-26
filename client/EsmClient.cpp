@@ -118,6 +118,102 @@ void EsmClient::purgeBucket(const QString &bucketErn, const bool async, const bo
          });
 }
 
+namespace {
+// One "rules" entry, in both directions. The server replaces a bucket's rules wholesale, so a
+// client that edits one of them sends all of them back - which is why these two live together.
+QVariantMap lifecycleRuleToMap(const QJsonObject &rule) {
+    QVariantMap entry;
+    entry["id"] = rule.value("id").toString();
+    // Empty means the whole bucket. Where several rules match a key the longest prefix wins, so a
+    // general rule and a stricter one carved out of it for a folder can sit side by side.
+    entry["prefix"] = rule.value("prefix").toString();
+    entry["archiveAfterDays"] = rule.value("archiveAfterDays").toInteger();
+    entry["restoreDays"] = rule.value("restoreDays").toInteger();
+    // Absent reads as enabled, the same way the server reads it.
+    entry["enabled"] = !rule.contains("enabled") || rule.value("enabled").toBool();
+    return entry;
+}
+
+QJsonArray lifecycleRulesToJson(const QVariantList &rules) {
+    QJsonArray out;
+    for (const auto &value: rules) {
+        const QVariantMap rule = value.toMap();
+        QJsonObject entry;
+        entry["id"] = rule.value("id").toString();
+        entry["prefix"] = rule.value("prefix").toString();
+        entry["archiveAfterDays"] = static_cast<qint64>(rule.value("archiveAfterDays").toLongLong());
+        entry["restoreDays"] = static_cast<qint64>(rule.value("restoreDays").toLongLong());
+        entry["enabled"] = rule.value("enabled", true).toBool();
+        out.append(entry);
+    }
+    return out;
+}
+
+QVariantList lifecycleRulesFromResponse(const QJsonObject &response) {
+    QVariantList rules;
+    for (const QJsonArray array = response.value("rules").toArray(); const auto &value: array) {
+        rules << lifecycleRuleToMap(value.toObject());
+    }
+    return rules;
+}
+}// namespace
+
+void EsmClient::setObjectArchived(const QString &objectErn, const bool archived, const int days) {
+    QJsonObject body;
+    // By ERN alone: the server takes either that or bucketErn plus key, and the ERN is what every
+    // listing already carries.
+    body["ern"] = objectErn;
+    // Only when overriding. Zero means "the grace period the covering rule states", which is the
+    // right answer whenever a rule covers the key - and the installation's default when none does.
+    if (!archived && days > 0) body["days"] = days;
+
+    m_base->post("esm", archived ? "archive-object" : "restore-object", body, true,
+         [this, objectErn](const QJsonObject &response) {
+             // Both calls answer with the object's lifecycle as it now stands, which is also what
+             // makes them idempotent: asking for a state an object is already in is answered, not
+             // refused, and this reports that state either way.
+             emit objectLifecycleChanged(objectErn, response.value("lifecycleState").toString(),
+                                         response.value("restoredUntil").toString());
+         },
+         [this](const QString &message) {
+             emit objectLifecycleFailed(message);
+         });
+}
+
+void EsmClient::fetchBucketLifecycle(const QString &bucketErn) {
+    QJsonObject body;
+    body["ern"] = bucketErn;
+
+    m_base->post("esm", "get-bucket-lifecycle", body, true,
+         [this, bucketErn](const QJsonObject &response) {
+             emit bucketLifecycleLoaded(bucketErn, lifecycleRulesFromResponse(response));
+         },
+         [this, bucketErn](const QString &message) {
+             emit bucketLifecycleFailed(bucketErn, message);
+         });
+}
+
+void EsmClient::setBucketLifecycle(const QString &bucketErn, const QVariantList &rules) {
+    QJsonObject body;
+    body["ern"] = bucketErn;
+    body["rules"] = lifecycleRulesToJson(rules);
+
+    // "delete-bucket-lifecycle" rather than an empty list, because the two are different requests
+    // to the server even though they leave the same bucket behind: set with no rules is refused
+    // as a missing argument, which is the right answer to a caller that forgot them.
+    const bool clearing = rules.isEmpty();
+    m_base->post("esm", clearing ? "delete-bucket-lifecycle" : "set-bucket-lifecycle",
+         clearing ? QJsonObject{{"ern", bucketErn}} : body, true,
+         [this, bucketErn](const QJsonObject &response) {
+             // What the server stored, not what was sent: the rules come back normalised, and
+             // reading them back is what keeps the page honest about what is actually in force.
+             emit bucketLifecycleChanged(bucketErn, lifecycleRulesFromResponse(response));
+         },
+         [this, bucketErn](const QString &message) {
+             emit bucketLifecycleFailed(bucketErn, message);
+         });
+}
+
 void EsmClient::setBucketStopped(const QString &bucketErn, const bool stopped) {
     QJsonObject body;
     body["ern"] = bucketErn;
@@ -298,6 +394,9 @@ void EsmClient::fetchObjects(const QString &bucketErn, const QString &prefix, co
                  entry["bucketErn"] = object.value("bucketErn").toString();
                  entry["size"] = object.value("size").toInteger();
                  entry["status"] = object.value("status").toString();
+                 // "STANDARD" or "ARCHIVED" - see Entity::ESM::LifecycleState. Absent reads as
+                 // STANDARD, which is what every object stored before lifecycle states existed is.
+                 entry["lifecycleState"] = object.value("lifecycleState").toString(QStringLiteral("STANDARD"));
                  entry["contentType"] = object.value("contentType").toString();
                  entry["md5Sum"] = object.value("md5Sum").toString();
                  // {name: {type, value}} - user-defined attributes, typed server-side by
@@ -345,6 +444,9 @@ void EsmClient::fetchObjectLevel(const QString &bucketErn, const QString &level,
                  entry["bucketErn"] = object.value("bucketErn").toString();
                  entry["size"] = object.value("size").toInteger();
                  entry["status"] = object.value("status").toString();
+                 // "STANDARD" or "ARCHIVED" - see Entity::ESM::LifecycleState. Absent reads as
+                 // STANDARD, which is what every object stored before lifecycle states existed is.
+                 entry["lifecycleState"] = object.value("lifecycleState").toString(QStringLiteral("STANDARD"));
                  entry["contentType"] = object.value("contentType").toString();
                  entry["md5Sum"] = object.value("md5Sum").toString();
                  // {name: {type, value}} - user-defined attributes, typed server-side by
