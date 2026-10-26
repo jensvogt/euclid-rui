@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.45](https://github.com/jensvogt/euclid-rui/compare/1.1.44...v1.1.45) (2026-10-26)
+
+
+### Bug Fixes
+
+* ESM archive/restore ([38f9c09](https://github.com/jensvogt/euclid-rui/commit/38f9c09ac5457c0467e3e4a84292170f99dda8e3))
+
 ## [1.1.44](https://github.com/jensvogt/euclid-rui/compare/1.1.43...v1.1.44) (2026-10-25)
 
 
