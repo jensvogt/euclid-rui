@@ -54,6 +54,36 @@ public:
     // `async` hands the announcing to a background thread inside ESM and answers at once with the
     // count as it stood, for a selection large enough that doing it inline outlasts the request's
     // own timeout.
+    // Moves one object out of the online store, or brings it back: "archive-object" /
+    // "restore-object". What a lifecycle rule does on a schedule, done by hand.
+    //
+    // `days` is the grace period a restore buys, and 0 - the usual case - means the one the
+    // covering rule states, or euclid.modules.esm.restore-days where no rule covers the key.
+    // Ignored when archiving.
+    //
+    // Idempotent: an object already in the state asked for is answered as it is rather than
+    // refused. Refused for a directory marker, for an incomplete upload, and for anything in one
+    // of euclid's own internal buckets.
+    Q_INVOKABLE void setObjectArchived(const QString &objectErn, bool archived, int days = 0);
+
+    // A bucket's lifecycle rules: what gets archived, and when. Each rule is
+    // {id, prefix, archiveAfterDays, restoreDays, enabled} - see Entity::ESM::LifecycleRule.
+    //
+    // Not part of a bucket listing, so a page that shows them has to ask for them.
+    Q_INVOKABLE void fetchBucketLifecycle(const QString &bucketErn);
+
+    // Replaces the whole set, because that is what the server does with it: there is no "add one
+    // rule" action, and sending a subset would silently drop the rest. An empty list clears them,
+    // which goes out as "delete-bucket-lifecycle".
+    //
+    // Refused by the server for a rule without an id, for days outside 1 to 36500, for two rules
+    // sharing an id, and for any rule at all on one of euclid's own internal buckets - whose
+    // objects are read straight off the disk by modules that know nothing of an archive.
+    //
+    // Archiving is what rules decide; they never bring anything back. Objects already archived
+    // stay archived when the rules change or are removed - restoring one is restore-object's job.
+    Q_INVOKABLE void setBucketLifecycle(const QString &bucketErn, const QVariantList &rules);
+
     // Holds a bucket's events in EES, or lets the held ones go: "stop-bucket"/"start-bucket".
     //
     // Only the announcements wait. The objects are read and written exactly as before, which is
@@ -248,6 +278,13 @@ signals:
     // nothing. `name` comes back with it because the answer is about the bucket, not the ERN.
     void bucketPriorityChanged(const QString &bucketErn, const QString &name, const QString &priority);
     // `count` is how many events are held now (stopping) or how many were released (starting).
+    // The object's state as it now stands: "STANDARD" or "ARCHIVED". restoredUntil is when a
+    // restored object may be archived again, and is empty for one that is archived.
+    void objectLifecycleChanged(const QString &objectErn, const QString &lifecycleState, const QString &restoredUntil);
+    void objectLifecycleFailed(const QString &message);
+    void bucketLifecycleLoaded(const QString &bucketErn, const QVariantList &rules);
+    void bucketLifecycleChanged(const QString &bucketErn, const QVariantList &rules);
+    void bucketLifecycleFailed(const QString &bucketErn, const QString &message);
     void bucketStoppedChanged(const QString &bucketErn, bool stopped, int count);
     void bucketStoppedFailed(const QString &message);
     void bucketPriorityFailed(const QString &message);

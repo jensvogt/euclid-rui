@@ -14,6 +14,51 @@ Item {
     signal back()
     signal viewObjects(string bucketErn, string bucketName)
 
+    // What gets archived and when - see Entity::ESM::LifecycleRule. Not part of a bucket listing,
+    // so the page asks for them when it is pointed at a bucket.
+    property var lifecycleRules: []
+    property bool lifecycleLoading: false
+    property string lifecycleError: ""
+    property string lifecycleNote: ""
+
+    // Euclid's own buckets are read straight off the disk by the modules that use them, which know
+    // nothing of an archive - the server refuses rules on those, so they are not offered here.
+    readonly property bool lifecycleAllowed: !root.detail("internal", false)
+
+    function loadLifecycle() {
+        if (!root.loggedIn || root.bucketErn.length === 0 || !root.lifecycleAllowed)
+            return
+        root.lifecycleLoading = true
+        root.lifecycleError = ""
+        esmClient.fetchBucketLifecycle(root.bucketErn)
+    }
+
+    // The whole set goes back every time, because that is what the server stores: there is no
+    // "add one rule" action, and sending a subset would drop the rest.
+    function saveLifecycle(rules) {
+        root.lifecycleNote = ""
+        root.lifecycleError = ""
+        root.lifecycleLoading = true
+        esmClient.setBucketLifecycle(root.bucketErn, rules)
+    }
+
+    function removeLifecycleRule(id) {
+        root.saveLifecycle(root.lifecycleRules.filter(rule => rule.id !== id))
+    }
+
+    function toggleLifecycleRule(id, enabled) {
+        root.saveLifecycle(root.lifecycleRules.map(function (rule) {
+            return rule.id === id ? Object.assign({}, rule, { enabled: enabled }) : rule
+        }))
+    }
+
+    // An edit replaces the rule of that id; a new one is appended. Same path either way, so the
+    // dialog does not have to know which it is doing.
+    function applyLifecycleRule(rule) {
+        const rest = root.lifecycleRules.filter(existing => existing.id !== rule.id)
+        root.saveLifecycle(rest.concat([rule]))
+    }
+
     // Erns look like ern:esm:{region}:{accountId}:{namespace}:bucket:{name}
     function ernPart(index) {
         const parts = root.bucketErn.split(":")
@@ -80,7 +125,14 @@ Item {
         root.priorityNote = ""
         root.priorityError = ""
         root.purgeNote = ""
+        root.lifecycleRules = []
+        root.lifecycleError = ""
+        root.lifecycleNote = ""
+        root.loadLifecycle()
     }
+
+    onVisibleChanged: if (visible) root.loadLifecycle()
+    onLoggedInChanged: if (loggedIn && visible) root.loadLifecycle()
 
     Connections {
         target: esmClient
@@ -109,6 +161,32 @@ Item {
             encryptionDialog.saving = false
             encryptionDialog.errorText = message
         }
+        function onBucketLifecycleLoaded(bucketErn, rules) {
+            if (bucketErn !== root.bucketErn) return
+            root.lifecycleLoading = false
+            root.lifecycleRules = rules
+            root.lifecycleError = ""
+        }
+        function onBucketLifecycleChanged(bucketErn, rules) {
+            if (bucketErn !== root.bucketErn) return
+            root.lifecycleLoading = false
+            root.lifecycleRules = rules
+            root.lifecycleError = ""
+            lifecycleRuleDialog.saving = false
+            lifecycleRuleDialog.close()
+            root.lifecycleNote = rules.length === 0
+                    ? "Lifecycle rules removed. Objects already archived stay archived."
+                    : rules.length + " rule(s) in force. They decide what gets archived from here on; "
+                      + "nothing already archived is brought back."
+        }
+        function onBucketLifecycleFailed(bucketErn, message) {
+            if (bucketErn !== root.bucketErn) return
+            root.lifecycleLoading = false
+            lifecycleRuleDialog.saving = false
+            if (lifecycleRuleDialog.opened) lifecycleRuleDialog.errorText = message
+            else root.lifecycleError = message
+        }
+
         function onBucketPriorityChanged(bucketErn, name, priority) {
             if (bucketErn !== root.bucketErn) return
             root.setPriorityLocally(priority)
@@ -499,6 +577,452 @@ Item {
                                 }
                             }
                         }
+                    }
+                }
+            }
+
+            // What gets archived and when. Archiving moves an object out of the online store; the
+            // rules never bring anything back, which is restore-object's job - so a rule that is
+            // wrong costs a restore, not a loss.
+            Rectangle {
+                width: parent.width
+                height: lifecycleCol.implicitHeight + 40
+                radius: 14
+                color: "#20242e"
+                border.color: "#2c313c"
+                border.width: 1
+
+                Column {
+                    id: lifecycleCol
+                    anchors.top: parent.top
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.margins: 20
+                    spacing: 14
+
+                    Item {
+                        width: parent.width
+                        height: lifecycleHeader.implicitHeight
+
+                        Text {
+                            id: lifecycleHeader
+                            text: "Lifecycle"
+                            color: "white"
+                            font.pixelSize: 15
+                            font.bold: true
+                        }
+
+                        Row {
+                            anchors.right: parent.right
+                            anchors.verticalCenter: lifecycleHeader.verticalCenter
+                            spacing: 10
+
+                            BusyIndicator {
+                                running: root.lifecycleLoading
+                                visible: root.lifecycleLoading
+                                width: 18; height: 18
+                                anchors.verticalCenter: parent.verticalCenter
+                            }
+
+                            Button {
+                                text: "Remove all"
+                                flat: true
+                                visible: root.lifecycleRules.length > 0
+                                Material.theme: Material.Dark
+                                Material.accent: "#ff6b6b"
+                                enabled: !root.lifecycleLoading
+                                onClicked: root.saveLifecycle([])
+                            }
+
+                            Button {
+                                text: "+ Add Rule"
+                                highlighted: true
+                                Material.theme: Material.Dark
+                                Material.accent: "#4f8cff"
+                                enabled: root.lifecycleAllowed && !root.lifecycleLoading
+                                onClicked: lifecycleRuleDialog.openForCreate()
+                            }
+                        }
+                    }
+
+                    Text {
+                        width: parent.width
+                        wrapMode: Text.WordWrap
+                        color: "#6b7280"
+                        font.pixelSize: 11
+                        text: "An object is archived once it has gone unused for the given number of days. Where "
+                              + "several rules match a key the longest prefix wins, so a rule for the whole bucket "
+                              + "and a stricter one for a folder can sit side by side."
+                    }
+
+                    Text {
+                        visible: !root.lifecycleAllowed
+                        width: parent.width
+                        wrapMode: Text.WordWrap
+                        text: "This is one of euclid's own buckets. Its objects are read straight off the disk by the "
+                              + "modules that use them, which know nothing of an archive, so it cannot have rules."
+                        color: "#6b7280"
+                        font.pixelSize: 12
+                    }
+
+                    Text {
+                        visible: root.lifecycleError.length > 0
+                        width: parent.width
+                        wrapMode: Text.WordWrap
+                        text: root.lifecycleError
+                        color: "#ff6b6b"
+                        font.pixelSize: 12
+                    }
+
+                    Text {
+                        visible: root.lifecycleAllowed && root.lifecycleRules.length === 0
+                                 && root.lifecycleError.length === 0 && !root.lifecycleLoading
+                        text: "No rules. Nothing in this bucket is archived."
+                        color: "#6b7280"
+                        font.pixelSize: 12
+                    }
+
+                    Repeater {
+                        model: root.lifecycleRules
+
+                        delegate: Rectangle {
+                            id: ruleRow
+                            required property var modelData
+
+                            width: lifecycleCol.width
+                            height: ruleCol.implicitHeight + 20
+                            radius: 10
+                            color: "#1b1e25"
+                            border.color: "#2c313c"
+                            border.width: 1
+                            opacity: ruleRow.modelData.enabled ? 1 : 0.55
+
+                            Column {
+                                id: ruleCol
+                                anchors.left: parent.left
+                                anchors.right: parent.right
+                                anchors.verticalCenter: parent.verticalCenter
+                                anchors.margins: 12
+                                spacing: 3
+
+                                Row {
+                                    spacing: 8
+                                    Text {
+                                        text: ruleRow.modelData.id
+                                        color: "#e5e7eb"
+                                        font.pixelSize: 13
+                                        font.bold: true
+                                    }
+                                    Text {
+                                        visible: !ruleRow.modelData.enabled
+                                        text: "disabled"
+                                        color: "#ffb545"
+                                        font.pixelSize: 11
+                                        anchors.verticalCenter: parent.verticalCenter
+                                    }
+                                }
+
+                                Text {
+                                    text: (String(ruleRow.modelData.prefix).length > 0
+                                           ? "Keys under \"" + ruleRow.modelData.prefix + "\""
+                                           : "Every key in the bucket")
+                                          + "  ·  archive after " + ruleRow.modelData.archiveAfterDays + " day(s) unused"
+                                          + "  ·  a restored object stays online " + ruleRow.modelData.restoreDays + " day(s)"
+                                    color: "#9aa1ac"
+                                    font.pixelSize: 11
+                                    width: ruleCol.width - 200
+                                    elide: Text.ElideRight
+                                }
+                            }
+
+                            Row {
+                                anchors.right: parent.right
+                                anchors.rightMargin: 12
+                                anchors.verticalCenter: parent.verticalCenter
+                                spacing: 6
+
+                                Button {
+                                    text: ruleRow.modelData.enabled ? "Disable" : "Enable"
+                                    flat: true
+                                    Material.theme: Material.Dark
+                                    enabled: !root.lifecycleLoading
+                                    onClicked: root.toggleLifecycleRule(ruleRow.modelData.id, !ruleRow.modelData.enabled)
+                                }
+                                Button {
+                                    text: "Edit…"
+                                    flat: true
+                                    Material.theme: Material.Dark
+                                    Material.accent: "#4f8cff"
+                                    enabled: !root.lifecycleLoading
+                                    onClicked: lifecycleRuleDialog.openForEdit(ruleRow.modelData)
+                                }
+                                Button {
+                                    text: "Remove"
+                                    flat: true
+                                    Material.theme: Material.Dark
+                                    Material.accent: "#ff6b6b"
+                                    enabled: !root.lifecycleLoading
+                                    onClicked: root.removeLifecycleRule(ruleRow.modelData.id)
+                                }
+                            }
+                        }
+                    }
+
+                    Text {
+                        visible: root.lifecycleNote.length > 0
+                        width: parent.width
+                        wrapMode: Text.WordWrap
+                        text: root.lifecycleNote
+                        color: "#4cd97b"
+                        font.pixelSize: 12
+                    }
+                }
+            }
+        }
+    }
+
+    // One dialog for adding and for editing: the rule is replaced by id either way, so the only
+    // difference is whether the id can still be typed.
+    Dialog {
+        id: lifecycleRuleDialog
+        modal: true
+        anchors.centerIn: parent
+        width: 460
+        padding: 28
+        topPadding: 24
+        bottomPadding: 24
+        standardButtons: Dialog.NoButton
+
+        property bool editing: false
+        property bool saving: false
+        property string errorText: ""
+
+        // The bounds the server holds rules to, checked here so a number is refused while it is
+        // being typed rather than after a round trip.
+        readonly property int maxDays: 36500
+        readonly property int archiveDays: parseInt(archiveField.text.trim(), 10)
+        readonly property int restoreDays: parseInt(restoreField.text.trim(), 10)
+
+        readonly property string problem: {
+            if (idField.text.trim().length === 0) return "A rule needs an id."
+            if (!lifecycleRuleDialog.editing
+                && root.lifecycleRules.some(rule => rule.id === idField.text.trim()))
+                return "This bucket already has a rule called \"" + idField.text.trim() + "\"."
+            if (isNaN(lifecycleRuleDialog.archiveDays) || lifecycleRuleDialog.archiveDays < 1
+                || lifecycleRuleDialog.archiveDays > lifecycleRuleDialog.maxDays)
+                return "Archive after: a whole number of days from 1 to " + lifecycleRuleDialog.maxDays + "."
+            if (isNaN(lifecycleRuleDialog.restoreDays) || lifecycleRuleDialog.restoreDays < 1
+                || lifecycleRuleDialog.restoreDays > lifecycleRuleDialog.maxDays)
+                return "Restored for: a whole number of days from 1 to " + lifecycleRuleDialog.maxDays + "."
+            return ""
+        }
+
+        function openForCreate() {
+            lifecycleRuleDialog.editing = false
+            lifecycleRuleDialog.saving = false
+            lifecycleRuleDialog.errorText = ""
+            idField.text = ""
+            prefixField.text = ""
+            archiveField.text = "90"
+            restoreField.text = "7"
+            enabledSwitch.checked = true
+            lifecycleRuleDialog.open()
+            idField.forceActiveFocus()
+        }
+
+        function openForEdit(rule) {
+            lifecycleRuleDialog.editing = true
+            lifecycleRuleDialog.saving = false
+            lifecycleRuleDialog.errorText = ""
+            idField.text = rule.id
+            prefixField.text = rule.prefix
+            archiveField.text = String(rule.archiveAfterDays)
+            restoreField.text = String(rule.restoreDays)
+            enabledSwitch.checked = rule.enabled !== false
+            lifecycleRuleDialog.open()
+        }
+
+        function submit() {
+            if (lifecycleRuleDialog.problem.length > 0 || lifecycleRuleDialog.saving)
+                return
+            lifecycleRuleDialog.saving = true
+            lifecycleRuleDialog.errorText = ""
+            root.applyLifecycleRule({
+                id: idField.text.trim(),
+                prefix: prefixField.text.trim(),
+                archiveAfterDays: lifecycleRuleDialog.archiveDays,
+                restoreDays: lifecycleRuleDialog.restoreDays,
+                enabled: enabledSwitch.checked
+            })
+        }
+
+        background: Rectangle {
+            radius: 16
+            color: "#1b1e25"
+            border.color: "#2c313c"
+            border.width: 1
+        }
+
+        contentItem: Column {
+            width: lifecycleRuleDialog.availableWidth
+            spacing: 16
+
+            Column {
+                width: parent.width
+                spacing: 4
+                Text {
+                    text: lifecycleRuleDialog.editing ? "Edit Lifecycle Rule" : "New Lifecycle Rule"
+                    color: "white"
+                    font.pixelSize: 18
+                    font.bold: true
+                }
+                Text {
+                    width: parent.width
+                    wrapMode: Text.WordWrap
+                    text: "On " + root.bucketName + ". Saving writes the whole set of rules back, which is how the "
+                          + "server stores them."
+                    color: "#9aa1ac"
+                    font.pixelSize: 12
+                }
+            }
+
+            Column {
+                width: parent.width
+                spacing: 6
+                Text { text: "Rule id"; color: "#9aa1ac"; font.pixelSize: 12 }
+                TextField {
+                    id: idField
+                    width: parent.width
+                    placeholderText: "e.g. archive-old-previews"
+                    // The id is what the rule is managed under, so it cannot move once it exists -
+                    // editing one under a new name would write a second rule beside it.
+                    enabled: !lifecycleRuleDialog.editing
+                    Material.accent: "#4f8cff"
+                    selectByMouse: true
+                }
+            }
+
+            Column {
+                width: parent.width
+                spacing: 6
+                Text { text: "Key prefix"; color: "#9aa1ac"; font.pixelSize: 12 }
+                TextField {
+                    id: prefixField
+                    width: parent.width
+                    placeholderText: "empty for the whole bucket, e.g. previews/"
+                    Material.accent: "#4f8cff"
+                    selectByMouse: true
+                }
+                Text {
+                    width: parent.width
+                    wrapMode: Text.WordWrap
+                    text: "Where several rules match a key, the one with the longest prefix wins."
+                    color: "#6b7280"
+                    font.pixelSize: 11
+                }
+            }
+
+            Row {
+                width: parent.width
+                spacing: 16
+
+                Column {
+                    width: (parent.width - 16) / 2
+                    spacing: 6
+                    Text { text: "Archive after (days unused)"; color: "#9aa1ac"; font.pixelSize: 12 }
+                    TextField {
+                        id: archiveField
+                        width: parent.width
+                        placeholderText: "90"
+                        inputMethodHints: Qt.ImhDigitsOnly
+                        validator: IntValidator { bottom: 1; top: lifecycleRuleDialog.maxDays }
+                        Material.accent: "#4f8cff"
+                        selectByMouse: true
+                    }
+                }
+
+                Column {
+                    width: (parent.width - 16) / 2
+                    spacing: 6
+                    Text { text: "Restored stays online (days)"; color: "#9aa1ac"; font.pixelSize: 12 }
+                    TextField {
+                        id: restoreField
+                        width: parent.width
+                        placeholderText: "7"
+                        inputMethodHints: Qt.ImhDigitsOnly
+                        validator: IntValidator { bottom: 1; top: lifecycleRuleDialog.maxDays }
+                        Material.accent: "#4f8cff"
+                        selectByMouse: true
+                    }
+                }
+            }
+
+            Text {
+                width: parent.width
+                wrapMode: Text.WordWrap
+                text: "A restored object that goes unused for that long is archived again; one that is used "
+                      + "counts from its last use, like any other."
+                color: "#6b7280"
+                font.pixelSize: 11
+            }
+
+            Row {
+                spacing: 8
+                ToggleSwitch {
+                    id: enabledSwitch
+                    anchors.verticalCenter: parent.verticalCenter
+                }
+                Text {
+                    text: enabledSwitch.checked ? "In force" : "Kept, but not applied"
+                    color: enabledSwitch.checked ? "#4cd97b" : "#9aa1ac"
+                    font.pixelSize: 12
+                    anchors.verticalCenter: parent.verticalCenter
+                }
+            }
+
+            Text {
+                width: parent.width
+                wrapMode: Text.WordWrap
+                visible: lifecycleRuleDialog.errorText.length > 0
+                text: lifecycleRuleDialog.errorText
+                color: "#ff6b6b"
+                font.pixelSize: 12
+            }
+
+            Item {
+                width: parent.width
+                height: 40
+
+                Text {
+                    anchors.left: parent.left
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: parent.width - 190
+                    wrapMode: Text.WordWrap
+                    text: lifecycleRuleDialog.problem
+                    color: "#ffb545"
+                    font.pixelSize: 11
+                    visible: lifecycleRuleDialog.problem.length > 0
+                }
+
+                Row {
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: 8
+
+                    Button {
+                        text: "Cancel"
+                        flat: true
+                        Material.theme: Material.Dark
+                        enabled: !lifecycleRuleDialog.saving
+                        onClicked: lifecycleRuleDialog.close()
+                    }
+                    Button {
+                        text: lifecycleRuleDialog.saving ? "Saving…" : (lifecycleRuleDialog.editing ? "Save" : "Add")
+                        highlighted: true
+                        Material.theme: Material.Dark
+                        Material.accent: "#4f8cff"
+                        enabled: !lifecycleRuleDialog.saving && lifecycleRuleDialog.problem.length === 0
+                        onClicked: lifecycleRuleDialog.submit()
                     }
                 }
             }
