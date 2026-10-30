@@ -50,10 +50,22 @@ public:
 
     // ── Items ────────────────────────────────────────────────────────────────
 
-    // Every item in the table, a page at a time, in no particular order - a scan is what to use
-    // when the partition is not known. "scan" answers with a total; "query" does not, so a query
-    // reports -1 and the page shows a count rather than a page count.
-    Q_INVOKABLE void scanItems(const QString &table, int pageIndex = 0, int pageSize = 25);
+    // Every item in the table, a page at a time - a scan is what to use when the partition is not
+    // known. "scan" answers with a total; "query" does not, so a query reports -1 and the page
+    // shows a count rather than a page count.
+    //
+    // `sortColumn` is "pk", "sk" or "modified"; empty - the default - is key order. Those are the
+    // columns stored beside the item rather than inside its attributes, and the key is always
+    // appended to whichever is chosen: only the key is unique, and paging an order full of ties
+    // sees some items twice and others never. Sorting by an attribute is deliberately not offered.
+    //
+    // `narrow` optionally carries {modifiedFrom, modifiedTo, attributeName, attributeOperator,
+    // attributeValue, attributeUpper} - the question a query cannot answer, since a query is
+    // bounded by one partition and "what changed since Friday" names none. The operators are the
+    // ones a query uses for its sort key: eq, lt, le, gt, ge, between, begins-with.
+    Q_INVOKABLE void scanItems(const QString &table, int pageIndex = 0, int pageSize = 25,
+                               const QString &sortColumn = QString(), const QString &sortDirection = QString(),
+                               const QVariantMap &narrow = QVariantMap());
 
     // One partition's items, in sort-key order. sortOperator is "" (the whole partition), or one of
     // eq, lt, le, gt, ge, between, begins-with; "between" is the one that reads sortUpper, and
