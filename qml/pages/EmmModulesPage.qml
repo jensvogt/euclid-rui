@@ -29,6 +29,71 @@ Item {
         return root.allModules.filter(m => String(m.name).toLowerCase().startsWith(wanted))
     }
     readonly property int totalCount: root.modules.length
+
+    // Cut from the list already in hand: "list-modules" answers with the whole registry in one
+    // response, so turning a page is not a re-query and the pager counts what arrived rather than
+    // a total the server reported.
+    property int pageIndex: 0
+    property int pageSize: 10
+    readonly property int pageCount: Math.max(1, Math.ceil(root.totalCount / root.pageSize))
+    // Clamped rather than left where it was: filtering, or a refresh on a registry that lost a
+    // module, can shorten the list under a page that is now past its end - and an empty slice
+    // reads as "no modules" rather than as a page that is no longer there.
+    readonly property int clampedPageIndex: Math.min(Math.max(0, root.pageIndex), root.pageCount - 1)
+    readonly property var pagedModules: root.modules.slice(
+        root.clampedPageIndex * root.pageSize,
+        root.clampedPageIndex * root.pageSize + root.pageSize)
+
+    // Instances up across the installation, which is the number somebody opening this page is
+    // here to check: the table says it per module, and nothing said it for the whole.
+    //
+    // Counted over everything that came back rather than over the filtered rows - typing a prefix
+    // into the search box narrows what is being read, not what is running, and a card that fell to
+    // zero because of a filter would be reporting an outage that is not happening.
+    readonly property int runningInstanceCount: {
+        let up = 0
+        for (let i = 0; i < root.allModules.length; ++i)
+            up += Number(root.allModules[i].runningInstances) || 0
+        return up
+    }
+    readonly property int runningModuleCount: {
+        let up = 0
+        for (let i = 0; i < root.allModules.length; ++i)
+            if (Number(root.allModules[i].runningInstances) > 0) ++up
+        return up
+    }
+    // Zero instances running is a real answer, and an alarming one, so it has to be tellable from
+    // not having asked yet - both would otherwise print "0".
+    property bool statsKnown: false
+
+    // Every archive EMM has written, across every scope. The server does not narrow them: it hands
+    // back the whole backup directory with each file tagged with the account and namespace it
+    // holds, and picking out the scope on screen is this page's job.
+    property var allBackups: []
+    property bool backupsKnown: false
+    property bool backupsEnabled: true
+
+    // The archives that would bring this namespace back. EMM writes one file per scope - one for
+    // the installation, one for each account's own records, one for each namespace - so the
+    // account's archive is a different file from this one and does not stand in for it. An
+    // incomplete archive is one being written or one whose write was killed: the zip is not there,
+    // so it is not something a restore can use and it is not counted as one.
+    function backupsInScope() {
+        const account = euclidClient.accountId
+        return root.allBackups.filter(b => String(b.accountId) === String(account)
+                                           && String(b["namespace"]) === String(root.namespaceName)
+                                           && b.complete)
+    }
+    readonly property int namespaceBackupCount: root.backupsInScope().length
+    // Lexicographic because these are ISO-8601 in UTC, where that is chronological order.
+    readonly property string newestBackupAt: {
+        const mine = root.backupsInScope()
+        let newest = ""
+        for (let i = 0; i < mine.length; ++i)
+            if (String(mine[i].startedAt) > newest) newest = String(mine[i].startedAt)
+        return newest
+    }
+
     property bool loading: false
     property string error: ""
     property string lastUpdatedText: "—"
@@ -104,10 +169,14 @@ Item {
         root.error = ""
         // "list-modules" returns every module at once - there is no paging and no prefix filter.
         emmClient.fetchModules()
+        emmClient.fetchBackups()
     }
 
     onVisibleChanged: if (visible) refresh()
     onLoggedInChanged: if (loggedIn && visible) refresh()
+    // The backup count is a count for one namespace, so switching namespace asks again rather than
+    // leaving the previous one's number on screen under the new name.
+    onNamespaceNameChanged: if (visible && loggedIn) refresh()
 
     Timer {
         interval: appSettings.autoRefreshSeconds * 1000
@@ -136,7 +205,21 @@ Item {
             // Name order, since the registry comes back in whatever order it was written in.
             root.allModules = list.filter(m => m.core)
                                   .sort((a, b) => String(a.name).localeCompare(String(b.name)))
+            root.statsKnown = true
             root.lastUpdatedText = Qt.formatDateTime(new Date(), "hh:mm:ss")
+        }
+        function onBackupsLoaded(list, settings) {
+            if (!root.visible) return
+            root.allBackups = list
+            root.backupsEnabled = settings.enabled
+            root.backupsKnown = true
+        }
+        function onBackupsFailed(message) {
+            if (!root.visible) return
+            // Not put in root.error: that one is the module table's, and a backup directory this
+            // EMM cannot read says nothing about the registry the table is showing.
+            root.allBackups = []
+            root.backupsKnown = false
         }
         function onModulesFailed(message) {
             if (!root.visible) return
@@ -460,6 +543,40 @@ Item {
                           + "they are controlled from the ETS and EAP pages."
             }
 
+            // The stat row every other module dashboard opens with. EMM's landing page is this
+            // registry rather than a ModulePage, so it had none - and the one number worth reading
+            // before the table is how much of the installation is actually up.
+            Flow {
+                width: parent.width
+                spacing: 18
+                visible: root.isAdmin
+
+                StatCard {
+                    title: "Running Instances"
+                    value: root.statsKnown ? String(root.runningInstanceCount) : "—"
+                    trend: !root.statsKnown
+                           ? "live"
+                           : (root.allModules.length === 0
+                              ? "no modules registered"
+                              : root.runningModuleCount + " of " + root.allModules.length + " modules up")
+                    trendUp: root.runningInstanceCount > 0
+                    accent: "#4cd97b"
+                }
+
+                StatCard {
+                    title: "Backups"
+                    value: root.backupsKnown ? String(root.namespaceBackupCount) : "—"
+                    trend: {
+                        if (!root.backupsKnown) return "live"
+                        if (!root.backupsEnabled) return "backups are switched off"
+                        if (root.namespaceBackupCount === 0) return "none for this namespace"
+                        return "newest " + DateFormat.format(root.newestBackupAt)
+                    }
+                    trendUp: root.backupsEnabled && root.namespaceBackupCount > 0
+                    accent: "#c56bff"
+                }
+            }
+
             // Shown instead of the table rather than beside it: an empty table under a permission
             // message reads like there are no modules.
             Rectangle {
@@ -486,20 +603,33 @@ Item {
                 width: parent.width
                 visible: root.isAdmin
                 columns: root.columns
-                // One page: list-modules returns everything at once, so there is no size to pick.
-                pageSizeSelectable: false
-                rows: root.modules
+                rows: root.pagedModules
+                // The whole filtered registry, which is what the pager counts in: the rows above
+                // are one page of it, and both come from the same answer.
                 totalCount: root.totalCount
-                // One page: "list-modules" returns every module at once.
-                pageSize: root.totalCount > 0 ? root.totalCount : 1
-                pageIndex: 0
+                pageSize: root.pageSize
+                pageIndex: root.clampedPageIndex
                 loading: root.loading
                 error: root.error
                 lastUpdatedText: root.lastUpdatedText
                 searchPlaceholder: "Filter by module name..."
                 emptyText: root.prefix.length > 0 ? "No module matches that name." : "No modules registered."
-                onSearchChanged: (text) => root.prefix = text
+                // Back to the first page: page three of the unfiltered registry is not page three
+                // of what the filter leaves, and staying there lands somewhere arbitrary in it.
+                onSearchChanged: (text) => {
+                    root.prefix = text
+                    root.pageIndex = 0
+                }
                 onRefreshRequested: root.refresh()
+
+                // No re-query for either: the page is cut from the list already in hand.
+                onPageChanged: (index) => root.pageIndex = index
+                // A different size starts at the first page - page four of fifty-row pages is not
+                // page four of ten-row ones.
+                onPageSizeRequested: (size) => {
+                    root.pageSize = size
+                    root.pageIndex = 0
+                }
 
                 // What EMM will accept for the row decides what is offered: start and stop only
                 // for a core euclid module, restart only for one that is not stopped. Saying so as

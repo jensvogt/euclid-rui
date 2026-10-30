@@ -31,6 +31,15 @@ public:
     // shape of the installation rather than the detail of one module.
     Q_INVOKABLE void fetchModules();
 
+    // The backup archives EMM has written, as "list-backups" reports them, with the backup
+    // settings that same answer carries.
+    //
+    // Not scoped by the server: it lists every archive in the backup directory, each tagged with
+    // the account and namespace whose records it holds (both empty for the installation-wide one).
+    // Narrowing to a scope is the caller's to do. The directory is the EMM process's own, so on an
+    // installation whose manager runs on several hosts this is the backups on EMM's host.
+    Q_INVOKABLE void fetchBackups();
+
     // Module control. None of these act directly: each records what the module should look like,
     // and euclid-mgr's reconciler is what makes it so on its next pass - so the answer is always
     // "asked for", never "done".
@@ -112,6 +121,14 @@ signals:
     // next reconcile.
     void moduleActionDone(const QString &name, const QString &action);
     void moduleActionFailed(const QString &name, const QString &action, const QString &message);
+
+    // Each entry: {name, path, accountId, namespace, startedAt, modified, size, complete}.
+    // "complete" is false for an archive that is being written, or one whose write was killed -
+    // the payload is there and the zip is not, so it is not something a restore can use.
+    // `settings` is {directory, enabled, schedule, keep, full, encrypted}: without it, a count of
+    // zero cannot be told from backups never having been switched on.
+    void backupsLoaded(const QVariantList &backups, const QVariantMap &settings);
+    void backupsFailed(const QString &message);
 
     // Emitted as each module's data is written, so a five-module export has five steps.
     void exportProgress(const QString &moduleName, int completed, int total);
