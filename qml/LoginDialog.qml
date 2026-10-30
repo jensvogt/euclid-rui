@@ -14,9 +14,12 @@ Dialog {
     bottomPadding: 24
     standardButtons: Dialog.NoButton
 
-    property int step: 0 // 0 = credentials, 1 = account picker, 2 = namespace picker
+    property int step: 0 // 0 = credentials, 1 = account and namespace picker
     property string selectedNamespace: ""
     property string autoNamespace: ""
+    // The namespace to land on when the list is refilled for another account: the one that was
+    // picked before the switch, so moving between accounts that share a "dev" keeps "dev".
+    property string preferredNamespace: ""
 
     // The accounts this user may work in, as the server reports them after login: their home
     // account plus every account a grant of theirs names. Each entry is
@@ -32,9 +35,9 @@ Dialog {
         return (named ? account.name + " · " : "") + account.accountId + (account.home ? "   (home)" : "")
     })
 
-    // Asking somebody to choose from one option is not a choice, it is a click - so the step is
-    // shown only when there is something to decide. The account is still set either way, and the
-    // namespace step says which one it was.
+    // Asking somebody to choose from one option is not a choice, it is a click - so the account
+    // picker is shown only when there is something to decide. The account is still set either way,
+    // and the step says which one it was.
     readonly property bool accountChoice: root.accounts.length > 1
 
     // The account the session is in, named the way the picker names it. Falls back to the id the
@@ -125,6 +128,7 @@ Dialog {
             namespaceErrorText.text = ""
             root.accounts = []
             root.homeAccountId = ""
+            root.preferredNamespace = ""
             namespaceCombo.model = []
         }
         // Always re-read the gateway fields, including on the suppressed-reset path: they show
@@ -166,8 +170,8 @@ Dialog {
             Text {
                 width: parent.width
                 text: root.step === 0 ? "Enter your credentials to continue."
-                                      : (root.step === 1 ? "Choose the account to work in."
-                                                         : "Choose a namespace for this session.")
+                                      : (root.accountChoice ? "Choose the account and namespace for this session."
+                                                            : "Choose a namespace for this session.")
                 color: "#9aa1ac"
                 font.pixelSize: 12
                 wrapMode: Text.WordWrap
@@ -176,7 +180,7 @@ Dialog {
 
         Item {
             width: parent.width
-            height: Math.max(credentialsStep.implicitHeight, accountStep.implicitHeight, namespaceStep.implicitHeight)
+            height: Math.max(credentialsStep.implicitHeight, selectionStep.implicitHeight)
 
             Column {
                 id: credentialsStep
@@ -286,80 +290,14 @@ Dialog {
                 }
             }
 
+            // The account and the namespace on one page: a namespace belongs to an account, so the
+            // two are one decision, and changing the account below refills the namespaces in place
+            // rather than sending somebody back a step to see what the other account holds.
             Column {
-                id: accountStep
+                id: selectionStep
                 width: parent.width
                 spacing: 16
                 opacity: root.step === 1 ? 1 : 0
-                visible: opacity > 0
-                Behavior on opacity { NumberAnimation { duration: 150 } }
-
-                Rectangle {
-                    width: parent.width
-                    height: 44
-                    radius: 10
-                    color: "#20242e"
-                    border.color: "#2c313c"
-                    border.width: 1
-
-                    Row {
-                        anchors.left: parent.left
-                        anchors.leftMargin: 12
-                        anchors.verticalCenter: parent.verticalCenter
-                        spacing: 10
-
-                        Rectangle {
-                            width: 26
-                            height: 26
-                            radius: 13
-                            color: "#2c3648"
-                            Text { anchors.centerIn: parent; text: "✓"; color: "#4cd97b"; font.pixelSize: 12 }
-                        }
-                        Text {
-                            text: "Signed in as " + usernameField.text
-                            color: "#c4c9d1"
-                            font.pixelSize: 12
-                            anchors.verticalCenter: parent.verticalCenter
-                        }
-                    }
-                }
-
-                Column {
-                    width: parent.width
-                    spacing: 6
-                    Text { text: "Account"; color: "#9aa1ac"; font.pixelSize: 12 }
-                    ComboBox {
-                        id: accountCombo
-                        width: parent.width
-                        Material.accent: "#4f8cff"
-                        model: root.accountLabels
-                        enabled: count > 0
-                    }
-                    Text {
-                        width: parent.width
-                        text: "Your home account, and every account a role granted to you - or to a group you are "
-                              + "in - covers. Everything this session does happens in the one you pick."
-                        color: "#6b7280"
-                        font.pixelSize: 11
-                        wrapMode: Text.WordWrap
-                    }
-                }
-
-                Text {
-                    id: accountErrorText
-                    width: parent.width
-                    color: "#ff6b6b"
-                    font.pixelSize: 12
-                    wrapMode: Text.WordWrap
-                    visible: text.length > 0
-                }
-            }
-
-            Column {
-                id: namespaceStep
-                width: parent.width
-                spacing: 16
-                opacity: root.step === 2 ? 1 : 0
                 visible: opacity > 0
                 Behavior on opacity { NumberAnimation { duration: 150 } }
 
@@ -393,18 +331,65 @@ Dialog {
                                 color: "#c4c9d1"
                                 font.pixelSize: 12
                             }
-                            // Which account this session is about to work in. Said even when there
-                            // was nothing to choose - most people have one account and never see
-                            // the step before this, and "no choice was offered" and "the choice
-                            // went somewhere unexpected" look identical without it.
+                            // Which account this session is about to work in, when there is no picker
+                            // below to say so - most people have one account, and "no choice was
+                            // offered" and "the choice went somewhere unexpected" look identical
+                            // without it.
                             Text {
                                 text: "Account · " + root.activeAccountLabel
                                 color: "#6b7280"
                                 font.pixelSize: 11
-                                visible: root.activeAccountLabel.length > 0
+                                visible: !root.accountChoice && root.activeAccountLabel.length > 0
                             }
                         }
                     }
+                }
+
+                // Asking somebody to choose from one option is not a choice, so the picker is only
+                // shown when there is something to decide. The account is set either way.
+                Column {
+                    width: parent.width
+                    spacing: 6
+                    visible: root.accountChoice
+
+                    Text { text: "Account"; color: "#9aa1ac"; font.pixelSize: 12 }
+                    ComboBox {
+                        id: accountCombo
+                        width: parent.width
+                        Material.accent: "#4f8cff"
+                        model: root.accountLabels
+                        // Held while a namespace listing is in flight: the reply does not say which
+                        // account it was for, so a second switch before it lands could fill the
+                        // namespaces of one account in under the name of another.
+                        enabled: count > 0 && !euclidClient.busy
+
+                        // onActivated rather than onCurrentIndexChanged: only a choice somebody made
+                        // goes to the server, not the default the dialog sets itself.
+                        onActivated: (index) => {
+                            accountErrorText.text = ""
+                            namespaceErrorText.text = ""
+                            root.preferredNamespace = namespaceCombo.currentText
+                            namespaceCombo.model = []
+                            root.useAccount(root.accounts[index].accountId)
+                        }
+                    }
+                    Text {
+                        width: parent.width
+                        text: "Your home account, and every account a role granted to you - or to a group you are "
+                              + "in - covers. Everything this session does happens in the one you pick."
+                        color: "#6b7280"
+                        font.pixelSize: 11
+                        wrapMode: Text.WordWrap
+                    }
+                }
+
+                Text {
+                    id: accountErrorText
+                    width: parent.width
+                    color: "#ff6b6b"
+                    font.pixelSize: 12
+                    wrapMode: Text.WordWrap
+                    visible: text.length > 0
                 }
 
                 Column {
@@ -416,7 +401,7 @@ Dialog {
                         width: parent.width
                         Material.accent: "#4f8cff"
                         model: []
-                        enabled: count > 0
+                        enabled: count > 0 && !euclidClient.busy
                     }
                 }
 
@@ -443,10 +428,7 @@ Dialog {
                 anchors.left: parent.left
                 anchors.verticalCenter: parent.verticalCenter
                 Material.theme: Material.Dark
-                // Back from the namespaces lands on the accounts only when there was a choice to
-                // make there; otherwise that step was never shown and going "back" to it would be
-                // a dead end with one row in it.
-                onClicked: root.step = (root.step === 2 && root.accountChoice) ? 1 : 0
+                onClicked: root.step = 0
             }
 
             BusyIndicator {
@@ -470,17 +452,13 @@ Dialog {
                 enabled: !euclidClient.busy && (root.step === 0
                     ? usernameField.text.length > 0 && passwordField.text.length > 0
                       && hostField.text.trim().length > 0 && portField.acceptableInput
-                    : (root.step === 1 ? accountCombo.count > 0 : namespaceCombo.count > 0))
+                    : namespaceCombo.count > 0)
 
                 onClicked: {
                     if (root.step === 0) {
                         errorText.text = ""
                         root.applyGateway()
                         euclidClient.login(usernameField.text, passwordField.text)
-                    } else if (root.step === 1) {
-                        accountErrorText.text = ""
-                        namespaceErrorText.text = ""
-                        root.useAccount(root.accounts[accountCombo.currentIndex].accountId)
                     } else {
                         root.selectedNamespace = namespaceCombo.currentText
                         root.loggedIn(usernameField.text, root.selectedNamespace)
@@ -516,45 +494,32 @@ Dialog {
                 errorText.text = message
             }
         }
-        // Login now ends by asking which accounts this user may work in, so this is the step that
-        // follows a password rather than the namespaces.
+        // Login ends by asking which accounts this user may work in. The default one is settled at
+        // once and its namespaces fetched, so the step opens with both pickers filled; choosing
+        // another account there refetches (see accountCombo.onActivated).
         function onAccountsLoaded(accounts, homeAccountId) {
             root.accounts = accounts
             root.homeAccountId = homeAccountId
             accountCombo.currentIndex = root.defaultAccountIndex()
-
-            // One account is not a decision: set it and carry straight on to the namespaces, which
-            // is exactly what this dialog did before an account could be chosen at all.
-            if (!root.accountChoice) {
-                root.useAccount(accounts.length > 0 ? accounts[accountCombo.currentIndex].accountId
-                                                    : euclidClient.accountId)
-                return
-            }
-
-            // An auto-login that named an account, or one that did not and gets home: a session
-            // started from the command line should not stop to ask.
-            if (root.autoLoginActive) {
-                root.useAccount(accounts[accountCombo.currentIndex].accountId)
-                return
-            }
-
-            root.step = 1
+            root.useAccount(accounts.length > 0 ? accounts[accountCombo.currentIndex].accountId
+                                                : euclidClient.accountId)
         }
         function onAccountsFailed(message) {
             // The session is live; only the question of where else this user may work went
             // unanswered. So carry on with the account login already put on the session - the home
             // one - rather than stranding somebody who is signed in on a step with nothing to
-            // choose from. Said on the next step rather than swallowed, because the absence of a
-            // choice is otherwise indistinguishable from having only one account.
-            namespaceErrorText.text = "Could not list your accounts: " + message
-                                      + ". Continuing in your home account."
+            // choose from. Said rather than swallowed, because the absence of a choice is otherwise
+            // indistinguishable from having only one account.
+            accountErrorText.text = "Could not list your accounts: " + message
+                                    + ". Continuing in your home account."
             euclidClient.fetchNamespaces()
         }
 
         function onNamespacesLoaded(namespaces) {
             namespaceCombo.model = namespaces
-            namespaceCombo.currentIndex = 0
-            root.step = 2
+            const kept = root.preferredNamespace.length > 0 ? namespaces.indexOf(root.preferredNamespace) : -1
+            namespaceCombo.currentIndex = kept >= 0 ? kept : 0
+            root.step = 1
 
             if (root.autoLoginActive) {
                 root.autoLoginActive = false
@@ -565,18 +530,21 @@ Dialog {
                     root.loggedIn(usernameField.text, root.selectedNamespace)
                     root.close()
                 } else {
-                    root.revealWithError(2, "This account has no namespaces available.", true)
+                    root.revealWithError(1, "This account has no namespaces available.", true)
                 }
+            } else if (namespaces.length === 0) {
+                // Said rather than left as an empty, disabled picker: with more than one account
+                // the way on is to choose another, which an unexplained dead end does not suggest.
+                namespaceErrorText.text = "This account has no namespaces available."
             }
         }
         function onNamespacesFailed(message) {
-            // Step 2, the namespace step, which these errors are about. It was step 1 until the
-            // account step was put in front of it, and landing on that one instead showed an
-            // account picker that nothing had filled in.
-            root.step = 2
+            // Still the selection step: with more than one account, choosing another is the way out.
+            root.step = 1
+            namespaceCombo.model = []
             if (root.autoLoginActive) {
                 root.autoLoginActive = false
-                root.revealWithError(2, message, true)
+                root.revealWithError(1, message, true)
             } else {
                 namespaceErrorText.text = message
             }
