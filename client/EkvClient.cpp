@@ -119,11 +119,35 @@ void EkvClient::deleteTable(const QString &name) {
 
 // ── Items ────────────────────────────────────────────────────────────────────
 
-void EkvClient::scanItems(const QString &table, const int pageIndex, const int pageSize) {
+void EkvClient::scanItems(const QString &table, const int pageIndex, const int pageSize,
+                          const QString &sortColumn, const QString &sortDirection,
+                          const QVariantMap &narrow) {
     QJsonObject body;
     body["table"] = table;
     body["pageSize"] = pageSize;
     body["pageIndex"] = pageIndex;
+    // Sorted by the server, not here: a page is one page of a scan, and reordering the rows in
+    // hand would sort twenty-five items out of however many the table holds - which reads like a
+    // sorted table and is not one.
+    if (!sortColumn.isEmpty()) {
+        body["sortColumn"] = sortColumn;
+        body["sortDirection"] = sortDirection;
+    }
+
+    // Narrowed by the server. Only what was actually given: an empty bound is not "the epoch" and
+    // an empty attribute name is not an attribute called "", so sending them would turn "no
+    // filter" into one that matches nothing.
+    const auto text = [&narrow](const char *key) { return narrow.value(QLatin1String(key)).toString(); };
+    if (!text("modifiedFrom").isEmpty()) body["modifiedFrom"] = text("modifiedFrom");
+    if (!text("modifiedTo").isEmpty()) body["modifiedTo"] = text("modifiedTo");
+    if (!text("attributeName").isEmpty() && !text("attributeOperator").isEmpty()) {
+        body["attributeName"] = text("attributeName");
+        body["attributeOperator"] = text("attributeOperator");
+        // Typed as it was written, so a number compares as a number - the same reason a sort key
+        // declares a type. QML hands over whatever the caller typed it as.
+        body["attributeValue"] = QJsonValue::fromVariant(narrow.value(QStringLiteral("attributeValue")));
+        body["attributeUpper"] = QJsonValue::fromVariant(narrow.value(QStringLiteral("attributeUpper")));
+    }
 
     m_base->post("ekv", "scan", body, true,
          [this, table](const QJsonObject &response) {

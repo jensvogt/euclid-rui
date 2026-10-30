@@ -45,11 +45,23 @@ Item {
     property int returnedCount: 0
     property int scanTotal: 0
     property bool itemsLoading: false
+    // A request that comes back quickly should not flash a spinner: a 60ms flicker reads as a
+    // glitch, not as progress. So itemsLoading is the truth about the request and itemsBusy is
+    // what the screen shows, and the two part company for the first half second - which is about
+    // where a wait stops feeling instant. A sort over a large table is the one that gets there,
+    // since it is the server that orders the rows and it has to walk them to do it.
+    property bool itemsBusy: false
+    // What the wait is for. A sort is worth naming because the rows are already on screen: with
+    // no word for it the table just sits there looking unchanged.
+    property string itemsBusyNote: "Loading…"
     property string itemsError: ""
     property string itemsUpdatedText: "—"
 
     property int itemPageIndex: 0
-    property int itemPageSize: 25
+    // Ten rather than the twenty-five other listings start at: an item is a whole document, shown
+    // with its key columns and a summary of its attributes, so a page of them is a lot more to
+    // read than a page of queues. The size field above the table raises it per session.
+    property int itemPageSize: 10
 
     // The query, as it was last run - not as it is typed. A page that re-read itself from the
     // fields would change what it is showing while somebody is still editing them.
@@ -58,6 +70,38 @@ Item {
     property string querySortValue: ""
     property string querySortUpper: ""
     property bool queryForward: true
+
+    // What the scan is ordered by: "pk", "sk" or "modified", and empty for the store's own key
+    // order. Sorted by the server, because a page is one page of a scan - reordering the rows in
+    // hand would sort this page and call the table sorted.
+    //
+    // A query has an order of its own: it walks one partition in sort-key order, forwards or
+    // back, so there the sort key's header flips that direction instead and the other columns do
+    // not offer what the query cannot honour.
+    // What a scan is narrowed to. The question a query cannot answer: a query is bounded by one
+    // partition, and "what changed since Friday" or "which ones are OPEN" names none.
+    property string scanModifiedFrom: ""
+    property string scanModifiedTo: ""
+    property string scanAttributeName: ""
+    property string scanAttributeOperator: ""
+    property string scanAttributeValue: ""
+    property string scanAttributeUpper: ""
+    property string scanAttributeType: "string"
+
+    readonly property bool scanNarrowed: root.scanModifiedFrom.length > 0 || root.scanModifiedTo.length > 0
+                                         || (root.scanAttributeName.length > 0 && root.scanAttributeOperator.length > 0)
+
+    // Half an attribute condition is not one, and the server refuses it rather than quietly
+    // dropping it - so the button says so before the round trip.
+    readonly property bool scanFilterValid: root.scanAttributeOperator.length === 0
+            || (root.scanAttributeName.length > 0
+                && root.keyTextValid(root.scanAttributeValue, root.scanAttributeType)
+                && (root.scanAttributeOperator !== "between"
+                    || root.keyTextValid(root.scanAttributeUpper, root.scanAttributeType))
+                && (root.scanAttributeOperator !== "begins-with" || root.scanAttributeType === "string"))
+
+    property string itemSortColumn: ""
+    property bool itemSortAscending: true
 
     // The operators the server takes, in the order they read: everything, then the comparisons,
     // then the two that are neither.
@@ -119,14 +163,17 @@ Item {
         const columns = [{
             title: root.partitionKey.length > 0 ? root.partitionKey : "Partition key",
             key: root.partitionKey,
-            sortable: false,
+            // Only a scan can be reordered; a query's order is the partition's own.
+            sortable: root.readMode === "scan",
             formatter: function (v) { return root.cellText(v) }
         }]
         if (root.hasSortKey) {
             columns.push({
                 title: root.sortKey,
                 key: root.sortKey,
-                sortable: false,
+                // In a query this is the direction the partition is walked in, which is a real
+                // choice the store offers - so the header stays live and flips it.
+                sortable: true,
                 formatter: function (v) { return root.cellText(v) }
             })
         }
@@ -141,7 +188,7 @@ Item {
         columns.push({
             title: "Modified",
             key: "_modified",
-            sortable: false,
+            sortable: root.readMode === "scan",
             formatter: function (v) { return DateFormat.format(v) }
         })
         return columns
@@ -155,9 +202,101 @@ Item {
         : root.itemPageIndex * root.itemPageSize + root.returnedCount
           + (root.returnedCount === root.itemPageSize ? 1 : 0)
 
-    function loadItems() {
+    // Which column header shows the arrow. The server is told "pk"/"sk"/"modified"; the table
+    // knows its columns by the table's own attribute names, so the two are translated here rather
+    // than leaking either vocabulary into the other.
+    readonly property string itemSortKeyShown: {
+        if (root.readMode === "query") return root.hasSortKey ? root.sortKey : ""
+        if (root.itemSortColumn === "pk") return root.partitionKey
+        if (root.itemSortColumn === "sk") return root.sortKey
+        if (root.itemSortColumn === "modified") return "_modified"
+        return ""
+    }
+    readonly property bool itemSortAscendingShown: root.readMode === "query" ? root.queryForward
+                                                                             : root.itemSortAscending
+
+    Timer {
+        id: itemsBusyTimer
+        interval: 500
+        onTriggered: root.itemsBusy = root.itemsLoading
+    }
+
+    onItemsLoadingChanged: {
+        if (root.itemsLoading) {
+            itemsBusyTimer.restart()
+        } else {
+            // Down at once, however long it was up: the answer is here, and a spinner that
+            // lingers past it is lying about the state of the table.
+            itemsBusyTimer.stop()
+            root.itemsBusy = false
+        }
+    }
+
+    function sortItemsBy(columnKey, ascending) {
+        // A query is walked forwards or back through one partition; nothing else about its order
+        // is ours to choose, so only the sort key's header does anything here.
+        if (root.readMode === "query") {
+            if (!root.hasSortKey || columnKey !== root.sortKey) return
+            root.queryForward = ascending
+        } else {
+            root.itemSortColumn = columnKey === root.partitionKey ? "pk"
+                                : (root.hasSortKey && columnKey === root.sortKey) ? "sk"
+                                : columnKey === "_modified" ? "modified" : ""
+            root.itemSortAscending = ascending
+        }
+        // Back to the first page: a page index means something different under a new order, and
+        // staying on page four of the old one lands somewhere arbitrary in the new.
+        root.itemPageIndex = 0
+        root.loadItems("Sorting…")
+    }
+
+    // A date on its own means the whole day, which is what somebody typing one means: the start
+    // of it where it is the lower bound, the end where it is the upper. The server takes ISO-8601
+    // and would otherwise read a bare date as midnight and exclude everything after it.
+    function isoBound(text, endOfDay) {
+        const value = String(text).trim()
+        if (value.length === 0) return ""
+        if (value.indexOf("T") >= 0) return value
+        return value + (endOfDay ? "T23:59:59Z" : "T00:00:00Z")
+    }
+
+    function scanNarrowing() {
+        const narrow = {
+            modifiedFrom: root.isoBound(root.scanModifiedFrom, false),
+            modifiedTo: root.isoBound(root.scanModifiedTo, true)
+        }
+        if (root.scanAttributeName.length > 0 && root.scanAttributeOperator.length > 0) {
+            narrow.attributeName = root.scanAttributeName
+            narrow.attributeOperator = root.scanAttributeOperator
+            narrow.attributeValue = root.typedKeyValue(root.scanAttributeValue, root.scanAttributeType)
+            narrow.attributeUpper = root.scanAttributeOperator === "between"
+                    ? root.typedKeyValue(root.scanAttributeUpper, root.scanAttributeType) : ""
+        }
+        return narrow
+    }
+
+    function applyScanNarrowing() {
+        root.readMode = "scan"
+        root.itemPageIndex = 0
+        root.loadItems()
+    }
+
+    function clearScanNarrowing() {
+        root.scanModifiedFrom = ""
+        root.scanModifiedTo = ""
+        root.scanAttributeName = ""
+        root.scanAttributeOperator = ""
+        root.scanAttributeValue = ""
+        root.scanAttributeUpper = ""
+        root.scanAttributeType = "string"
+        root.itemPageIndex = 0
+        root.loadItems()
+    }
+
+    function loadItems(note) {
         if (!root.loggedIn || root.tableName.length === 0)
             return
+        root.itemsBusyNote = note !== undefined ? note : "Loading…"
         root.itemsLoading = true
         root.itemsError = ""
         if (root.readMode === "query") {
@@ -168,7 +307,9 @@ Item {
                 root.querySortOperator === "between" ? root.typedKeyValue(root.querySortUpper, root.sortKeyType) : "",
                 root.queryForward, root.itemPageIndex, root.itemPageSize)
         } else {
-            ekvClient.scanItems(root.tableName, root.itemPageIndex, root.itemPageSize)
+            ekvClient.scanItems(root.tableName, root.itemPageIndex, root.itemPageSize,
+                                root.itemSortColumn, root.itemSortAscending ? "asc" : "desc",
+                                root.scanNarrowing())
         }
     }
 
@@ -188,6 +329,14 @@ Item {
         root.readMode = "scan"
         root.items = []
         root.itemPageIndex = 0
+        root.itemSortColumn = ""
+        root.itemSortAscending = true
+        root.scanModifiedFrom = ""
+        root.scanModifiedTo = ""
+        root.scanAttributeName = ""
+        root.scanAttributeOperator = ""
+        root.scanAttributeValue = ""
+        root.scanAttributeUpper = ""
         root.queryPartitionValue = ""
         root.querySortOperator = ""
         root.querySortValue = ""
@@ -622,8 +771,8 @@ Item {
                         font.bold: true
                     }
                     BusyIndicator {
-                        running: root.itemsLoading
-                        visible: root.itemsLoading
+                        running: root.itemsBusy
+                        visible: root.itemsBusy
                         width: 18
                         height: 18
                         anchors.verticalCenter: parent.verticalCenter
@@ -688,6 +837,153 @@ Item {
                                     root.returnedCount = 0
                                 }
                             }
+                        }
+
+                        // Narrowing a scan, which is the other question: a query is bounded by
+                        // one partition, so "what changed since Friday" and "which ones are OPEN"
+                        // have nowhere to go there. The database does the narrowing - the table is
+                        // read either way, and what changes is how much of it comes back.
+                        Flow {
+                            id: scanFilterRow
+                            width: parent.width
+                            spacing: 10
+                            visible: root.readMode === "scan"
+
+                            Column {
+                                spacing: 4
+                                Text { text: "Modified from"; color: "#9aa1ac"; font.pixelSize: 11 }
+                                TextField {
+                                    width: 150
+                                    text: root.scanModifiedFrom
+                                    placeholderText: "2026-10-01"
+                                    Material.accent: "#4f8cff"
+                                    selectByMouse: true
+                                    onTextEdited: root.scanModifiedFrom = text
+                                    Keys.onReturnPressed: root.applyScanNarrowing()
+                                }
+                            }
+
+                            Column {
+                                spacing: 4
+                                Text { text: "to"; color: "#9aa1ac"; font.pixelSize: 11 }
+                                TextField {
+                                    width: 150
+                                    text: root.scanModifiedTo
+                                    placeholderText: "2026-10-31"
+                                    Material.accent: "#4f8cff"
+                                    selectByMouse: true
+                                    onTextEdited: root.scanModifiedTo = text
+                                    Keys.onReturnPressed: root.applyScanNarrowing()
+                                }
+                            }
+
+                            Column {
+                                spacing: 4
+                                Text { text: "Attribute"; color: "#9aa1ac"; font.pixelSize: 11 }
+                                TextField {
+                                    width: 150
+                                    text: root.scanAttributeName
+                                    // Any attribute, not only a key one: reaching a key is what
+                                    // the query beside this is for.
+                                    placeholderText: "e.g. status"
+                                    Material.accent: "#4f8cff"
+                                    selectByMouse: true
+                                    onTextEdited: root.scanAttributeName = text
+                                    Keys.onReturnPressed: root.applyScanNarrowing()
+                                }
+                            }
+
+                            Column {
+                                spacing: 4
+                                Text { text: "is"; color: "#9aa1ac"; font.pixelSize: 11 }
+                                ComboBox {
+                                    width: 130
+                                    model: ["", "eq", "lt", "le", "gt", "ge", "between", "begins-with"]
+                                    currentIndex: Math.max(0, model.indexOf(root.scanAttributeOperator))
+                                    Material.theme: Material.Dark
+                                    Material.accent: "#4f8cff"
+                                    onActivated: root.scanAttributeOperator = textAt(index)
+                                }
+                            }
+
+                            Column {
+                                spacing: 4
+                                Text { text: "value"; color: "#9aa1ac"; font.pixelSize: 11 }
+                                TextField {
+                                    width: 150
+                                    text: root.scanAttributeValue
+                                    enabled: root.scanAttributeOperator.length > 0
+                                    placeholderText: root.scanAttributeType === "number" ? "a number" : "a value"
+                                    Material.accent: "#4f8cff"
+                                    selectByMouse: true
+                                    onTextEdited: root.scanAttributeValue = text
+                                    Keys.onReturnPressed: root.applyScanNarrowing()
+                                }
+                            }
+
+                            Column {
+                                spacing: 4
+                                visible: root.scanAttributeOperator === "between"
+                                Text { text: "and"; color: "#9aa1ac"; font.pixelSize: 11 }
+                                TextField {
+                                    width: 150
+                                    text: root.scanAttributeUpper
+                                    placeholderText: "upper bound"
+                                    Material.accent: "#4f8cff"
+                                    selectByMouse: true
+                                    onTextEdited: root.scanAttributeUpper = text
+                                    Keys.onReturnPressed: root.applyScanNarrowing()
+                                }
+                            }
+
+                            Column {
+                                spacing: 4
+                                // Typed, because the store compares a number as a number - the
+                                // same reason a sort key declares a type. An attribute carries no
+                                // declared type, so this is the only place it can be said.
+                                Text { text: "as"; color: "#9aa1ac"; font.pixelSize: 11 }
+                                ComboBox {
+                                    width: 110
+                                    model: ["string", "number"]
+                                    currentIndex: Math.max(0, model.indexOf(root.scanAttributeType))
+                                    Material.theme: Material.Dark
+                                    Material.accent: "#4f8cff"
+                                    onActivated: root.scanAttributeType = textAt(index)
+                                }
+                            }
+
+                            Column {
+                                spacing: 4
+                                Text { text: " "; color: "#9aa1ac"; font.pixelSize: 11 }
+                                Row {
+                                    spacing: 8
+                                    Button {
+                                        text: "Apply"
+                                        highlighted: true
+                                        Material.theme: Material.Dark
+                                        Material.accent: "#4f8cff"
+                                        enabled: !root.itemsLoading && root.scanFilterValid
+                                        onClicked: root.applyScanNarrowing()
+                                    }
+                                    Button {
+                                        text: "Clear"
+                                        flat: true
+                                        visible: root.scanNarrowed
+                                        Material.theme: Material.Dark
+                                        onClicked: root.clearScanNarrowing()
+                                    }
+                                }
+                            }
+                        }
+
+                        Text {
+                            width: parent.width
+                            wrapMode: Text.WordWrap
+                            color: "#e0a458"
+                            font.pixelSize: 11
+                            visible: root.readMode === "scan" && root.scanAttributeOperator === "begins-with"
+                                     && root.scanAttributeType !== "string"
+                            text: "⚠ \"begins-with\" only applies to a string: a prefix of a number is not a thing."
                         }
 
                         Row {
@@ -818,13 +1114,14 @@ Item {
                 }
 
                 DataTable {
+                    id: itemTable
                     width: parent.width
                     columns: root.itemColumns
                     rows: root.items
                     totalCount: root.itemTotalCount
                     pageSize: root.itemPageSize
                     pageIndex: root.itemPageIndex
-                    loading: root.itemsLoading
+                    loading: root.itemsBusy
                     error: root.itemsError
                     lastUpdatedText: root.itemsUpdatedText
                     // The store has no search over items: a scan takes a page, a query takes a
@@ -835,6 +1132,10 @@ Item {
                                ? "No item in that partition matches."
                                : "No items in this table."
                     rowsClickable: true
+
+                    sortKey: root.itemSortKeyShown
+                    sortAscending: root.itemSortAscendingShown
+                    onSortRequested: (key, ascending) => root.sortItemsBy(key, ascending)
 
                     onRowClicked: (row) => itemDialog.openFor(row)
                     onRefreshRequested: root.refresh()
@@ -861,6 +1162,38 @@ Item {
                             }
                         }
                     ]
+
+                    // Over the rows, not instead of them: the rows that are up are the previous
+                    // answer, and veiling them says "this is being replaced" where blanking them
+                    // would throw away the only thing there is to look at while waiting.
+                    Rectangle {
+                        anchors.fill: parent
+                        color: "#b312151b"
+                        visible: opacity > 0
+                        opacity: root.itemsBusy ? 1 : 0
+                        Behavior on opacity { NumberAnimation { duration: 120 } }
+                        // Nothing underneath should be clickable through the veil - a sort landing
+                        // on a row the user clicked in the meantime is not what they asked for.
+                        MouseArea { anchors.fill: parent; enabled: root.itemsBusy }
+
+                        Column {
+                            anchors.centerIn: parent
+                            spacing: 10
+                            BusyIndicator {
+                                running: root.itemsBusy
+                                width: 48
+                                height: 48
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                Material.accent: "#4f8cff"
+                            }
+                            Text {
+                                text: root.itemsBusyNote
+                                color: "#9aa1ac"
+                                font.pixelSize: 12
+                                anchors.horizontalCenter: parent.horizontalCenter
+                            }
+                        }
+                    }
                 }
 
                 Text {
