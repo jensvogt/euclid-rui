@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.47](https://github.com/jensvogt/euclid-rui/compare/1.1.46...v1.1.47) (2026-10-30)
+
+
+### Bug Fixes
+
+* EKV sorting, scanning, quering ([4728ab9](https://github.com/jensvogt/euclid-rui/commit/4728ab91708587be1a9e1c1d8843477beb4dcd8e))
+
 ## [1.1.46](https://github.com/jensvogt/euclid-rui/compare/1.1.45...v1.1.46) (2026-10-30)
 
 
