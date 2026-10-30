@@ -174,6 +174,44 @@ void EmmClient::fetchModules() {
          });
 }
 
+void EmmClient::fetchBackups() {
+    m_base->post("emm", "list-backups", QJsonObject{}, true,
+         [this](const QJsonObject &response) {
+             QVariantList backups;
+             for (const QJsonArray array = response.value("backups").toArray(); const auto &value : array) {
+                 const QJsonObject backup = value.toObject();
+
+                 QVariantMap entry;
+                 entry["name"] = backup.value("name").toString();
+                 entry["path"] = backup.value("path").toString();
+                 // The scope the file holds, taken from the directory it sits in: both empty for
+                 // the installation-wide archive, the namespace empty for an account's own.
+                 entry["accountId"] = backup.value("accountId").toString();
+                 entry["namespace"] = backup.value("namespace").toString();
+                 entry["startedAt"] = backup.value("startedAt").toString();
+                 entry["modified"] = backup.value("modified").toString();
+                 entry["size"] = backup.value("size").toInteger();
+                 entry["complete"] = backup.value("complete").toBool();
+                 backups << entry;
+             }
+
+             QVariantMap settings;
+             settings["directory"] = response.value("directory").toString();
+             // Defaulted to what the server defaults to, so a count of zero from an installation
+             // that never configured backups still reads as "on, and nothing written yet".
+             settings["enabled"] = response.value("enabled").toBool(true);
+             settings["schedule"] = response.value("schedule").toString();
+             settings["keep"] = response.value("keep").toInt();
+             settings["full"] = response.value("full").toBool();
+             settings["encrypted"] = response.value("encrypted").toBool();
+
+             emit backupsLoaded(backups, settings);
+         },
+         [this](const QString &message) {
+             emit backupsFailed(message);
+         });
+}
+
 void EmmClient::postModuleAction(const QString &action, const QString &name, const QJsonObject &body) {
     m_base->post("emm", action, body, true,
          [this, name, action](const QJsonObject &response) {
