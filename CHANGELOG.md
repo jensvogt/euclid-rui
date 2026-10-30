@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.46](https://github.com/jensvogt/euclid-rui/compare/1.1.45...v1.1.46) (2026-10-30)
+
+
+### Bug Fixes
+
+* combine the account and namespace login dialogs. ([93f45dc](https://github.com/jensvogt/euclid-rui/commit/93f45dcdad40d078dad91f0eadf409b9b115be17))
+
 ## [1.1.45](https://github.com/jensvogt/euclid-rui/compare/1.1.44...v1.1.45) (2026-10-26)
 
 
