@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.50](https://github.com/jensvogt/euclid-rui/compare/1.1.49...v1.1.50) (2026-10-31)
+
+
+### Bug Fixes
+
+* EMO alerting ([6a935a1](https://github.com/jensvogt/euclid-rui/commit/6a935a1a7404c0842a72e2b6016d4288ae0918e8))
+
 ## [1.1.49](https://github.com/jensvogt/euclid-rui/compare/1.1.48...v1.1.49) (2026-10-31)
 
 
