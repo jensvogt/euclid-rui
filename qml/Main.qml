@@ -981,6 +981,11 @@ ApplicationWindow {
                     visible: window.currentRoute === "analytics"
                     loggedIn: window.loggedIn
                 }
+                AlertsPage {
+                    anchors.fill: parent
+                    visible: window.currentRoute === "alerts"
+                    loggedIn: window.loggedIn
+                }
                 SettingsPage {
                     anchors.fill: parent
                     visible: window.currentRoute === "settings"
