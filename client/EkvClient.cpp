@@ -181,9 +181,12 @@ void EkvClient::queryItems(const QString &table, const QVariant &partitionKey, c
              QVariantList items;
              for (const QJsonArray array = response.value("items").toArray(); const auto &value: array)
                  items << itemToMap(value.toObject());
-             // No total: a query answers with what it found in the partition and counts nothing
-             // beyond it. -1 is what tells the page to say "found n" rather than "n of m".
-             emit itemsLoaded(table, items, response.value("count").toInt(), -1);
+             // "count" is this page, "total" everything in the partition that matched - the
+             // second is what says whether there is a page after this one. Defaulted to -1 for a
+             // server that predates it: the page then infers the count from the page in hand
+             // rather than reporting a total of zero that would hide the Next button.
+             emit itemsLoaded(table, items, response.value("count").toInt(),
+                              response.value("total").toInt(-1));
          },
          [this, table](const QString &message) {
              emit itemsFailed(table, message);

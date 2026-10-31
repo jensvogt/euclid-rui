@@ -44,6 +44,9 @@ Item {
     property var items: []
     property int returnedCount: 0
     property int scanTotal: 0
+    // How many items the partition holds that matched, as the server counted them. -1 is "not
+    // counted": a query that has not run yet, and a server from before EKV counted one.
+    property int queryTotal: -1
     property bool itemsLoading: false
     // A request that comes back quickly should not flash a spinner: a 60ms flicker reads as a
     // glitch, not as progress. So itemsLoading is the truth about the request and itemsBusy is
@@ -194,13 +197,20 @@ Item {
         return columns
     }
 
-    // What the table is told it holds. A scan knows; a query does not - it answers with what it
-    // found in the partition and counts nothing beyond it - so a full page is reported as one row
-    // more than it has, which is exactly what makes "Next" available and nothing more.
-    readonly property int itemTotalCount: root.readMode === "scan"
-        ? root.scanTotal
-        : root.itemPageIndex * root.itemPageSize + root.returnedCount
-          + (root.returnedCount === root.itemPageSize ? 1 : 0)
+    // What the table is told it holds. A scan knows, and a query now does too: EKV counts the
+    // index entries over the range the query just walked, which is one partition rather than the
+    // whole table, and reports it as "total".
+    //
+    // The old guess is kept for the case where it does not arrive - an installation whose EKV
+    // module predates the count. It reports a full page as one row more than it has, which makes
+    // "Next" available and claims nothing else; a total of zero in its place would take the Next
+    // button away and strand the reader on page one.
+    readonly property int itemTotalCount: {
+        if (root.readMode === "scan") return root.scanTotal
+        if (root.queryTotal >= 0) return root.queryTotal
+        return root.itemPageIndex * root.itemPageSize + root.returnedCount
+               + (root.returnedCount === root.itemPageSize ? 1 : 0)
+    }
 
     // Which column header shows the arrow. The server is told "pk"/"sk"/"modified"; the table
     // knows its columns by the table's own attribute names, so the two are translated here rather
@@ -341,6 +351,7 @@ Item {
         root.querySortOperator = ""
         root.querySortValue = ""
         root.querySortUpper = ""
+        root.queryTotal = -1
         root.actionNote = ""
         if (visible) refresh()
     }
@@ -373,9 +384,11 @@ Item {
             root.itemsError = ""
             root.items = list
             root.returnedCount = count
-            // -1 is a query, which has no total to report; the scan total is left as it was so the
-            // stat card above does not blink to zero while a query is on screen.
-            if (total >= 0) root.scanTotal = total
+            // Each mode keeps its own: the scan total is what the stat card above shows, and it
+            // is left alone while a query is on screen rather than blinking to the partition's
+            // count and back.
+            if (root.readMode === "query") root.queryTotal = total
+            else if (total >= 0) root.scanTotal = total
             root.itemsUpdatedText = Qt.formatDateTime(new Date(), "hh:mm:ss")
         }
         function onItemsFailed(table, message) {
@@ -835,6 +848,7 @@ Item {
                                     // are where it is named.
                                     root.items = []
                                     root.returnedCount = 0
+                                    root.queryTotal = -1
                                 }
                             }
                         }
@@ -1201,10 +1215,14 @@ Item {
                     wrapMode: Text.WordWrap
                     color: "#6b7280"
                     font.pixelSize: 11
-                    visible: root.readMode === "query" && root.returnedCount > 0
-                    // A query has no total, so the honest thing to print is what came back rather
-                    // than a page count that would be a guess.
-                    text: "Found " + root.returnedCount + " item(s) in this partition."
+                    visible: root.readMode === "query"
+                             && (root.queryTotal > 0 || root.returnedCount > 0)
+                    // The partition's own count when the server sent one, and what came back when
+                    // it did not - never a page count inferred from a full page, which would be a
+                    // guess printed as a fact.
+                    text: root.queryTotal >= 0
+                          ? "Found " + root.queryTotal + " item(s) in this partition."
+                          : "Found " + root.returnedCount + " item(s) in this partition."
                 }
 
                 Text {
