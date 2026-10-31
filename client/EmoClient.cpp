@@ -206,6 +206,18 @@ void EmoClient::fetchSeries(const QString &metricName, const QString &labelName,
          [this, metricName, labelValue](const QString &message) { emit seriesFailed(metricName, labelValue, message); });
 }
 
+void EmoClient::fetchAlerts(const QString &state, const bool activeOnly) {
+    QJsonObject body;
+    if (!state.isEmpty()) body["state"] = state;
+    if (activeOnly) body["active"] = true;
+
+    m_base->post("emo", "list-alerts", body, true,
+         [this](const QJsonObject &response) {
+             emit alertsLoaded(response.value("items").toArray().toVariantList());
+         },
+         [this](const QString &message) { emit alertsFailed(message); });
+}
+
 void EmoClient::fetchAggregatedSeries(const QString &metricName, const int limit, const QString &resolution) {
     QJsonObject body;
     body["name"] = metricName;

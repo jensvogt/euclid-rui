@@ -61,6 +61,11 @@ public:
     Q_INVOKABLE void fetchAggregatedSeries(const QString &metricName, int limit = 500,
                                            const QString &resolution = QStringLiteral("RAW"));
 
+    // Where every series an alert rule judges stands now - EMO's "list-alerts", one entry per rule
+    // and series. Administrators only, server-side. `state` narrows to one of OK, WARNING,
+    // CRITICAL or NO_DATA (empty for all); `activeOnly` drops the series that are OK.
+    Q_INVOKABLE void fetchAlerts(const QString &state = QString(), bool activeOnly = false);
+
 signals:
     void cpuUsageLoaded(const QString &moduleName, double percent);
     void cpuUsageFailed(const QString &moduleName, const QString &message);
@@ -77,6 +82,10 @@ signals:
     // {labelValue: {value, timestamp}} - the newest sample per label, and nothing older.
     void latestByLabelLoaded(const QString &metricName, const QVariantMap &latest);
     void latestByLabelFailed(const QString &metricName, const QString &message);
+    // The server's items as they came: ruleId, name, labels, state, severity, since, value,
+    // lastSeen, statistic, comparison, warning, critical, description, namespace.
+    void alertsLoaded(const QVariantList &alerts);
+    void alertsFailed(const QString &message);
 
 private:
     void fetchLatestMetric(const QString &metricName, const QString &moduleName,

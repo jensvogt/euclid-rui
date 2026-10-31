@@ -85,6 +85,7 @@ qt_add_qml_module(euclid-rui
         qml/LoginDialog.qml
         qml/pages/DashboardPage.qml
         qml/pages/AnalyticsPage.qml
+        qml/pages/AlertsPage.qml
         qml/pages/SettingsPage.qml
         qml/pages/ModulePage.qml
         qml/pages/EamAccountsPage.qml

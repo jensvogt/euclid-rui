@@ -88,6 +88,14 @@ Rectangle {
                 selected: root.currentRoute === "analytics"
                 onClicked: root.navigate("analytics")
             }
+            NavButton {
+                // EMO's alert states. Administrators only, as the server has it.
+                icon: "🔔"
+                label: "Alerts"
+                visible: euclidClient.isAdmin
+                selected: root.currentRoute === "alerts"
+                onClicked: root.navigate("alerts")
+            }
 
             Rectangle {
                 width: parent.width

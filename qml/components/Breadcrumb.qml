@@ -34,6 +34,7 @@ Item {
     readonly property var routeTree: ({
         "dashboard": { label: "Home" },
         "analytics": { label: "Analytics", parent: "dashboard" },
+        "alerts": { label: "Alerts", parent: "dashboard" },
         "settings": { label: "Settings", parent: "dashboard" },
 
         "modules-emm": { label: "Modules", parent: "dashboard" },
