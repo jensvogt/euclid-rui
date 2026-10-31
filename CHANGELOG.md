@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.49](https://github.com/jensvogt/euclid-rui/compare/1.1.48...v1.1.49) (2026-10-31)
+
+
+### Bug Fixes
+
+* EKV queries and scans ([a1f2700](https://github.com/jensvogt/euclid-rui/commit/a1f27004f5c91a0d5487e455876ee5d2af2bc1f9))
+
 ## [1.1.48](https://github.com/jensvogt/euclid-rui/compare/1.1.47...v1.1.48) (2026-10-30)
 
 
