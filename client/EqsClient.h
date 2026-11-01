@@ -50,7 +50,7 @@ public:
     Q_INVOKABLE void stopQueue(const QString &queueErn);
     Q_INVOKABLE void startQueue(const QString &queueErn);
 
-    // The three settings a queue carries that can be changed after it exists. All three govern
+    // The four settings a queue carries that can be changed after it exists. All four govern
     // what happens to messages sent or received from here on, and none of them reaches back:
     //
     // - visibility: how long a received message stays invisible, 0 to 43200 seconds. A message
@@ -61,9 +61,14 @@ public:
     // - maxMessageLength: the largest message the queue accepts, in bytes. Zero is not "accept
     //   nothing" - it is the queue carrying no limit of its own, and sends are then measured
     //   against the installation's default of 1 MiB.
+    // - maxRetries: how many times a message may be received before it is moved to the dead letter
+    //   queue, 1 to 1000. Stored and listed as maxReceiveCount. Only has an effect on a queue that
+    //   has a dead letter queue; a message's receive count so far is kept and measured against the
+    //   new limit on its next receive.
     Q_INVOKABLE void setQueueVisibility(const QString &queueErn, qint64 visibility);
     Q_INVOKABLE void setQueueDelay(const QString &queueErn, qint64 delay);
     Q_INVOKABLE void setQueueMaxMessageLength(const QString &queueErn, qint64 maxMessageLength);
+    Q_INVOKABLE void setQueueMaxRetries(const QString &queueErn, qint64 maxRetries);
 
     // Moves everything in a dead letter queue back to the queue it came from. Nothing on a queue
     // records that it *is* a dead letter queue - the relationship is only ever written by the
@@ -120,7 +125,8 @@ signals:
     // "effective" is what a send is measured against, which is the installation's default when the
     // queue carries no limit of its own.
     void queueMaxMessageLengthChanged(const QString &queueErn, qint64 maxMessageLength, qint64 effective);
-    // Shared by the three: they are set from one dialog, which has one place to put an error.
+    void queueMaxRetriesChanged(const QString &queueErn, qint64 maxRetries);
+    // Shared by the four: they are set from one dialog, which has one place to put an error.
     void queueConfigurationFailed(const QString &message);
     void queueCreated(const QString &name);
     void queueCreateFailed(const QString &message);

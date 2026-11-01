@@ -59,6 +59,7 @@ Item {
     readonly property int visibility: Number(detail("visibility", 30))
     readonly property int delay: Number(detail("delay", 0))
     readonly property int maxMessageLength: Number(detail("maxMessageLength", 0))
+    readonly property int maxReceiveCount: Number(detail("maxReceiveCount", 3))
     // Entity::EQS::kDefaultMaxMessageLength: what a send is measured against when the queue carries
     // no limit of its own, which is what a zero here means.
     readonly property int defaultMaxMessageLength: 1024 * 1024
@@ -112,8 +113,13 @@ Item {
             root.setDetailLocally("maxMessageLength", maxMessageLength)
             settingsDialog.settled()
         }
+        function onQueueMaxRetriesChanged(queueErn, maxRetries) {
+            if (queueErn !== root.queueErn) return
+            root.setDetailLocally("maxReceiveCount", maxRetries)
+            settingsDialog.settled()
+        }
         function onQueueConfigurationFailed(message) {
-            // Left open with the message on it: one or two of the three may have gone through, and
+            // Left open with the message on it: some of the four may have gone through, and
             // the dialog is where the ones that did not can be tried again.
             settingsDialog.pending = 0
             settingsDialog.errorText = message
@@ -334,35 +340,47 @@ Item {
                         }
                     }
 
-                    Grid {
+                    // Two explicit rows rather than a Grid: a Grid sizes each column to its widest
+                    // cell, so the two-thirds-wide Dead Letter Queue field widened the second column
+                    // and pushed the third (Max Receive Count) past the card's edge.
+                    Column {
                         width: parent.width
-                        columns: 3
-                        columnSpacing: 24
-                        rowSpacing: 16
+                        spacing: 16
 
-                        DetailField {
-                            width: (configCol.width - 48) / 3
-                            label: "Delay"
-                            // Zero is "none", which reads better than "0 s" for a queue that holds
-                            // nothing back.
-                            value: root.delay > 0 ? root.delay + " s" : "none"
+                        Row {
+                            spacing: 24
+
+                            DetailField {
+                                width: (configCol.width - 48) / 3
+                                label: "Delay"
+                                // Zero is "none", which reads better than "0 s" for a queue that holds
+                                // nothing back.
+                                value: root.delay > 0 ? root.delay + " s" : "none"
+                            }
+                            DetailField { width: (configCol.width - 48) / 3; label: "Visibility Timeout"; value: root.visibility + " s" }
+                            DetailField { width: (configCol.width - 48) / 3; label: "Max Receive Count"; value: String(root.maxReceiveCount) }
                         }
-                        DetailField { width: (configCol.width - 48) / 3; label: "Visibility Timeout"; value: root.visibility + " s" }
-                        DetailField { width: (configCol.width - 48) / 3; label: "Max Receive Count"; value: String(root.detail("maxReceiveCount", 0)) }
-                        DetailField {
-                            width: (configCol.width - 48) / 3
-                            label: "Max Message Length"
-                            // A queue carrying no limit of its own is measured against the
-                            // installation's default, so that is the figure worth showing - said as
-                            // the default rather than as a limit somebody chose.
-                            value: root.maxMessageLength > 0
-                                   ? SizeFormat.format(root.maxMessageLength)
-                                   : SizeFormat.format(root.defaultMaxMessageLength) + " (default)"
-                        }
-                        DetailField {
-                            width: (configCol.width * 2 / 3)
-                            label: "Dead Letter Queue"
-                            value: root.deadLetterQueue.length > 0 ? root.deadLetterQueue : "None"
+
+                        Row {
+                            spacing: 24
+
+                            DetailField {
+                                width: (configCol.width - 48) / 3
+                                label: "Max Message Length"
+                                // A queue carrying no limit of its own is measured against the
+                                // installation's default, so that is the figure worth showing - said as
+                                // the default rather than as a limit somebody chose.
+                                value: root.maxMessageLength > 0
+                                       ? SizeFormat.format(root.maxMessageLength)
+                                       : SizeFormat.format(root.defaultMaxMessageLength) + " (default)"
+                            }
+                            DetailField {
+                                // The rest of the row: two thirds plus the gap the third column would
+                                // have had.
+                                width: (configCol.width - 48) * 2 / 3 + 24
+                                label: "Dead Letter Queue"
+                                value: root.deadLetterQueue.length > 0 ? root.deadLetterQueue : "None"
+                            }
                         }
                     }
 
@@ -484,7 +502,7 @@ Item {
         standardButtons: Dialog.NoButton
 
         property string errorText: ""
-        // How many of the three calls are outstanding: 0 to 3, and the dialog closes on the last.
+        // How many of the four calls are outstanding: 0 to 4, and the dialog closes on the last.
         property int pending: 0
         readonly property bool saving: settingsDialog.pending > 0
 
@@ -513,7 +531,11 @@ Item {
         readonly property bool delayValid: settingsDialog.number(delayField, -1) >= 0
                                            && settingsDialog.number(delayField, -1) <= 900
         readonly property bool lengthValid: defaultLengthSwitch.checked || settingsDialog.maxLengthBytes() > 0
-        readonly property bool valid: settingsDialog.visibilityValid && settingsDialog.delayValid && settingsDialog.lengthValid
+        // 1-1000, the bounds handleSetQueueMaxRetries enforces and AWS SQS holds maxReceiveCount to.
+        readonly property bool retriesValid: settingsDialog.number(retriesField, -1) >= 1
+                                             && settingsDialog.number(retriesField, -1) <= 1000
+        readonly property bool valid: settingsDialog.visibilityValid && settingsDialog.delayValid
+                                      && settingsDialog.lengthValid && settingsDialog.retriesValid
 
         function settled() {
             if (settingsDialog.pending > 0) settingsDialog.pending--
@@ -536,6 +558,7 @@ Item {
 
             visibilityField.text = String(root.visibility)
             delayField.text = String(root.delay)
+            retriesField.text = String(root.maxReceiveCount)
 
             defaultLengthSwitch.checked = root.maxMessageLength <= 0
 
@@ -562,7 +585,7 @@ Item {
                 spacing: 4
                 Text { text: "Queue Settings"; color: "white"; font.pixelSize: 18; font.bold: true }
                 Text {
-                    text: "All three apply from here on. Messages already in the queue keep what they were given "
+                    text: "All four apply from here on. Messages already in the queue keep what they were given "
                           + "when they arrived - a lease in flight, a delay already counted, a size already accepted."
                     color: "#9aa1ac"
                     font.pixelSize: 12
@@ -609,6 +632,31 @@ Item {
                           ? "How long a sent message is held back before it can be received. 0 for none, up to 900 seconds."
                           : "Has to be between 0 and 900 seconds."
                     color: settingsDialog.delayValid ? "#6b7280" : "#ffb545"
+                    font.pixelSize: 11
+                    wrapMode: Text.WordWrap
+                    width: parent.width
+                }
+            }
+
+            Column {
+                width: parent.width
+                spacing: 6
+                Text { text: "Max retries"; color: "#9aa1ac"; font.pixelSize: 12 }
+                TextField {
+                    id: retriesField
+                    width: parent.width
+                    validator: IntValidator { bottom: 1; top: 1000 }
+                    Material.accent: "#4f8cff"
+                    selectByMouse: true
+                }
+                Text {
+                    text: !settingsDialog.retriesValid
+                          ? "Has to be between 1 and 1000."
+                          : root.deadLetterQueue.length > 0
+                            ? "How many times a message may be received before it is moved to the dead letter queue. 1 to 1000."
+                            : "How many times a message may be received before it is moved to a dead letter queue. "
+                              + "This queue has none, so the limit has no effect."
+                    color: settingsDialog.retriesValid ? "#6b7280" : "#ffb545"
                     font.pixelSize: 11
                     wrapMode: Text.WordWrap
                     width: parent.width
@@ -722,21 +770,24 @@ Item {
                         const wantedVisibility = settingsDialog.number(visibilityField, root.visibility)
                         const wantedDelay = settingsDialog.number(delayField, root.delay)
                         const wantedLength = settingsDialog.maxLengthBytes()
+                        const wantedRetries = settingsDialog.number(retriesField, root.maxReceiveCount)
 
                         const visibilityChanged = wantedVisibility !== root.visibility
                         const delayChanged = wantedDelay !== root.delay
                         const lengthChanged = wantedLength !== root.maxMessageLength
+                        const retriesChanged = wantedRetries !== root.maxReceiveCount
 
-                        if (!visibilityChanged && !delayChanged && !lengthChanged) {
+                        if (!visibilityChanged && !delayChanged && !lengthChanged && !retriesChanged) {
                             settingsDialog.close()
                             return
                         }
 
                         settingsDialog.pending = (visibilityChanged ? 1 : 0) + (delayChanged ? 1 : 0)
-                                                 + (lengthChanged ? 1 : 0)
+                                                 + (lengthChanged ? 1 : 0) + (retriesChanged ? 1 : 0)
                         if (visibilityChanged) eqsClient.setQueueVisibility(root.queueErn, wantedVisibility)
                         if (delayChanged) eqsClient.setQueueDelay(root.queueErn, wantedDelay)
                         if (lengthChanged) eqsClient.setQueueMaxMessageLength(root.queueErn, wantedLength)
+                        if (retriesChanged) eqsClient.setQueueMaxRetries(root.queueErn, wantedRetries)
                     }
                 }
             }
