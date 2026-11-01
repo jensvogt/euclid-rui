@@ -68,6 +68,10 @@ QVariantMap applicationToMap(const QJsonObject &application) {
     entry["minInstances"] = application.value("minInstances").toInt();
     entry["maxInstances"] = application.value("maxInstances").toInt();
     entry["readyTimeoutMs"] = application.value("readyTimeoutMs").toInt();
+    // Per instance; 0 is no limit, and what a server older than the fields reads as too. MiB and
+    // cores - see set-application-limits.
+    entry["memoryLimitMb"] = application.value("memoryLimitMb").toInteger();
+    entry["cpuLimit"] = application.value("cpuLimit").toDouble();
     entry["state"] = application.value("state").toString();
     entry["desiredState"] = application.value("desiredState").toString();
     // Whether this is something that stays up or something that finishes: PROCESS is held at its
@@ -243,6 +247,10 @@ QVariantMap nodeToMap(const QJsonObject &node) {
     entry["principal"] = node.value("principal").toString();
     entry["labels"] = node.value("labels").toObject().toVariantMap();
     entry["cpuCount"] = node.value("cpuCount").toInteger();
+    // What the node offers applications, in MiB: the host's memory less what the worker keeps back
+    // (euclid.worker.memory-reserve-mb), which is what admission measures memory limits against.
+    // 0 for a worker too old to report it, which admission treats as unknown.
+    entry["memoryMb"] = node.value("memoryMb").toInteger();
     // The one-minute load average as of the node's last heartbeat, which is the same call and the
     // same tick that keeps the node alive - so it is as current as `lastSeen` says it is.
     //
@@ -353,7 +361,8 @@ void EapClient::createApplication(const QString &applicationId, const QString &r
                                   const QString &schedule, const QStringList &buckets,
                                   const QStringList &queues, const QString &command,
                                   const QStringList &arguments, const QVariantMap &environment,
-                                  const int minInstances, const int maxInstances, const int readyTimeoutMs) {
+                                  const int minInstances, const int maxInstances, const int readyTimeoutMs,
+                                  const int memoryLimitMb, const double cpuLimit) {
     QJsonObject body;
     body["applicationId"] = applicationId;
     body["runtime"] = runtime;
@@ -384,6 +393,12 @@ void EapClient::createApplication(const QString &applicationId, const QString &r
     body["minInstances"] = minInstances;
     body["maxInstances"] = maxInstances;
     body["readyTimeoutMs"] = readyTimeoutMs;
+    // Left out at 0 rather than sent: 0 is the server's own default, no limit, and a server older
+    // than the fields would otherwise be handed two it does not know.
+    if (memoryLimitMb > 0)
+        body["memoryLimitMb"] = memoryLimitMb;
+    if (cpuLimit > 0.0)
+        body["cpuLimit"] = cpuLimit;
 
     m_base->post("eap", "create-application", body, true,
          [this](const QJsonObject &response) {
@@ -482,6 +497,26 @@ void EapClient::scaleApplication(const QString &applicationId, const int minInst
          },
          [this](const QString &message) {
              emit applicationScaleFailed(message);
+         });
+}
+
+void EapClient::setApplicationLimits(const QString &applicationId, const int memoryLimitMb, const double cpuLimit) {
+    QJsonObject body;
+    body["applicationId"] = applicationId;
+    // Left out rather than sent as -1: an absent limit is the one the server keeps.
+    if (memoryLimitMb >= 0)
+        body["memoryLimitMb"] = memoryLimitMb;
+    if (cpuLimit >= 0.0)
+        body["cpuLimit"] = cpuLimit;
+
+    m_base->post("eap", "set-application-limits", body, true,
+         [this, applicationId](const QJsonObject &response) {
+             emit applicationLimitsSet(applicationId, response.value("memoryLimitMb").toInt(),
+                                       response.value("cpuLimit").toDouble(), response.contains("cpuLimit"));
+             emit applicationsReload();
+         },
+         [this](const QString &message) {
+             emit applicationLimitsFailed(message);
          });
 }
 

@@ -105,6 +105,12 @@ Item {
 
     // Enabled and up, enabled and down, or switched off in the registry. A module nobody asked to
     // run is not a problem, so it reads grey rather than red.
+    // An application pool whose instances the kernel's OOM killer ended, with none left running.
+    // Told apart from STOPPED because the remedy differs: a higher memory limit, not a restart.
+    function oomKilled(row) {
+        return !!row && row.runningInstances === 0 && (row.instances || []).some(i => i.state === "OOM_KILLED")
+    }
+
     function stateColor(row) {
         if (!row || !row.active) return "#9aa1ac"
         return row.runningInstances > 0 ? "#4cd97b" : "#ff6b6b"
@@ -112,6 +118,7 @@ Item {
 
     function stateText(row) {
         if (!row || !row.active) return "DISABLED"
+        if (root.oomKilled(row)) return "OOM_KILLED"
         return row.runningInstances > 0 ? "RUNNING" : "STOPPED"
     }
 

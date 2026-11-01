@@ -35,6 +35,7 @@ Item {
         "dashboard": { label: "Home" },
         "analytics": { label: "Analytics", parent: "dashboard" },
         "alerts": { label: "Alerts", parent: "dashboard" },
+        "alerts-rule-details": { parent: "alerts" },
         "settings": { label: "Settings", parent: "dashboard" },
 
         "modules-emm": { label: "Modules", parent: "dashboard" },

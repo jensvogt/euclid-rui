@@ -307,9 +307,14 @@ Item {
                 wrapMode: Text.WordWrap
             }
 
-            Flow {
+            // One row, the four cards sharing the width: they are read across as one summary, and
+            // at a fixed width they wrapped onto a second line on anything narrower than ~1900 px.
+            Row {
+                id: statsRow
                 width: parent.width
                 spacing: 18
+
+                readonly property real cardWidth: (width - spacing * 3) / 4
 
                 StatCard {
                     title: "State"
@@ -317,7 +322,7 @@ Item {
                     trend: root.serverState === root.desiredState ? "as requested" : "reconciling to " + root.desiredState
                     trendUp: root.serverState === "RUNNING"
                     accent: root.serverStateColor(root.serverState)
-                    width: 440
+                    width: statsRow.cardWidth
                 }
                 StatCard {
                     title: "Endpoint"
@@ -325,7 +330,7 @@ Item {
                     trend: root.detail("protocol", "—")
                     trendUp: true
                     accent: "#4f8cff"
-                    width: 440
+                    width: statsRow.cardWidth
                 }
                 StatCard {
                     title: "Bucket"
@@ -333,7 +338,7 @@ Item {
                     trend: "storage behind it"
                     trendUp: true
                     accent: "#c56bff"
-                    width: 440
+                    width: statsRow.cardWidth
                 }
                 StatCard {
                     title: "Allowed"
@@ -346,7 +351,7 @@ Item {
                            + root.detail("userGroups", []).length + " group(s)"
                     trendUp: root.detail("userCount", 0) > 0
                     accent: "#ffb545"
-                    width: 440
+                    width: statsRow.cardWidth
                 }
             }
 

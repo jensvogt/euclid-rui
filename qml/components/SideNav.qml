@@ -93,7 +93,7 @@ Rectangle {
                 icon: "🔔"
                 label: "Alerts"
                 visible: euclidClient.isAdmin
-                selected: root.currentRoute === "alerts"
+                selected: root.currentRoute.indexOf("alerts") === 0
                 onClicked: root.navigate("alerts")
             }
 

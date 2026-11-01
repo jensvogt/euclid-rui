@@ -76,6 +76,9 @@ set_source_files_properties(qml/components/SizeFormat.qml PROPERTIES
 set_source_files_properties(qml/components/Nav.qml PROPERTIES
         QT_QML_SINGLETON_TYPE TRUE
 )
+set_source_files_properties(qml/components/ResourceLimits.qml PROPERTIES
+        QT_QML_SINGLETON_TYPE TRUE
+)
 
 qt_add_qml_module(euclid-rui
         URI EuclidRui
@@ -86,6 +89,7 @@ qt_add_qml_module(euclid-rui
         qml/pages/DashboardPage.qml
         qml/pages/AnalyticsPage.qml
         qml/pages/AlertsPage.qml
+        qml/pages/AlertRuleDetailsPage.qml
         qml/pages/SettingsPage.qml
         qml/pages/ModulePage.qml
         qml/pages/EamAccountsPage.qml
@@ -159,6 +163,9 @@ qt_add_qml_module(euclid-rui
         qml/components/RouteEditDialog.qml
         qml/components/ServiceModuleTile.qml
         qml/components/Breadcrumb.qml
+        qml/components/AlertRuleForm.qml
+        qml/components/ResourceLimits.qml
+        qml/components/MetricPicker.qml
         qml/components/RoleGrants.qml
         qml/components/ToggleSwitch.qml
         qml/components/SectionHeader.qml
