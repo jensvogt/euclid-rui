@@ -187,6 +187,21 @@ void EqsClient::setQueueMaxMessageLength(const QString &queueErn, const qint64 m
          });
 }
 
+void EqsClient::setQueueMaxRetries(const QString &queueErn, const qint64 maxRetries) {
+    QJsonObject body;
+    body["ern"] = queueErn;
+    body["maxRetries"] = maxRetries;
+
+    m_base->post("eqs", "set-queue-max-retries", body, true,
+         [this, queueErn](const QJsonObject &response) {
+             emit queueMaxRetriesChanged(queueErn, response.value("maxRetries").toInteger());
+             emit queuesReload();
+         },
+         [this](const QString &message) {
+             emit queueConfigurationFailed(message);
+         });
+}
+
 void EqsClient::redriveDlq(const QString &queueErn, const QString &targetErn) {
     QJsonObject body;
     body["ern"] = queueErn;
