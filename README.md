@@ -4,6 +4,8 @@ A Qt6/QML desktop admin dashboard for the [Euclid](https://github.com/jensvogt/e
 header-routed HTTP gateway exposing account management, storage, queueing, notification, and key
 management services behind a single endpoint.
 
+![Euclid RUI dashboard](docs/images/dashboard.png)
+
 ## Modules
 
 The dashboard covers the following Euclid modules:
