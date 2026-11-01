@@ -62,7 +62,8 @@ public:
                                        const QStringList &buckets = QStringList(), const QStringList &queues = QStringList(),
                                        const QString &command = QString(), const QStringList &arguments = QStringList(),
                                        const QVariantMap &environment = QVariantMap(),
-                                       int minInstances = 1, int maxInstances = 1, int readyTimeoutMs = 30000);
+                                       int minInstances = 1, int maxInstances = 1, int readyTimeoutMs = 30000,
+                                       int memoryLimitMb = 0, double cpuLimit = 0.0);
 
     // The hosts euclid places applications on - registered by a `euclid-wrk` announcing itself
     // rather than created by anybody, so this is a census of what has turned up and not a list
@@ -133,6 +134,19 @@ public:
     //
     // Administrators only, unlike the reads on this client.
     Q_INVOKABLE void scaleApplication(const QString &applicationId, int minInstances = -1, int maxInstances = -1);
+
+    // How much memory (MiB) and CPU (cores) one instance may use - "set-application-limits". Per
+    // instance, not per pool; 0 removes a limit and -1 leaves it as it is, as scaleApplication()
+    // leaves a bound. Enforced by each worker as the instance cgroup's memory.max and cpu.max.
+    //
+    // Restarts nothing: instances started from now on get the new limits, running ones keep the
+    // ones they started under until restartApplication() - a JVM sized its heap from the limit it
+    // started with. updateApplication() with the same fields restarts the pool instead.
+    //
+    // Refused with 409 when the account's nodes could not keep the promise a memory limit makes
+    // (admission): one instance larger than any node offers, or minInstances of them on top of what
+    // the account's other running applications commit. Administrators only.
+    Q_INVOKABLE void setApplicationLimits(const QString &applicationId, int memoryLimitMb = -1, double cpuLimit = -1.0);
 
     // Merges declaration files into the single document that is stored beside the artifact.
     //
@@ -333,6 +347,11 @@ signals:
     // Carries the server's own wording: it is the side that decides what a bound may be, and it
     // names the way out - stopping the application rather than scaling it to nothing.
     void applicationScaleFailed(const QString &message);
+    // The limits as stored, read back from the definition the server answered with.
+    // `cpuLimitKnown` is false when the answer carries no cpuLimit at all: a server built before CPU
+    // limits, which takes the request, stores the memory limit and drops the CPU one without a word.
+    void applicationLimitsSet(const QString &applicationId, int memoryLimitMb, double cpuLimit, bool cpuLimitKnown);
+    void applicationLimitsFailed(const QString &message);
 
 private:
     // Turns the "infrastructure" block of an answer into infrastructureApplied/

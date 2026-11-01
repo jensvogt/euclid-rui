@@ -36,13 +36,18 @@ Item {
     // The same three states the table shows, by the same rule: a module nobody asked to run is not
     // a problem, so it reads grey rather than red.
     readonly property string state: !root.active ? "DISABLED"
-                                                 : (root.runningInstances > 0 ? "RUNNING" : "STOPPED")
+                                                 : root.runningInstances > 0 ? "RUNNING"
+                                                 : root.instances.some(i => i.state === "OOM_KILLED") ? "OOM_KILLED"
+                                                 : "STOPPED"
     readonly property color stateColor: !root.active ? "#9aa1ac"
                                                      : (root.runningInstances > 0 ? "#4cd97b" : "#ff6b6b")
 
     function instanceStateColor(state) {
         if (state === "RUNNING") return "#4cd97b"
         if (state === "STARTING") return "#ffb545"
+        // Killed by the kernel for going over its memory limit - red like a crash, and named
+        // apart from one in the instance list because restarting will not help.
+        if (state === "OOM_KILLED") return "#ff6b6b"
         if (state === "STOPPED") return "#9aa1ac"
         return "#ff6b6b"
     }

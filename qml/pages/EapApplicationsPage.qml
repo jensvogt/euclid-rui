@@ -52,6 +52,9 @@ Item {
     function stateColor(state) {
         if (state === "RUNNING") return "#4cd97b"
         if (state === "CRASHED") return "#ff6b6b"
+        // Killed by the kernel for using more memory than its limit allows. Red like CRASHED, but
+        // a different fault: restarting will not fix it, a higher memory limit will.
+        if (state === "OOM_KILLED") return "#ff6b6b"
         if (state === "STARTING" || state === "STOPPING") return "#ffb545"
         if (state === "STOPPED") return "#ffb545"
         return "#9aa1ac"
@@ -102,6 +105,17 @@ Item {
             key: "instances",
             formatter: function (v, row) {
                 return row ? Number(v) + " / " + Number(row.maxInstances) : String(v)
+            }
+        },
+        {
+            // Per instance: memory ceiling and CPU quota, enforced by the worker as the instance's
+            // cgroup. Dimmed when there is none - which is allowed, but is also an application that
+            // could take the whole host and that admission does not account for.
+            title: "Limits",
+            key: "memoryLimitMb",
+            formatter: function (v, row) { return row ? ResourceLimits.summary(row.memoryLimitMb, row.cpuLimit) : "—" },
+            colorFor: function (v, row) {
+                return row && (Number(row.memoryLimitMb) > 0 || Number(row.cpuLimit) > 0) ? "#c4c9d1" : "#6b7280"
             }
         },
         { title: "Created", key: "created", formatter: function (v) { return DateFormat.format(v) } },
@@ -1258,6 +1272,16 @@ Item {
         // once rather than three times.
         readonly property bool isJob: typeCombo.currentText === "JOB"
 
+        // Per-instance limits, optional. Checked here by the server's own rules so a typo is said
+        // before an artifact is uploaded rather than after; admission (do the nodes have room?)
+        // is the server's alone and comes back as the create's error.
+        readonly property int wantedMemoryMb: ResourceLimits.parseMemory(memoryLimitField.text)
+        readonly property real wantedCpu: ResourceLimits.parseCpu(cpuLimitField.text)
+        readonly property string limitsProblem: {
+            const memory = ResourceLimits.memoryProblem(createApplicationDialog.wantedMemoryMb)
+            return memory.length > 0 ? memory : ResourceLimits.cpuProblem(createApplicationDialog.wantedCpu)
+        }
+
         // Set as soon as somebody types in the version field, and what stops the derivation below
         // from overwriting what they typed when the artifact key is then edited.
         property bool versionEdited: false
@@ -1342,7 +1366,9 @@ Item {
                 root.applicationsBucket, artifactField.text.trim(), versionField.text.trim(),
                 userField.text.trim(),
                 typeCombo.currentText,
-                createApplicationDialog.isJob ? scheduleField.text.trim() : "")
+                createApplicationDialog.isJob ? scheduleField.text.trim() : "",
+                [], [], "", [], ({}), 1, 1, 30000,
+                createApplicationDialog.wantedMemoryMb, createApplicationDialog.wantedCpu)
         }
 
         background: Rectangle {
@@ -1379,6 +1405,8 @@ Item {
             scheduleField.text = ""
             // Empty on purpose: the default is a dedicated technical principal, not the operator.
             userField.text = ""
+            memoryLimitField.text = ""
+            cpuLimitField.text = ""
             createApplicationDialog.errorText = ""
             createApplicationDialog.creating = false
             applicationIdField.forceActiveFocus()
@@ -1548,6 +1576,44 @@ Item {
                             font.pixelSize: 11
                             wrapMode: Text.WordWrap
                             width: parent.width
+                        }
+                    }
+
+                    Column {
+                        width: parent.width
+                        spacing: 6
+                        Text { text: "Limits per instance (optional)"; color: "#9aa1ac"; font.pixelSize: 12 }
+                        Row {
+                            width: parent.width
+                            spacing: 12
+                            TextField {
+                                id: memoryLimitField
+                                width: (parent.width - 12) / 2
+                                placeholderText: "memory, e.g. 512M or 2G"
+                                Material.accent: "#4f8cff"
+                                selectByMouse: true
+                            }
+                            TextField {
+                                id: cpuLimitField
+                                width: (parent.width - 12) / 2
+                                placeholderText: "CPU cores, e.g. 1.5"
+                                Material.accent: "#4f8cff"
+                                selectByMouse: true
+                            }
+                        }
+                        Text {
+                            width: parent.width
+                            text: createApplicationDialog.limitsProblem.length > 0
+                                  ? createApplicationDialog.limitsProblem
+                                  : "Empty for none. Over its memory limit an instance is killed (OOM_KILLED); over its "
+                                    + "CPU limit it is throttled, never killed."
+                                    + (ResourceLimits.isJavaRuntime(runtimeCombo.currentText)
+                                       && createApplicationDialog.wantedMemoryMb > 0
+                                       ? " The JVM gets -XX:MaxRAMPercentage=" + ResourceLimits.javaMaxRamPercent
+                                         + " unless its environment sets a heap size." : "")
+                            color: createApplicationDialog.limitsProblem.length > 0 ? "#ffb545" : "#6b7280"
+                            font.pixelSize: 11
+                            wrapMode: Text.WordWrap
                         }
                     }
                 }
@@ -1783,6 +1849,7 @@ Item {
                     enabled: !createApplicationDialog.creating && applicationIdField.text.trim().length > 0
                              && artifactField.text.trim().length > 0
                              && versionField.text.trim().length > 0
+                             && createApplicationDialog.limitsProblem.length === 0
                     onClicked: {
                         createApplicationDialog.errorText = ""
                         createApplicationDialog.creating = true

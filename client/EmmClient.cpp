@@ -69,8 +69,13 @@ void EmmClient::fetchModuleStatus(const QString &moduleName) {
                      if (instance.value("state").toString() != "RUNNING")
                          continue;
                      ++runningInstances;
-                     if (const QDateTime created = QDateTime::fromString(instance.value("created").toString(), Qt::ISODateWithMs); created.isValid() && (!earliestStart.isValid() || created < earliestStart))
-                         earliestStart = created;
+                     // The process's start, not the slot's creation, which outlives every restart.
+                     // "created" only for a server that predates "started".
+                     QString startText = instance.value("started").toString();
+                     if (startText.isEmpty())
+                         startText = instance.value("created").toString();
+                     if (const QDateTime started = QDateTime::fromString(startText, Qt::ISODateWithMs); started.isValid() && (!earliestStart.isValid() || started < earliestStart))
+                         earliestStart = started;
                  }
 
                  const qint64 uptimeSeconds = earliestStart.isValid()
@@ -130,6 +135,9 @@ void EmmClient::fetchModules() {
                      // Work no request is waiting on - an async purge, say. The autoscaler passes
                      // over an instance reporting any, so it explains a pool that will not shrink.
                      entry["backgroundTasks"] = instance.value("backgroundTasks").toInt();
+                     // When the running process started - not "created", which is when the slot
+                     // was first made and survives every restart. Empty when nothing runs.
+                     entry["started"] = instance.value("started").toString();
                      entry["created"] = instance.value("created").toString();
                      entry["modified"] = instance.value("modified").toString();
                      instanceList << entry;

@@ -15,6 +15,8 @@ Item {
 
     property string error: ""
     property bool deleting: false
+    // What the last limits change (and the restart that may have followed it) did.
+    property string limitsNote: ""
     property bool savingEnvironment: false
     property bool savingRuntime: false
     property bool savingNodeLabels: false
@@ -209,6 +211,15 @@ Item {
     readonly property int maxInstances: Number(detail("maxInstances", 1))
 
     readonly property string applicationState: detail("state", "")
+
+    // Per instance: MiB and cores, 0 for none. See ResourceLimits and set-application-limits.
+    readonly property int memoryLimitMb: Number(detail("memoryLimitMb", 0))
+    readonly property real cpuLimit: Number(detail("cpuLimit", 0))
+
+    // Instances the kernel's OOM killer ended. Counted off the pool rather than read from the
+    // application's state alone: a pool with one instance up and one killed reads RUNNING, and the
+    // killed one is still the thing to hear about.
+    readonly property int oomKilledInstances: (root.instances || []).filter(i => i.state === "OOM_KILLED").length
     readonly property string desiredState: detail("desiredState", "")
 
     // PROCESS when the definition carries no type, which is what every application written before
@@ -246,6 +257,7 @@ Item {
     function applicationStateColor(value) {
         if (value === "RUNNING") return "#4cd97b"
         if (value === "CRASHED") return "#ff6b6b"
+        if (value === "OOM_KILLED") return "#ff6b6b"
         if (value === "STARTING" || value === "STOPPING") return "#ffb545"
         if (value === "STOPPED") return "#ffb545"
         return "#9aa1ac"
@@ -262,6 +274,7 @@ Item {
 
     function instanceStateColor(value) {
         if (value === "RUNNING") return "#4cd97b"
+        if (value === "OOM_KILLED") return "#ff6b6b"
         if (value === "STARTING") return "#ffb545"
         if (value === "STOPPED") return "#9aa1ac"
         return "#ff6b6b"
@@ -515,7 +528,10 @@ Item {
         esmClient.fetchObjectSize(bucketErn, key)
     }
 
-    onVisibleChanged: if (visible) refresh()
+    onVisibleChanged: {
+        if (visible) refresh()
+        else limitsNote = ""
+    }
     onLoggedInChanged: if (loggedIn && visible) refresh()
 
     Connections {
@@ -609,6 +625,49 @@ Item {
             scaleDialog.scaling = false
             if (scaleDialog.opened) scaleDialog.errorText = message
             else root.error = message
+        }
+        function onApplicationLimitsSet(applicationId, memoryLimitMb, cpuLimit, cpuLimitKnown) {
+            if (applicationId !== root.applicationId) return
+            const restart = limitsDialog.restartNow && root.desiredState === "RUNNING"
+            // What was asked for against what the server answered it stored. They differ when the
+            // server is older than a field - one built before CPU limits accepts the request,
+            // keeps the memory limit and drops the CPU one, and answers success all the same.
+            const askedCpu = limitsDialog.sentCpu
+            const askedMemory = limitsDialog.sentMemoryMb
+            const lost = []
+            if (askedCpu >= 0 && (!cpuLimitKnown || Math.abs(cpuLimit - askedCpu) > 1e-9))
+                lost.push("CPU limit (" + ResourceLimits.cpuText(askedCpu) + ")")
+            if (askedMemory >= 0 && memoryLimitMb !== askedMemory)
+                lost.push("memory limit (" + ResourceLimits.memoryText(askedMemory) + ")")
+            limitsDialog.saving = false
+            if (lost.length > 0) {
+                // Kept open, with the reason beside the fields it is about.
+                limitsDialog.errorText = "The server did not store the " + lost.join(" or the ") + "."
+                    + (!cpuLimitKnown && askedCpu >= 0
+                       ? " It does not know CPU limits at all - its EAP is older than them (euclid commit 54e6a6df, "
+                         + "\"EAP apply rlimits and CPU limits\"). Update the installation and try again."
+                       : "")
+                root.refresh()
+                return
+            }
+            limitsDialog.close()
+            root.limitsNote = "Limits set to " + ResourceLimits.summary(memoryLimitMb, cpuLimit) + " per instance. "
+                + (restart ? "Restarting the running instances so they get them."
+                           : "Instances started from now on get them; running ones keep theirs until restarted.")
+            if (restart) eapClient.restartApplication(root.applicationId)
+            root.refresh()
+        }
+        function onApplicationLimitsFailed(message) {
+            limitsDialog.saving = false
+            if (limitsDialog.opened) limitsDialog.errorText = message
+            else root.error = message
+        }
+        function onApplicationRestarted(applicationId, instances) {
+            if (applicationId !== root.applicationId) return
+            root.refresh()
+        }
+        function onApplicationRestartFailed(message) {
+            root.error = message
         }
 
         function onEgressSitesLoaded(sites, defaults) {
@@ -715,6 +774,14 @@ Item {
                     }
 
                     Button {
+                        text: "Limits…"
+                        flat: true
+                        Material.theme: Material.Dark
+                        Material.accent: "#4f8cff"
+                        onClicked: limitsDialog.open()
+                    }
+
+                    Button {
                         text: "Start"
                         flat: true
                         Material.theme: Material.Dark
@@ -758,6 +825,59 @@ Item {
                 wrapMode: Text.WordWrap
             }
 
+            // OOM_KILLED is the one failure with a known remedy, and it is not "restart": an
+            // instance that needs more memory than it is allowed ends the same way every time, and
+            // the worker gives up after three in a row until the limit or the application changes.
+            Rectangle {
+                visible: root.oomKilledInstances > 0 || root.applicationState === "OOM_KILLED"
+                width: parent.width
+                height: oomRow.implicitHeight + 24
+                radius: 10
+                color: "#3a1f24"
+                border.color: "#ff6b6b"
+                border.width: 1
+
+                Row {
+                    id: oomRow
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    anchors.margins: 14
+                    spacing: 12
+
+                    Text {
+                        width: parent.width - raiseButton.width - parent.spacing
+                        anchors.verticalCenter: parent.verticalCenter
+                        wrapMode: Text.WordWrap
+                        color: "#ffb4b4"
+                        font.pixelSize: 12
+                        text: (root.oomKilledInstances > 0 ? root.oomKilledInstances + " instance(s)" : "This application")
+                              + " killed for running out of memory"
+                              + (root.memoryLimitMb > 0 ? " (limit " + ResourceLimits.memoryText(root.memoryLimitMb) + " per instance)"
+                                                        : " - with no limit of its own, the host itself ran out")
+                              + ". Restarting will end the same way; after three in a row the worker stops trying "
+                              + "until the limit or the application changes."
+                    }
+                    Button {
+                        id: raiseButton
+                        text: "Raise limit…"
+                        anchors.verticalCenter: parent.verticalCenter
+                        Material.theme: Material.Dark
+                        Material.accent: "#ff6b6b"
+                        onClicked: limitsDialog.open()
+                    }
+                }
+            }
+
+            Text {
+                visible: root.limitsNote.length > 0
+                width: parent.width
+                text: root.limitsNote
+                color: "#4cd97b"
+                font.pixelSize: 12
+                wrapMode: Text.WordWrap
+            }
+
             Flow {
                 width: parent.width
                 spacing: 18
@@ -772,7 +892,9 @@ Item {
                            ? "as requested"
                            : root.applicationState === "CRASHED"
                              ? "crashed, asked for " + root.desiredState
-                             : "reconciling to " + root.desiredState
+                             : root.applicationState === "OOM_KILLED"
+                               ? "out of memory, asked for " + root.desiredState
+                               : "reconciling to " + root.desiredState
                     trendUp: root.applicationState === "RUNNING"
                     accent: root.applicationStateColor(root.applicationState)
                     width: root.statWidth
@@ -799,6 +921,16 @@ Item {
                     trend: "scales " + root.detail("minInstances", 1) + " to " + root.detail("maxInstances", 1)
                     trendUp: root.detail("instances", 0) > 0
                     accent: "#4f8cff"
+                    width: root.statWidth
+                }
+                StatCard {
+                    title: "Limits"
+                    value: ResourceLimits.summary(root.memoryLimitMb, root.cpuLimit)
+                    trend: root.oomKilledInstances > 0
+                           ? root.oomKilledInstances + " instance(s) OOM killed"
+                           : (root.memoryLimitMb > 0 || root.cpuLimit > 0 ? "per instance" : "may use the whole host")
+                    trendUp: root.oomKilledInstances === 0 && (root.memoryLimitMb > 0 || root.cpuLimit > 0)
+                    accent: root.oomKilledInstances > 0 ? "#ff6b6b" : "#4f8cff"
                     width: root.statWidth
                 }
                 StatCard {
@@ -899,6 +1031,16 @@ Item {
                             label: "Ready timeout"
                             value: root.detail("readyTimeoutMs", 0) + " ms"
                         }
+                        DetailField {
+                            width: (identityCol.width - 48) / 3
+                            label: "Memory limit (per instance)"
+                            value: ResourceLimits.memoryText(root.memoryLimitMb)
+                        }
+                        DetailField {
+                            width: (identityCol.width - 48) / 3
+                            label: "CPU limit (per instance)"
+                            value: ResourceLimits.cpuText(root.cpuLimit)
+                        }
                         DetailField { width: (identityCol.width - 48) / 3; label: "Created"; value: DateFormat.format(root.detail("created", "")) }
                         DetailField { width: (identityCol.width - 48) / 3; label: "Modified"; value: DateFormat.format(root.detail("modified", "")) }
                     }
@@ -911,6 +1053,15 @@ Item {
                         // an application that names no command still has the first two.
                         value: root.commandLineText(root.arguments)
                         copyable: true
+                    }
+                    DetailField {
+                        width: identityCol.width
+                        // What the worker does about the heap, worked out the way it does: a JVM
+                        // under a limit gets MaxRAMPercentage unless it sizes its heap itself.
+                        visible: ResourceLimits.isJavaRuntime(root.detail("runtime", ""))
+                        label: "JVM heap"
+                        value: ResourceLimits.jvmHeapText(root.detail("runtime", ""), root.detail("command", ""),
+                                                          root.detail("environment", ({})), root.memoryLimitMb)
                     }
                     DetailField { width: identityCol.width; label: "Bucket ERN"; value: root.detail("bucketErn", "—"); copyable: true }
                     DetailField { width: identityCol.width; label: "Application ERN"; value: root.detail("ern", "—"); copyable: true }
@@ -2541,6 +2692,201 @@ Item {
                         scaleDialog.errorText = ""
                         eapClient.scaleApplication(root.applicationId,
                                                    scaleDialog.wantedMin, scaleDialog.wantedMax)
+                    }
+                }
+            }
+        }
+    }
+
+    // The per-instance limits, through "set-application-limits": the one call that changes them
+    // without touching anything else, and so without restarting the pool. Running instances keep
+    // the limits they started under - a JVM sized its heap from them - so restarting is offered
+    // here as a separate, deliberate step.
+    Dialog {
+        id: limitsDialog
+        modal: true
+        anchors.centerIn: parent
+        width: 480
+        padding: 28
+        topPadding: 24
+        bottomPadding: 24
+        standardButtons: Dialog.NoButton
+
+        property bool saving: false
+        property string errorText: ""
+        property bool restartNow: false
+        // What the last Apply sent, -1 for a limit left alone - checked against what comes back.
+        property int sentMemoryMb: -1
+        property real sentCpu: -1
+
+        readonly property int wantedMemoryMb: ResourceLimits.parseMemory(limitMemoryField.text)
+        readonly property real wantedCpu: ResourceLimits.parseCpu(limitCpuField.text)
+        readonly property string problem: {
+            const memory = ResourceLimits.memoryProblem(limitsDialog.wantedMemoryMb)
+            return memory.length > 0 ? memory : ResourceLimits.cpuProblem(limitsDialog.wantedCpu)
+        }
+        readonly property bool memoryChanged: limitsDialog.wantedMemoryMb !== root.memoryLimitMb
+        readonly property bool cpuChanged: Math.abs(limitsDialog.wantedCpu - root.cpuLimit) > 1e-9
+
+        background: Rectangle {
+            radius: 16
+            color: "#1b1e25"
+            border.color: "#2c313c"
+            border.width: 1
+        }
+
+        onOpened: {
+            limitsDialog.saving = false
+            limitsDialog.errorText = ""
+            limitsDialog.restartNow = false
+            restartCheck.checked = false
+            limitMemoryField.text = ResourceLimits.memoryInput(root.memoryLimitMb)
+            limitCpuField.text = ResourceLimits.cpuInput(root.cpuLimit)
+            limitMemoryField.forceActiveFocus()
+            limitMemoryField.selectAll()
+        }
+
+        contentItem: Column {
+            width: limitsDialog.availableWidth
+            spacing: 18
+
+            Column {
+                width: parent.width
+                spacing: 4
+                Text { text: "Resource Limits"; color: "white"; font.pixelSize: 18; font.bold: true }
+                Text {
+                    text: root.applicationId + "  ·  currently " + ResourceLimits.summary(root.memoryLimitMb, root.cpuLimit)
+                          + " per instance"
+                    color: "#9aa1ac"
+                    font.pixelSize: 12
+                    elide: Text.ElideRight
+                    width: parent.width
+                }
+            }
+
+            Text {
+                width: parent.width
+                wrapMode: Text.WordWrap
+                color: "#6b7280"
+                font.pixelSize: 11
+                text: "Per instance, so the application may use up to " + root.maxInstances + " times this. Over its "
+                      + "memory limit an instance is killed and reported OOM_KILLED; over its CPU limit it is "
+                      + "throttled, never killed. Empty or 0 removes a limit. A memory limit is checked against what "
+                      + "the nodes offer, and refused if they could not keep it."
+            }
+
+            Row {
+                width: parent.width
+                spacing: 12
+
+                Column {
+                    width: (limitsDialog.availableWidth - 12) / 2
+                    spacing: 6
+                    Text { text: "Memory"; color: "#9aa1ac"; font.pixelSize: 12 }
+                    TextField {
+                        id: limitMemoryField
+                        width: parent.width
+                        placeholderText: "none - e.g. 512M, 2G"
+                        Material.accent: "#4f8cff"
+                        selectByMouse: true
+                        Keys.onReturnPressed: limitCpuField.forceActiveFocus()
+                    }
+                    Text {
+                        text: limitsDialog.wantedMemoryMb > 0 ? "= " + ResourceLimits.memoryText(limitsDialog.wantedMemoryMb) : ""
+                        color: "#6b7280"
+                        font.pixelSize: 11
+                    }
+                }
+
+                Column {
+                    width: (limitsDialog.availableWidth - 12) / 2
+                    spacing: 6
+                    Text { text: "CPU (cores)"; color: "#9aa1ac"; font.pixelSize: 12 }
+                    TextField {
+                        id: limitCpuField
+                        width: parent.width
+                        placeholderText: "none - e.g. 0.5, 1.5"
+                        Material.accent: "#4f8cff"
+                        selectByMouse: true
+                        Keys.onReturnPressed: if (applyLimitsButton.enabled) applyLimitsButton.clicked()
+                    }
+                }
+            }
+
+            // The JVM consequence of the memory being typed, worked out the way the worker will.
+            Text {
+                width: parent.width
+                visible: ResourceLimits.isJavaRuntime(root.detail("runtime", ""))
+                wrapMode: Text.WordWrap
+                color: "#9aa1ac"
+                font.pixelSize: 11
+                text: "JVM heap: " + ResourceLimits.jvmHeapText(root.detail("runtime", ""), root.detail("command", ""),
+                                                                 root.detail("environment", ({})),
+                                                                 isNaN(limitsDialog.wantedMemoryMb) ? 0 : limitsDialog.wantedMemoryMb)
+            }
+
+            CheckBox {
+                id: restartCheck
+                width: parent.width
+                visible: root.desiredState === "RUNNING"
+                text: "Restart running instances so they get the new limits now"
+                Material.theme: Material.Dark
+                Material.accent: "#4f8cff"
+                onToggled: limitsDialog.restartNow = checked
+            }
+
+            Text {
+                width: parent.width
+                wrapMode: Text.WordWrap
+                color: "#6b7280"
+                font.pixelSize: 11
+                visible: root.desiredState === "RUNNING" && !restartCheck.checked
+                text: "Without a restart, running instances keep the limits they started under - a JVM sized its heap "
+                      + "from them - and only instances started from now on get these."
+            }
+
+            Text {
+                width: parent.width
+                wrapMode: Text.WordWrap
+                color: "#ff6b6b"
+                font.pixelSize: 12
+                visible: limitsDialog.problem.length > 0 || limitsDialog.errorText.length > 0
+                text: limitsDialog.errorText.length > 0 ? limitsDialog.errorText : limitsDialog.problem
+            }
+
+            Item {
+                width: parent.width
+                height: 40
+
+                Button {
+                    text: "Cancel"
+                    flat: true
+                    anchors.left: parent.left
+                    anchors.verticalCenter: parent.verticalCenter
+                    Material.theme: Material.Dark
+                    onClicked: limitsDialog.close()
+                }
+
+                Button {
+                    id: applyLimitsButton
+                    text: limitsDialog.saving ? "Saving…" : "Apply"
+                    highlighted: true
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    Material.theme: Material.Dark
+                    Material.accent: "#4f8cff"
+                    enabled: limitsDialog.problem.length === 0 && !limitsDialog.saving
+                             && (limitsDialog.memoryChanged || limitsDialog.cpuChanged)
+                    onClicked: {
+                        root.error = ""
+                        root.limitsNote = ""
+                        limitsDialog.saving = true
+                        limitsDialog.errorText = ""
+                        // Only what moved: an unchanged memory limit is not sent, so it is not
+                        // re-checked against the nodes either.
+                        limitsDialog.sentMemoryMb = limitsDialog.memoryChanged ? limitsDialog.wantedMemoryMb : -1
+                        limitsDialog.sentCpu = limitsDialog.cpuChanged ? limitsDialog.wantedCpu : -1
+                        eapClient.setApplicationLimits(root.applicationId, limitsDialog.sentMemoryMb, limitsDialog.sentCpu)
                     }
                 }
             }

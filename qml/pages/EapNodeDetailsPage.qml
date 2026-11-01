@@ -269,6 +269,15 @@ Item {
                     accent: "#4f8cff"
                 }
                 StatCard {
+                    title: "Memory"
+                    value: Number(root.detail("memoryMb", 0)) > 0 ? ResourceLimits.memoryText(root.detail("memoryMb", 0)) : "—"
+                    // Not the host's total: what is left for applications once the worker's reserve
+                    // is kept back, and so what memory limits are admitted against.
+                    trend: Number(root.detail("memoryMb", 0)) > 0 ? "offered to applications" : "not reported by this worker"
+                    trendUp: Number(root.detail("memoryMb", 0)) > 0
+                    accent: "#c56bff"
+                }
+                StatCard {
                     title: "Load"
                     value: root.loadText()
                     // Per CPU rather than the raw figure repeated: 4.0 is a busy machine on two
@@ -343,6 +352,11 @@ Item {
                             value: root.detail("version", "—")
                         }
                         DetailField { width: (identityCol.width - 48) / 3; label: "CPUs"; value: String(root.detail("cpuCount", 0)) }
+                        DetailField {
+                            width: (identityCol.width - 48) / 3
+                            label: "Memory for applications"
+                            value: Number(root.detail("memoryMb", 0)) > 0 ? ResourceLimits.memoryText(root.detail("memoryMb", 0)) : "— (not reported)"
+                        }
                         DetailField { width: (identityCol.width - 48) / 3; label: "Last seen"; value: DateFormat.format(root.detail("lastSeen", "")) }
                     }
 

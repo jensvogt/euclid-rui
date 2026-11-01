@@ -24,6 +24,8 @@ ApplicationWindow {
     property string currentUser: ""
     property string currentNamespace: ""
     property string currentRoute: "dashboard"
+    // EMO: the alert rule the details page shows.
+    property string selectedAlertRuleId: ""
 
     // Kept in step with the breadcrumb's idea of where the window is, and the way back: a crumb
     // asks for a route rather than setting one, because arriving somewhere is more than a string -
@@ -985,6 +987,17 @@ ApplicationWindow {
                     anchors.fill: parent
                     visible: window.currentRoute === "alerts"
                     loggedIn: window.loggedIn
+                    onOpenRuleDetails: (ruleId) => {
+                        window.selectedAlertRuleId = ruleId
+                        window.currentRoute = "alerts-rule-details"
+                    }
+                }
+                AlertRuleDetailsPage {
+                    anchors.fill: parent
+                    visible: window.currentRoute === "alerts-rule-details"
+                    loggedIn: window.loggedIn
+                    ruleId: window.selectedAlertRuleId
+                    onBack: window.currentRoute = "alerts"
                 }
                 SettingsPage {
                     anchors.fill: parent

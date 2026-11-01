@@ -101,6 +101,15 @@ Item {
         { title: "Last seen", key: "lastSeen", formatter: function (v) { return DateFormat.format(v) } },
         { title: "CPUs", key: "cpuCount" },
         {
+            // What the node offers applications - its memory less what the worker keeps back -
+            // and what admission measures memory limits against. "—" for a worker too old to say,
+            // which admission does not refuse on.
+            title: "Memory",
+            key: "memoryMb",
+            formatter: function (v) { return Number(v) > 0 ? ResourceLimits.memoryText(v) : "—" },
+            colorFor: function (v) { return Number(v) > 0 ? "#c4c9d1" : "#6b7280" }
+        },
+        {
             // Beside the version, because the three together are what says which build is running
             // where - and an artifact built for one platform does not run on another, which is the
             // thing a placement rule is usually working around.

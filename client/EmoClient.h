@@ -66,6 +66,30 @@ public:
     // CRITICAL or NO_DATA (empty for all); `activeOnly` drops the series that are OK.
     Q_INVOKABLE void fetchAlerts(const QString &state = QString(), bool activeOnly = false);
 
+    // Every alert rule - EMO's "list-alert-rules". Needed beside fetchAlerts() because a disabled
+    // rule has no series in that listing at all, and this is the only place it still shows.
+    Q_INVOKABLE void fetchAlertRules();
+
+    // Switches a rule on or off - "update-alert-rule" with only "enabled" set, so nothing else about
+    // the rule changes. Disabling retires every series the rule judges server-side (each non-OK one
+    // is announced as cleared); enabling starts judging again at the next period.
+    Q_INVOKABLE void setAlertRuleEnabled(const QString &ruleId, bool enabled);
+
+    // Changes a rule - "update-alert-rule" with whichever fields `changes` carries (name, labels,
+    // statistic, comparison, warning, critical, forPeriods, clearPeriods, noDataAfterPeriods,
+    // enabled, description); the rest stay as they are. A threshold set to null removes it.
+    // Pointing the rule at another metric or other labels retires the series it judged.
+    Q_INVOKABLE void updateAlertRule(const QString &ruleId, const QVariantMap &changes);
+
+    // Creates a rule - "create-alert-rule" with the whole of it (ruleId, name, labels, statistic,
+    // comparison, warning and/or critical, forPeriods, clearPeriods, noDataAfterPeriods, enabled,
+    // description). Filed under the session's account and namespace.
+    Q_INVOKABLE void createAlertRule(const QVariantMap &rule);
+
+    // Every metric with a row in the last 24 hours - EMO's "list-metrics": what a rule can be
+    // written on, and the label names it can select on.
+    Q_INVOKABLE void fetchMetrics();
+
 signals:
     void cpuUsageLoaded(const QString &moduleName, double percent);
     void cpuUsageFailed(const QString &moduleName, const QString &message);
@@ -86,6 +110,20 @@ signals:
     // lastSeen, statistic, comparison, warning, critical, description, namespace.
     void alertsLoaded(const QVariantList &alerts);
     void alertsFailed(const QString &message);
+    // ruleId, name, labels, resolution, statistic, comparison, warning, critical, forPeriods,
+    // clearPeriods, noDataAfterPeriods, enabled, description, accountId, namespace, created, modified.
+    void alertRulesLoaded(const QVariantList &rules);
+    void alertRulesFailed(const QString &message);
+    void alertRuleEnabledChanged(const QString &ruleId, bool enabled);
+    void alertRuleEnabledFailed(const QString &ruleId, const QString &message);
+    // The rule as the server stored it, in the shape alertRulesLoaded() gives each one.
+    void alertRuleUpdated(const QString &ruleId, const QVariantMap &rule);
+    void alertRuleUpdateFailed(const QString &ruleId, const QString &message);
+    void alertRuleCreated(const QString &ruleId, const QVariantMap &rule);
+    void alertRuleCreateFailed(const QString &ruleId, const QString &message);
+    // [{name, type, series, labelNames, lastSeen}], sorted by name.
+    void metricsLoaded(const QVariantList &metrics);
+    void metricsFailed(const QString &message);
 
 private:
     void fetchLatestMetric(const QString &metricName, const QString &moduleName,

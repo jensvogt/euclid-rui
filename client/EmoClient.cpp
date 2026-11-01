@@ -218,6 +218,49 @@ void EmoClient::fetchAlerts(const QString &state, const bool activeOnly) {
          [this](const QString &message) { emit alertsFailed(message); });
 }
 
+void EmoClient::fetchAlertRules() {
+    m_base->post("emo", "list-alert-rules", QJsonObject(), true,
+         [this](const QJsonObject &response) {
+             emit alertRulesLoaded(response.value("items").toArray().toVariantList());
+         },
+         [this](const QString &message) { emit alertRulesFailed(message); });
+}
+
+void EmoClient::setAlertRuleEnabled(const QString &ruleId, const bool enabled) {
+    QJsonObject body;
+    body["ruleId"] = ruleId;
+    body["enabled"] = enabled;
+
+    m_base->post("emo", "update-alert-rule", body, true,
+         [this, ruleId, enabled](const QJsonObject &) { emit alertRuleEnabledChanged(ruleId, enabled); },
+         [this, ruleId](const QString &message) { emit alertRuleEnabledFailed(ruleId, message); });
+}
+
+void EmoClient::updateAlertRule(const QString &ruleId, const QVariantMap &changes) {
+    // fromVariantMap turns a null from QML into a JSON null, which is what clears a threshold.
+    QJsonObject body = QJsonObject::fromVariantMap(changes);
+    body["ruleId"] = ruleId;
+
+    m_base->post("emo", "update-alert-rule", body, true,
+         [this, ruleId](const QJsonObject &response) { emit alertRuleUpdated(ruleId, response.toVariantMap()); },
+         [this, ruleId](const QString &message) { emit alertRuleUpdateFailed(ruleId, message); });
+}
+
+void EmoClient::createAlertRule(const QVariantMap &rule) {
+    const QString ruleId = rule.value("ruleId").toString();
+    m_base->post("emo", "create-alert-rule", QJsonObject::fromVariantMap(rule), true,
+         [this, ruleId](const QJsonObject &response) { emit alertRuleCreated(ruleId, response.toVariantMap()); },
+         [this, ruleId](const QString &message) { emit alertRuleCreateFailed(ruleId, message); });
+}
+
+void EmoClient::fetchMetrics() {
+    m_base->post("emo", "list-metrics", QJsonObject(), true,
+         [this](const QJsonObject &response) {
+             emit metricsLoaded(response.value("items").toArray().toVariantList());
+         },
+         [this](const QString &message) { emit metricsFailed(message); });
+}
+
 void EmoClient::fetchAggregatedSeries(const QString &metricName, const int limit, const QString &resolution) {
     QJsonObject body;
     body["name"] = metricName;
