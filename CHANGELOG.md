@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.1.52](https://github.com/jensvogt/euclid-rui/compare/1.1.51...v1.1.52) (2026-11-01)
+
+
+### Bug Fixes
+
+* Add image ([04d51d7](https://github.com/jensvogt/euclid-rui/commit/04d51d76cffbdb8d5facf76a5aecabc3d0f0b0c6))
+* CPU and memory limits. ([35925b9](https://github.com/jensvogt/euclid-rui/commit/35925b90c1749fc155eec11ec748c2f18738f7b1))
+
 ## [1.1.51](https://github.com/jensvogt/euclid-rui/compare/1.1.50...v1.1.51) (2026-11-01)
 
 
