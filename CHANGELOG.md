@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.53](https://github.com/jensvogt/euclid-rui/compare/1.1.52...v1.1.53) (2026-11-02)
+
+
+### Bug Fixes
+
+* add Rust as available runtime. ([c3acdff](https://github.com/jensvogt/euclid-rui/commit/c3acdff7046d76f8bb814c39309514b249b1f206))
+
 ## [1.1.52](https://github.com/jensvogt/euclid-rui/compare/1.1.51...v1.1.52) (2026-11-01)
 
 
