@@ -32,7 +32,7 @@ Item {
     readonly property var arguments: root.detail("arguments", [])
 
     // The interpreter the runtime brings, for showing what the arguments will follow. Mirrors
-    // Core::Launch::InterpreterPrefix(); BINARY and anything unknown is the artifact itself.
+    // Core::Launch::InterpreterPrefix(); BINARY, RUST and anything unknown is the artifact itself.
     function interpreterPrefix(runtime) {
         if (runtime === "JAVA" || runtime === "JAVA21" || runtime === "JAVA25")
             return (runtime === "JAVA" ? "java" : runtime.toLowerCase()) + " -jar"
@@ -415,7 +415,7 @@ Item {
     // made the version an accident of the host. JAVA still means exactly that - whichever java
     // this machine calls java - and is what every application deployed before the versioned ones
     // existed still runs under, so it stays on the list rather than being quietly replaced.
-    readonly property var runtimeOptions: ["JAVA", "JAVA21", "JAVA25", "PYTHON", "NODEJS", "BINARY"]
+    readonly property var runtimeOptions: ["JAVA", "JAVA21", "JAVA25", "PYTHON", "NODEJS", "BINARY", "RUST"]
 
     // Changed through update-application, which touches only the field it is given. The manager
     // reads the changed definition as a new revision and restarts the pool onto it within a few

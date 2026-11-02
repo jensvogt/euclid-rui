@@ -1473,7 +1473,7 @@ Item {
                             // version is asked for by name rather than left to whichever java the
                             // manager finds first. JAVA still means exactly that, and is what
                             // everything deployed before the versioned ones runs under.
-                            model: [ "JAVA", "JAVA21", "JAVA25", "PYTHON", "NODEJS", "BINARY" ]
+                            model: [ "JAVA", "JAVA21", "JAVA25", "PYTHON", "NODEJS", "BINARY", "RUST" ]
                             Material.theme: Material.Dark
                             Material.accent: "#4f8cff"
                         }
