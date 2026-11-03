@@ -66,6 +66,25 @@ public:
     // CRITICAL or NO_DATA (empty for all); `activeOnly` drops the series that are OK.
     Q_INVOKABLE void fetchAlerts(const QString &state = QString(), bool activeOnly = false);
 
+    // What a rule has actually done - EMO's "list-alert-history", newest first. Where fetchAlerts()
+    // says where every series stands now, this is the record of it changing: one entry per state
+    // change, with the figure and the line that decided it.
+    //
+    // Filtered by rule and by time only. A rule judging several series writes transitions for all
+    // of them into one history, and the server offers no way to ask for just one - so a caller that
+    // wants a single series has to match the labels itself.
+    //
+    // Kept for euclid.modules.emo.alert.history-retention days, 90 as shipped, so an old alert can
+    // run out of history while the rule that raised it is still there.
+    //
+    // An empty `ruleId` asks for every rule at once, which is how a count across a whole listing is
+    // got in one request rather than one per row. `from` is an ISO 8601 instant and bounds the
+    // window; empty leaves it unbounded, which is what a single rule's dialog wants.
+    //
+    // `limit` cuts newest-first server-side, so a window busier than the limit comes back
+    // shortened rather than wrong - a caller counting over it is undercounting and should say so.
+    Q_INVOKABLE void fetchAlertHistory(const QString &ruleId, int limit = 200, const QString &from = QString());
+
     // Every alert rule - EMO's "list-alert-rules". Needed beside fetchAlerts() because a disabled
     // rule has no series in that listing at all, and this is the only place it still shows.
     Q_INVOKABLE void fetchAlertRules();
@@ -110,6 +129,12 @@ signals:
     // lastSeen, statistic, comparison, warning, critical, description, namespace.
     void alertsLoaded(const QVariantList &alerts);
     void alertsFailed(const QString &message);
+
+    // Each entry: {ruleId, name, labels, previous, state, severity, value, threshold, statistic,
+    // reason, timestamp, accountId, namespace}. The ruleId comes back with them so a dialog can
+    // tell its own answer from one belonging to another - these reach every listener.
+    void alertHistoryLoaded(const QString &ruleId, const QVariantList &transitions);
+    void alertHistoryFailed(const QString &ruleId, const QString &message);
     // ruleId, name, labels, resolution, statistic, comparison, warning, critical, forPeriods,
     // clearPeriods, noDataAfterPeriods, enabled, description, accountId, namespace, created, modified.
     void alertRulesLoaded(const QVariantList &rules);
