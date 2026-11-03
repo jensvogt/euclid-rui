@@ -5,7 +5,8 @@ import QtQuick.Controls.Material
 Item {
     id: root
 
-    // Columns: [{ title, key, width?, fill?, color, formatter(value, row), colorFor(value, row) }]
+    // Columns: [{ title, key, width?, fill?, tooltip?, color, formatter(value, row), colorFor(value, row) }]
+    // - tooltip: text shown when hovering the column header
     // - width: fixed pixel width
     // - fill: true -> takes all remaining space (at most one such column)
     // - neither -> "as needed": sized to fit the widest header/cell content
@@ -235,6 +236,7 @@ Item {
                                 width: root.columnWidths[index]
                                 height: headerLabel.implicitHeight
                                 readonly property bool sortable: modelData.key !== undefined && modelData.sortable !== false
+                                readonly property string tooltip: modelData.tooltip ? String(modelData.tooltip) : ""
 
                                 Row {
                                     spacing: 4
@@ -257,8 +259,11 @@ Item {
                                 MouseArea {
                                     id: headerArea
                                     anchors.fill: parent
-                                    hoverEnabled: headerCell.sortable
+                                    hoverEnabled: headerCell.sortable || headerCell.tooltip.length > 0
                                     cursorShape: headerCell.sortable ? Qt.PointingHandCursor : Qt.ArrowCursor
+                                    ToolTip.visible: containsMouse && headerCell.tooltip.length > 0
+                                    ToolTip.delay: 500
+                                    ToolTip.text: headerCell.tooltip
                                     onClicked: {
                                         if (!headerCell.sortable)
                                             return

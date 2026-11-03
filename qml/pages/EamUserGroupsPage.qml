@@ -22,13 +22,46 @@ Item {
 
     readonly property var columns: {
         let cols = [
-            { title: "Name", key: "name", fill: true },
-            { title: "Account ID", key: "accountId" },
-            { title: "Region", key: "region" },
-            { title: "Description", key: "description" },
-            { title: "Members", key: "userIds", formatter: function (v) { return v ? v.length : 0 } },
-            { title: "Created", key: "created", formatter: function (v) { return DateFormat.format(v) } },
-            { title: "Modified", key: "modified", formatter: function (v) { return DateFormat.format(v) } },
+            {
+                title: "Name",
+                key: "name",
+                fill: true,
+                tooltip: "The group's name, unique within its account. A grant made to the group "
+                         + "reaches every member."
+            },
+            {
+                title: "Account ID",
+                key: "accountId",
+                tooltip: "The account the group belongs to."
+            },
+            {
+                title: "Region",
+                key: "region",
+                tooltip: "The region the group was created in."
+            },
+            {
+                title: "Description",
+                key: "description",
+                tooltip: "Free text set when the group was created."
+            },
+            {
+                title: "Members",
+                key: "userIds",
+                tooltip: "How many users are in the group. Open the group to add or remove them.",
+                formatter: function (v) { return v ? v.length : 0 }
+            },
+            {
+                title: "Created",
+                key: "created",
+                tooltip: "When the group was created.",
+                formatter: function (v) { return DateFormat.format(v) }
+            },
+            {
+                title: "Modified",
+                key: "modified",
+                tooltip: "When the server last changed the group - adding or removing a member counts.",
+                formatter: function (v) { return DateFormat.format(v) }
+            },
             { title: "Ern", key: "ern", hidden: true }
         ]
         return cols

@@ -22,11 +22,37 @@ Item {
 
     readonly property var columns: {
         let cols = [
-            { title: "Name", key: "name", fill: true },
-            { title: "Account ID", key: "accountId" },
-            { title: "Description", key: "description" },
-            { title: "Created", key: "created", formatter: function (v) { return DateFormat.format(v) } },
-            { title: "Modified", key: "modified", formatter: function (v) { return DateFormat.format(v) } },
+            {
+                title: "Name",
+                key: "name",
+                fill: true,
+                tooltip: "The namespace's name, unique within its account. Every queue, bucket, "
+                         + "topic and application lives in one, and a request is resolved in the "
+                         + "namespace it was made in."
+            },
+            {
+                title: "Account ID",
+                key: "accountId",
+                tooltip: "The account this namespace belongs to. A namespace name is unique within "
+                         + "an account, not across the installation."
+            },
+            {
+                title: "Description",
+                key: "description",
+                tooltip: "Free text set when the namespace was created or last changed."
+            },
+            {
+                title: "Created",
+                key: "created",
+                tooltip: "When the namespace was created.",
+                formatter: function (v) { return DateFormat.format(v) }
+            },
+            {
+                title: "Modified",
+                key: "modified",
+                tooltip: "When the server last changed the namespace.",
+                formatter: function (v) { return DateFormat.format(v) }
+            },
             { title: "Ern", key: "ern", hidden: true }
         ]
         return cols

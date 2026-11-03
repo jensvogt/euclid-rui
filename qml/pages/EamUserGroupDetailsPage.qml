@@ -78,11 +78,21 @@ Item {
     }
 
     readonly property var memberColumns: [
-        { title: "User ID", key: "userId", fill: true },
+        {
+            title: "User ID",
+            key: "userId",
+            fill: true,
+            tooltip: "The user's sign-in name. Membership is the same grant the user's own details "
+                     + "page edits from the other side."
+        },
         // A user registered without one shows a dash rather than an empty cell, which reads as a
         // rendering fault rather than as an absent address.
-        { title: "Email", key: "email",
-          formatter: function (value) { return String(value).length > 0 ? value : "—" } },
+        {
+            title: "Email",
+            key: "email",
+            tooltip: "The address on the user record, or a dash if they were registered without one.",
+            formatter: function (value) { return String(value).length > 0 ? value : "—" }
+        },
         // Searchable but not shown: an ERN is wider than the rest of the row put together, and
         // the two columns above already say who this is. Same choice the users table makes.
         { title: "User ERN", key: "ern", hidden: true }

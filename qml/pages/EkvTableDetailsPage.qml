@@ -168,6 +168,8 @@ Item {
             key: root.partitionKey,
             // Only a scan can be reordered; a query's order is the partition's own.
             sortable: root.readMode === "scan",
+            tooltip: "This table's partition key. Sortable only while scanning - a query returns "
+                     + "one partition, whose order is the partition's own.",
             formatter: function (v) { return root.cellText(v) }
         }]
         if (root.hasSortKey) {
@@ -177,6 +179,8 @@ Item {
                 // In a query this is the direction the partition is walked in, which is a real
                 // choice the store offers - so the header stays live and flips it.
                 sortable: true,
+                tooltip: "This table's sort key, which orders items inside a partition. In a query "
+                         + "this header flips the direction the partition is walked in.",
                 formatter: function (v) { return root.cellText(v) }
             })
         }
@@ -185,6 +189,8 @@ Item {
             key: "_json",
             fill: true,
             sortable: false,
+            tooltip: "Everything on the item besides its keys, summarised. Open a row to see the "
+                     + "whole item.",
             formatter: function (v, row) { return root.attributeSummary(row) },
             colorFor: function (v, row) { return root.attributeNames(row).length === 0 ? "#6b7280" : "#c4c9d1" }
         })
@@ -192,6 +198,8 @@ Item {
             title: "Modified",
             key: "_modified",
             sortable: root.readMode === "scan",
+            tooltip: "When the item was last written. Sortable only while scanning, for the same "
+                     + "reason the partition key is.",
             formatter: function (v) { return DateFormat.format(v) }
         })
         return columns

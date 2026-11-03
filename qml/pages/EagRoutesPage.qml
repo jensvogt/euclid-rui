@@ -113,12 +113,24 @@ Item {
         root.listeners
 
         return [
-        { title: "Route", key: "routeId", fill: true },
-        { title: "Path", key: "path" },
+        {
+            title: "Route",
+            key: "routeId",
+            fill: true,
+            tooltip: "The route's identifier in the gateway."
+        },
+        {
+            title: "Path",
+            key: "path",
+            tooltip: "The URL path the gateway matches incoming requests against."
+        },
         {
             // Derived from the listeners, so there is no field on the row to sort on - and ordering
             // routes by a port most of them share would say nothing anyway.
             title: "Port",
+            tooltip: "The port this route is reachable on, worked out from the listeners rather "
+                     + "than stored on the route - which is why it cannot be sorted. Red means "
+                     + "configured but not bound: the route is published and still unreachable.",
             formatter: function (v, row) { return root.portText(row) },
             colorFor: function (v, row) {
                 const matched = root.listenersFor(row)
@@ -131,6 +143,8 @@ Item {
         },
         {
             title: "Protocol",
+            tooltip: "Whether the listeners carrying this route are TLS. Amber means at least one "
+                     + "of them serves it in plain text.",
             formatter: function (v, row) { return root.protocolText(row) },
             // Same reading as the listeners page: the plain-text port is the one worth noticing.
             colorFor: function (v, row) {
@@ -145,6 +159,9 @@ Item {
             title: "Target",
             key: "applicationId",
             sortable: false,
+            tooltip: "Where the route sends the request: an EAP application pool, or a euclid "
+                     + "module such as \"EAM · login\" for a route into euclid itself. Purple is "
+                     + "the latter.",
             formatter: function (v, row) { return root.targetText(row) },
             colorFor: function (v, row) { return root.isModuleRoute(row) ? "#c56bff" : "#c4c9d1" }
         },
@@ -152,6 +169,8 @@ Item {
             title: "Methods",
             key: "methods",
             sortable: false,
+            tooltip: "The HTTP methods the route accepts. \"ALL\" is a decision not to restrict "
+                     + "them, not a narrower setting.",
             formatter: function (v) { return root.methodsText(v) },
             // "ALL" is a decision not to restrict, so it is not highlighted as though it were a
             // narrower setting than it is.
@@ -160,17 +179,33 @@ Item {
         {
             title: "Auth",
             key: "authentication",
+            tooltip: "How the gateway authenticates a request to this route. EUCLID means it is "
+                     + "checked against EAM; anything else is amber because the path is reachable "
+                     + "without euclid credentials.",
             // A public path is the one worth noticing in a list of them.
             colorFor: function (v) { return v === "EUCLID" ? "#4cd97b" : "#ffb545" }
         },
         {
             title: "State",
             key: "active",
+            tooltip: "SERVED: the gateway is publishing this route.\n"
+                     + "DISABLED: the route exists but is not published - requests to its path are "
+                     + "not matched.",
             formatter: function (v) { return v ? "SERVED" : "DISABLED" },
             colorFor: function (v, row) { return root.stateColor(row) }
         },
-        { title: "Created", key: "created", formatter: function (v) { return DateFormat.format(v) } },
-        { title: "Modified", key: "modified", formatter: function (v) { return DateFormat.format(v) } },
+        {
+            title: "Created",
+            key: "created",
+            tooltip: "When the route was created.",
+            formatter: function (v) { return DateFormat.format(v) }
+        },
+        {
+            title: "Modified",
+            key: "modified",
+            tooltip: "When the route was last changed.",
+            formatter: function (v) { return DateFormat.format(v) }
+        },
         { title: "Ern", key: "ern", hidden: true }
         ]
     }

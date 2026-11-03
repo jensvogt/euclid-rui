@@ -43,26 +43,57 @@ Item {
                 title: "Name",
                 key: "name",
                 fill: true,
+                tooltip: "The queue's name, unique within the namespace.",
                 formatter: function (v, row) { return row && row.internal ? v + "  (internal)" : String(v) },
                 colorFor: function (v, row) { return row && row.internal ? "#9aa1ac" : "#c4c9d1" }
             },
             // Approximate: counted periodically rather than maintained per message. Marked once
             // on the first column rather than on all three, which would only add noise.
-            { title: "Available (approx.)", key: "available" },
-            { title: "Invisible", key: "invisible" },
-            { title: "Delayed", key: "delayed" },
-            { title: "Size", key: "size", formatter: function (v) { return SizeFormat.format(v) } },
+            {
+                title: "Available",
+                key: "available",
+                tooltip: "Messages ready to be received. Counted periodically, so it can lag behind the queue by a little."
+            },
+            {
+                title: "Invisible",
+                key: "invisible",
+                tooltip: "Messages in flight: received by a consumer but not yet deleted. They become available again "
+                         + "when their visibility timeout runs out."
+            },
+            {
+                title: "Delayed",
+                key: "delayed",
+                tooltip: "Messages sent with a delay that has not passed yet. They cannot be received until it has."
+            },
+            {
+                title: "Size",
+                key: "size",
+                tooltip: "Approximate space the queue's messages take up on disk.",
+                formatter: function (v) { return SizeFormat.format(v) }
+            },
             {
                 // A stopped queue is invisible in every other column: it goes on accepting sends
                 // and its counts go on climbing, it just hands nothing out. Without this the row
                 // that nothing is consuming looks exactly like the ones that are working.
                 title: "State",
                 key: "status",
+                tooltip: "AVAILABLE: consumers can receive from the queue.\n"
+                         + "STOPPED: receives are refused, but sends are still accepted and the counts keep growing.",
                 formatter: function (v) { return root.isStopped({ status: v }) ? "STOPPED" : "AVAILABLE" },
                 colorFor: function (v) { return root.isStopped({ status: v }) ? "#ffb545" : "#4cd97b" }
             },
-            { title: "Created", key: "created", formatter: function (v) { return DateFormat.format(v) } },
-            { title: "Modified", key: "modified", formatter: function (v) { return DateFormat.format(v) } },
+            {
+                title: "Created",
+                key: "created",
+                tooltip: "When the queue was created.",
+                formatter: function (v) { return DateFormat.format(v) }
+            },
+            {
+                title: "Modified",
+                key: "modified",
+                tooltip: "When the server last changed the queue.",
+                formatter: function (v) { return DateFormat.format(v) }
+            },
             { title: "Ern", key: "ern", hidden: true }
         ]
         return cols

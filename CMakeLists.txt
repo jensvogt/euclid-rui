@@ -45,6 +45,9 @@ find_package(Qt6 COMPONENTS
 
 qt_standard_project_setup(REQUIRES 6.4)
 
+# Keep the legacy "/" QML resource prefix: main.cpp and several QML files reference
+# qrc:/EuclidRui/... directly. Switching to NEW (":/qt/qml/") would require updating those paths.
+qt_policy(SET QTP0001 OLD)
 qt_policy(SET QTP0004 NEW)
 
 qt_add_executable(euclid-rui main.cpp

@@ -61,7 +61,13 @@ Item {
     }
 
     readonly property var columns: [
-        { title: "Application ID", key: "applicationId", fill: true },
+        {
+            title: "Application ID",
+            key: "applicationId",
+            fill: true,
+            tooltip: "What the application is defined as. Unique within its namespace only, which "
+                     + "is why anything outside EAP uses the runtime name instead."
+        },
         {
             // What the manager runs each of these as, and the name to look for anywhere outside
             // EAP: the module row in the EMM list, the data directory, the socket, the log channel
@@ -70,14 +76,28 @@ Item {
             // random suffix - and holds it for the application's life.
             title: "Runtime name",
             key: "runtimeName",
+            tooltip: "What the manager runs this as, and the name to look for anywhere outside "
+                     + "EAP: the EMM module row, the data directory, the socket, the log channel "
+                     + "and the technical principal are all called this. Dimmed when it is just "
+                     + "the application ID - an application deployed before runtime names existed.",
             // Dimmed where it adds nothing: an application deployed before runtime names existed
             // runs under its bare id, and this column simply repeats the first one for it.
             colorFor: function (v, row) {
                 return row && String(v) === String(row.applicationId) ? "#6b7280" : "#c4c9d1"
             }
         },
-        { title: "Runtime", key: "runtime" },
-        { title: "Version", key: "version" },
+        {
+            title: "Runtime",
+            key: "runtime",
+            tooltip: "What the artifact is handed to. JAVA is whichever java the host calls java; "
+                     + "JAVA21 and JAVA25 ask for that version specifically."
+        },
+        {
+            title: "Version",
+            key: "version",
+            tooltip: "The deployed build's version. EAP refuses a redeploy unless this moves on "
+                     + "and the artifact's checksum with it."
+        },
         {
             // What the row beside it means: a PROCESS is held at its instance count and an exit is
             // a fault, a JOB runs to completion and nothing restarts it. Without this, a finished
@@ -88,6 +108,11 @@ Item {
             // for, where the type changes how every other column is read.
             title: "Type",
             key: "type",
+            tooltip: "PROCESS: held at its instance count, and an exit is a fault.\n"
+                     + "JOB: runs to completion, and nothing restarts it - so a finished job is not "
+                     + "something to go and look at.\n"
+                     + "UNKNOWN: a type this build has no word for, written by a newer euclid. It "
+                     + "runs here as a PROCESS.",
             colorFor: function (v) {
                 // UNKNOWN is a type this build does not have a word for - written by a newer
                 // euclid, run here as a PROCESS - so it is marked rather than printed flat.
@@ -95,14 +120,29 @@ Item {
                 return v === "JOB" ? "#c56bff" : "#c4c9d1"
             }
         },
-        { title: "State", key: "state", colorFor: function (v) { return root.stateColor(v) } },
-        { title: "Desired", key: "desiredState", colorFor: function (v) { return root.stateColor(v) } },
+        {
+            title: "State",
+            key: "state",
+            tooltip: "What the pool is actually doing. A crash reads as its own state rather than "
+                     + "as STOPPED, which would look like somebody stopped it on purpose.",
+            colorFor: function (v) { return root.stateColor(v) }
+        },
+        {
+            title: "Desired",
+            key: "desiredState",
+            tooltip: "What the application has been asked to do. Start and stop write only this; "
+                     + "the reconciler is what makes \"State\" catch up. The two disagreeing is the "
+                     + "manager saying it could not get there.",
+            colorFor: function (v) { return root.stateColor(v) }
+        },
         // Running against the ceiling the pool may grow to, which is the pair that says whether
         // there is headroom left. The floor is on the details page: it matters when scaling, not
         // when reading down a list.
         {
             title: "Instances",
             key: "instances",
+            tooltip: "Instances running, against the ceiling the pool may grow to - the pair that "
+                     + "says whether there is headroom left. The floor is on the details page.",
             formatter: function (v, row) {
                 return row ? Number(v) + " / " + Number(row.maxInstances) : String(v)
             }
@@ -113,15 +153,29 @@ Item {
             // could take the whole host and that admission does not account for.
             title: "Limits",
             key: "memoryLimitMb",
+            tooltip: "Per instance: the memory ceiling and CPU quota the worker enforces as the "
+                     + "instance's cgroup. A dash is allowed, but it is also an application that "
+                     + "could take the whole host and that admission does not account for.",
             formatter: function (v, row) { return row ? ResourceLimits.summary(row.memoryLimitMb, row.cpuLimit) : "—" },
             colorFor: function (v, row) {
                 return row && (Number(row.memoryLimitMb) > 0 || Number(row.cpuLimit) > 0) ? "#c4c9d1" : "#6b7280"
             }
         },
-        { title: "Created", key: "created", formatter: function (v) { return DateFormat.format(v) } },
+        {
+            title: "Created",
+            key: "created",
+            tooltip: "When the application was first deployed.",
+            formatter: function (v) { return DateFormat.format(v) }
+        },
         // Moves on every change EAP stamps - a redeploy, a scaling change, a start or a stop - so
         // it is the column that says when an application was last touched, which "Created" cannot.
-        { title: "Modified", key: "modified", formatter: function (v) { return DateFormat.format(v) } },
+        {
+            title: "Modified",
+            key: "modified",
+            tooltip: "When the application was last touched - a redeploy, a scaling change, a "
+                     + "start or a stop all move it.",
+            formatter: function (v) { return DateFormat.format(v) }
+        },
         { title: "Ern", key: "ern", hidden: true }
     ]
 

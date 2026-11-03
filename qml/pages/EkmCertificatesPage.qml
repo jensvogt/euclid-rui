@@ -75,12 +75,26 @@ Item {
     }
 
     readonly property var columns: [
-        { title: "Name", key: "name", fill: true },
-        { title: "Subject", key: "subject", sortable: false },
+        {
+            title: "Name",
+            key: "name",
+            fill: true,
+            tooltip: "The certificate's name in EKM, which is what a listener or a transfer server "
+                     + "names when it says which certificate to present."
+        },
+        {
+            title: "Subject",
+            key: "subject",
+            sortable: false,
+            tooltip: "Who the certificate is for, read out of the certificate itself. Not sortable: "
+                     + "it is parsed from the stored certificate rather than being a field of its own."
+        },
         {
             title: "Issued by",
             key: "generated",
             sortable: false,
+            tooltip: "Who signed it. \"euclid (self-signed)\" is not broken, but it is refused by "
+                     + "every client that has not been told about it.",
             formatter: function (v, row) { return v ? "euclid (self-signed)" : String(row ? row.issuer : "") },
             // Self-signed is not broken, but it is refused by every client that has not been told
             // about it - worth noticing in a list of them.
@@ -90,15 +104,24 @@ Item {
             title: "Fingerprint",
             key: "fingerprint",
             sortable: false,
+            tooltip: "The certificate's fingerprint, shortened. This is what you compare against "
+                     + "the one a client reports when a connection is refused.",
             formatter: function (v) { return root.shortFingerprint(v) }
         },
         {
             title: "Expires",
             key: "notAfter",
+            tooltip: "When the certificate stops being accepted. Nothing renews it on its own - an "
+                     + "expired certificate is refused by every client that checks.",
             formatter: function (v, row) { return root.expiryText(row) },
             colorFor: function (v, row) { return root.expiryColor(row) }
         },
-        { title: "Created", key: "created", formatter: function (v) { return DateFormat.format(v) } },
+        {
+            title: "Created",
+            key: "created",
+            tooltip: "When the certificate was imported or generated here - not when it was issued.",
+            formatter: function (v) { return DateFormat.format(v) }
+        },
         { title: "Ern", key: "ern", hidden: true }
     ]
 

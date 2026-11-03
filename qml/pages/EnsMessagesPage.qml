@@ -62,12 +62,48 @@ Item {
 
     readonly property var columns: {
         let cols = [
-            { title: "Message ID", key: "messageId", fill: true },
-            { title: "Content Type", key: "contentType" },
-            { title: "Status", key: "status", formatter: function (v) { return v && v.length > 0 ? v : "—" }, colorFor: function (v) { return root.statusColor(v) } },
-            { title: "Size", key: "size", formatter: function (v, row) { return SizeFormat.format(root.byteLength(row.body)) } },
-            { title: "Created", key: "created", formatter: function (v) { return DateFormat.format(v) } },
-            { title: "Modified", key: "modified", formatter: function (v) { return v && v.indexOf("1970-01-01") === 0 ? "—" : DateFormat.format(v) } },
+            {
+                title: "Message ID",
+                key: "messageId",
+                fill: true,
+                tooltip: "The message's own identifier, assigned when it was published."
+            },
+            {
+                title: "Content Type",
+                key: "contentType",
+                tooltip: "What the publisher said the body is, carried through untouched."
+            },
+            {
+                title: "Status",
+                key: "status",
+                tooltip: "PUBLISHED: fanned out to the topic's subscriptions. A dash is a message "
+                         + "the server records no status for.",
+                formatter: function (v) { return v && v.length > 0 ? v : "—" },
+                colorFor: function (v) { return root.statusColor(v) }
+            },
+            {
+                title: "Size",
+                key: "size",
+                // Measured from the body in hand rather than read off the record: ENS reports no
+                // per-message size, so this is the only figure there is.
+                tooltip: "The size of the message body, measured from the body itself - ENS records "
+                         + "no size of its own for a message.",
+                formatter: function (v, row) { return SizeFormat.format(root.byteLength(row.body)) }
+            },
+            {
+                title: "Created",
+                key: "created",
+                tooltip: "When the message was published to the topic.",
+                formatter: function (v) { return DateFormat.format(v) }
+            },
+            {
+                title: "Modified",
+                key: "modified",
+                // The epoch is how "never modified" is stored, and formatting it gives 1970.
+                tooltip: "When the message last changed. A dash means it never has - the record "
+                         + "carries the epoch, which would otherwise read as 1970.",
+                formatter: function (v) { return v && v.indexOf("1970-01-01") === 0 ? "—" : DateFormat.format(v) }
+            },
             { title: "TopicErn", key: "topicErn", hidden: true },
             { title: "MessageErn", key: "ern", hidden: true }
         ]
