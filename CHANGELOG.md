@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.55](https://github.com/jensvogt/euclid-rui/compare/1.1.54...v1.1.55) (2026-11-03)
+
+
+### Bug Fixes
+
+* add alert history, history counter on EMM alert list page ([e0f1e26](https://github.com/jensvogt/euclid-rui/commit/e0f1e269158853c4a39f9bc6002811bea57c11df))
+
 ## [1.1.54](https://github.com/jensvogt/euclid-rui/compare/1.1.53...v1.1.54) (2026-11-03)
 
 
