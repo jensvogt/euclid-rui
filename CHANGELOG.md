@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.56](https://github.com/jensvogt/euclid-rui/compare/1.1.55...v1.1.56) (2026-11-03)
+
+
+### Bug Fixes
+
+* add EQS message visibility ([b11119a](https://github.com/jensvogt/euclid-rui/commit/b11119a0443aaecc59ab7991933f79b7d633d05d))
+
 ## [1.1.55](https://github.com/jensvogt/euclid-rui/compare/1.1.54...v1.1.55) (2026-11-03)
 
 
