@@ -150,6 +150,7 @@ qt_add_qml_module(euclid-rui
         qml/components/Gauge.qml
         qml/components/LineChart.qml
         qml/components/AboutDialog.qml
+        qml/components/AlertHistoryDialog.qml
         qml/components/ObjectTree.qml
         qml/components/FoldableTile.qml
         qml/components/ImportExportDialog.qml

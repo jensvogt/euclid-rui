@@ -218,6 +218,27 @@ void EmoClient::fetchAlerts(const QString &state, const bool activeOnly) {
          [this](const QString &message) { emit alertsFailed(message); });
 }
 
+void EmoClient::fetchAlertHistory(const QString &ruleId, const int limit, const QString &from) {
+    QJsonObject body;
+    body["limit"] = limit;
+    // Both omitted rather than sent empty: the server reads an absent ruleId as "every rule" and an
+    // absent from as "as far back as retention goes", which is exactly what an empty argument here
+    // means. Sending "" would rely on the same reading of a value that was never set.
+    if (!ruleId.isEmpty())
+        body["ruleId"] = ruleId;
+    if (!from.isEmpty())
+        body["from"] = from;
+    // "to" is never sent: the window always ends now, and a history is read backwards from it.
+
+    m_base->post("emo", "list-alert-history", body, true,
+         [this, ruleId](const QJsonObject &response) {
+             // Passed through as the server sends them, the same way list-alerts is: the shape is
+             // the server's and nothing here has a reason to rename it.
+             emit alertHistoryLoaded(ruleId, response.value("items").toArray().toVariantList());
+         },
+         [this, ruleId](const QString &message) { emit alertHistoryFailed(ruleId, message); });
+}
+
 void EmoClient::fetchAlertRules() {
     m_base->post("emo", "list-alert-rules", QJsonObject(), true,
          [this](const QJsonObject &response) {

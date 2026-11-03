@@ -147,7 +147,55 @@ Item {
         return (row.comparison || "").toLowerCase() + " " + w + " / " + c
     }
 
+    // ── How often each series has fired in the last 24 hours ────────────────────────────────
+    //
+    // One "list-alert-history" sweep over the whole window rather than one request per row: the
+    // server takes an empty ruleId as "every rule", so the entire listing is counted from a single
+    // answer. Kept out of `pending` on purpose - it is a column, not the page, and a history EMO
+    // will not answer for should not make the alerts themselves look unavailable.
+    property var history24h: []
+    // Rows, not series. The server cuts newest-first, so a window busier than this comes back
+    // shortened and every count over it is a floor rather than a total - which is what
+    // history24hCapped says out loud instead of quietly under-reporting.
+    readonly property int history24hLimit: 2000
+    property bool history24hCapped: false
+    property string history24hError: ""
+
+    // What counts as an alert: moving *into* a state that is not OK. A return to OK is the end of
+    // one, not another, and counting every transition would report a flapping series at twice its
+    // rate. NO_DATA is included because EMO treats it as a state of its own rather than a kind of
+    // OK - a series that stopped arriving is exactly what somebody watching it wants to hear about.
+    readonly property var alertingStates: ({ "WARNING": true, "CRITICAL": true, "NO_DATA": true })
+
+    // A series is a rule plus its labels; neither identifies one on its own, since a rule judges
+    // every series its selector matches.
+    function seriesKey(ruleId, labels) {
+        return String(ruleId) + "\n" + root.labelText(labels)
+    }
+
+    readonly property var alertCounts24h: {
+        const counts = ({})
+        for (const transition of root.history24h) {
+            if (!root.alertingStates[String(transition.state)])
+                continue
+            const key = root.seriesKey(transition.ruleId, transition.labels)
+            counts[key] = (counts[key] || 0) + 1
+        }
+        return counts
+    }
+
+    function alertCount24h(row) {
+        if (!row) return 0
+        return root.alertCounts24h[root.seriesKey(row.ruleId, row.labels)] || 0
+    }
+
+    // Now less 24 hours, as the ISO 8601 instant the server parses.
+    function windowStart24h() {
+        return new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+    }
+
     function sortValue(row, key) {
+        if (key === "alerts24h") return root.alertCount24h(row)
         if (key === "state") return root.stateRank[row.state] !== undefined ? root.stateRank[row.state] : 9
         if (key === "value") return row.value === undefined ? -Infinity : Number(row.value)
         if (key === "labels") return root.labelText(row.labels)
@@ -213,6 +261,29 @@ Item {
             }
         },
         {
+            // Beside the current state rather than in place of it: the state says where this
+            // series is, and this says how much it has been moving. A CRITICAL that fired once and
+            // stayed there and one that has flapped nine times read identically without it.
+            title: "Alerts 24 h",
+            key: "alerts24h",
+            tooltip: "How often this series has gone into WARNING, CRITICAL or NO_DATA in the last "
+                     + "24 hours. Returns to OK are not counted - that is the end of an alert, not "
+                     + "another one.\n"
+                     + "A dash means the history could not be read; 0 means it was, and this "
+                     + "series has not fired.",
+            formatter: function (v, row) {
+                if (root.history24hError.length > 0) return "—"
+                return String(root.alertCount24h(row))
+            },
+            // Only a figure above zero is worth the eye: a quiet series is the ordinary case.
+            colorFor: function (v, row) {
+                if (root.history24hError.length > 0) return "#6b7280"
+                const count = root.alertCount24h(row)
+                if (count === 0) return "#6b7280"
+                return count >= 5 ? "#ffb545" : "#c4c9d1"
+            }
+        },
+        {
             title: "Threshold",
             key: "warning",
             sortable: false,
@@ -255,6 +326,9 @@ Item {
         error = ""
         emoClient.fetchAlerts()
         emoClient.fetchAlertRules()
+        // Deliberately not counted in `pending`: see history24h.
+        root.history24hError = ""
+        emoClient.fetchAlertHistory("", root.history24hLimit, root.windowStart24h())
     }
 
     function settle() {
@@ -309,6 +383,22 @@ Item {
             root.error = message
             root.settle()
         }
+        // This page's own sweep over every rule, not the per-rule answer the history dialog asked
+        // for - the two share this signal, and only the sweep carries an empty ruleId.
+        function onAlertHistoryLoaded(ruleId, list) {
+            if (String(ruleId).length > 0) return
+            root.history24h = list
+            root.history24hCapped = list.length >= root.history24hLimit
+            root.history24hError = ""
+        }
+        function onAlertHistoryFailed(ruleId, message) {
+            if (String(ruleId).length > 0) return
+            // Its own line rather than root.error: the alerts themselves read fine without it, and
+            // putting this in the page's error would make the whole table look broken.
+            root.history24h = []
+            root.history24hCapped = false
+            root.history24hError = message
+        }
         function onAlertRulesLoaded(list) {
             root.rules = list
             root.settle()
@@ -337,6 +427,12 @@ Item {
     // What "list-metrics" returned, for the Add dialog's metric picker. Fetched when the dialog
     // opens rather than with the list: it is only needed to write a rule.
     property var metrics: []
+
+    // Filled in by the row menu before every open(), so it always describes the series it was
+    // opened from.
+    AlertHistoryDialog {
+        id: alertHistoryDialog
+    }
 
     Dialog {
         id: createRuleDialog
@@ -601,6 +697,19 @@ Item {
                         action: function (row) { root.openRuleDetails(row.ruleId) }
                     },
                     {
+                        // Where this series has been, as against where the row says it is now.
+                        // Opened per row rather than per rule because the labels are what narrow
+                        // the rule's history down to the one series that was clicked - EMO keeps
+                        // the history by rule and cannot filter it any finer.
+                        text: "Alert history…",
+                        action: function (row) {
+                            alertHistoryDialog.ruleId = row.ruleId
+                            alertHistoryDialog.metricName = row.name
+                            alertHistoryDialog.seriesLabels = row.labels || ({})
+                            alertHistoryDialog.open()
+                        }
+                    },
+                    {
                         // Two entries rather than one that changes meaning with the row: each is
                         // greyed out when the rule is already in that state, which also says which
                         // state it is in before anything is clicked.
@@ -631,6 +740,22 @@ Item {
                 font.pixelSize: 12
                 visible: root.actionNote.length > 0
                 text: root.actionNote
+            }
+
+            // Only ever shown when the "Alerts 24 h" column cannot be trusted at face value. A
+            // count that is silently a floor is worse than no count, since the whole point of the
+            // column is telling a quiet series from a busy one.
+            Text {
+                width: parent.width
+                wrapMode: Text.WordWrap
+                color: "#ffb545"
+                font.pixelSize: 11
+                visible: root.history24hError.length > 0 || root.history24hCapped
+                text: root.history24hError.length > 0
+                      ? "\"Alerts 24 h\" is unavailable: " + root.history24hError
+                      : "More than " + root.history24hLimit + " state changes in the last 24 hours. "
+                        + "The server returns the newest first, so the counts below are a floor "
+                        + "rather than a total."
             }
 
             Text {
