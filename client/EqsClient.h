@@ -101,6 +101,15 @@ public:
     Q_INVOKABLE void sendMessage(const QString &queueErn, const QString &body, const QString &priority, const QVariantMap &attributes);
     Q_INVOKABLE void deleteSqsMessage(const QString &queueErn, const QString &messageId);
 
+    // One message's metadata - EQS's "get-message-metadata". Needed beside fetchMessages() for one
+    // field it carries and a listing does not: visibilityTimeout, the length of the lease the
+    // current receive holds. The Message the listing is built from has no such member at all (see
+    // Dto::EQS::model::Message), so there is nothing to read off a row.
+    //
+    // Everything else it answers with - status, priority, size, receivedCount, contentType and the
+    // timestamps - is already on the row, so a caller usually wants this for the one field.
+    Q_INVOKABLE void fetchMessageMetadata(const QString &messageId);
+
 signals:
     // Queues
     void queuesLoaded(const QVariantList &queues, int total);
@@ -141,6 +150,11 @@ signals:
     void messagesReload(const QString &queueErn);
     void messageSent(const QString &queueErn);
     void messageSendFailed(const QString &message);
+    // {messageId, queueErn, receiptHandle, status, priority, size, receivedCount,
+    // visibilityTimeout, contentType, created, modified}. The messageId comes back with it so a
+    // page can tell its own answer from one belonging to another - these reach every listener.
+    void messageMetadataLoaded(const QString &messageId, const QVariantMap &metadata);
+    void messageMetadataFailed(const QString &messageId, const QString &message);
 
 private:
     EuclidBaseClient *m_base;

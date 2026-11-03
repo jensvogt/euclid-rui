@@ -43,6 +43,72 @@ Item {
     readonly property string priority: detail("priority", "")
     readonly property string queueErn: detail("queueErn", "")
 
+    // ── Visibility ──────────────────────────────────────────────────────────────────────────
+    //
+    // Asked for separately because the listing this page is opened from cannot carry it: the
+    // Message that "list-messages" is built from has no visibilityTimeout member at all, and
+    // "get-message-metadata" is the only action that reports one.
+    //
+    // Negative means not read yet, which is also where it stays if the call fails - distinct from
+    // a real zero, which is a message leased for no time at all.
+    property int visibilityTimeout: -1
+    property string visibilityError: ""
+
+    function refreshMetadata() {
+        if (!root.loggedIn || root.messageId.length === 0)
+            return
+        root.visibilityTimeout = -1
+        root.visibilityError = ""
+        eqsClient.fetchMessageMetadata(root.messageId)
+    }
+
+    onVisibleChanged: if (visible) refreshMetadata()
+    onMessageIdChanged: if (visible) refreshMetadata()
+    onLoggedInChanged: if (loggedIn && visible) refreshMetadata()
+
+    Connections {
+        target: eqsClient
+        function onMessageMetadataLoaded(messageId, metadata) {
+            if (messageId !== root.messageId) return
+            root.visibilityTimeout = Number(metadata.visibilityTimeout)
+            root.visibilityError = ""
+        }
+        function onMessageMetadataFailed(messageId, message) {
+            if (messageId !== root.messageId) return
+            root.visibilityTimeout = -1
+            root.visibilityError = message
+        }
+    }
+
+    function visibilityTimeoutText() {
+        if (root.visibilityError.length > 0) return "—"
+        if (root.visibilityTimeout < 0) return "…"
+        return root.visibilityTimeout + " s"
+    }
+
+    // When the lease runs out and the message becomes receivable again. Only a real moment while
+    // the message is actually in flight: for anything else the figure beside it is the lease the
+    // *next* receive would take, not one that is running, and adding it to a past timestamp would
+    // name a moment that means nothing.
+    function visibleAgainText() {
+        if (root.status !== "INVISIBLE")
+            return "— (not in flight)"
+        if (root.visibilityError.length > 0) return "—"
+        if (root.visibilityTimeout < 0) return "…"
+
+        const received = String(root.detail("lastReceived", ""))
+        if (received.length === 0) return "—"
+        const at = new Date(received)
+        if (isNaN(at.getTime())) return "—"
+
+        const due = new Date(at.getTime() + root.visibilityTimeout * 1000)
+        const secondsLeft = Math.round((due.getTime() - Date.now()) / 1000)
+        // Past due is not an error: the sweep that returns expired leases runs on its own timer, so
+        // a message can sit a moment longer than its lease says.
+        return DateFormat.format(due.toISOString())
+               + (secondsLeft > 0 ? "  (in " + secondsLeft + " s)" : "  (due)")
+    }
+
     // The two attribute maps, each already flattened to [{name, type, value}] by EqsClient and in
     // key order. Two properties rather than one, because EQS keeps them apart: "attributes" is
     // whatever the sender attached and "systemAttributes" is what euclid attached on top, and a
@@ -236,6 +302,31 @@ Item {
                             value: root.detail("lastReceived", "").length > 0
                                    ? DateFormat.format(root.detail("lastReceived", "")) : "Never"
                         }
+                        DetailField {
+                            width: (techCol.width - 24) / 2
+                            label: "Visibility Timeout"
+                            // The lease a receive takes on this message, not a property of the
+                            // message itself: EQS reads it off the queue at every receive, unless
+                            // set-message-visibility pinned one for this message - so it can differ
+                            // from the queue's current setting.
+                            value: root.visibilityTimeoutText()
+                        }
+                        DetailField {
+                            width: (techCol.width - 24) / 2
+                            label: "Visible Again"
+                            value: root.visibleAgainText()
+                        }
+                    }
+
+                    Text {
+                        visible: root.visibilityError.length > 0
+                        width: parent.width
+                        // Its own line rather than the page's: everything else on this page came
+                        // with the row and reads fine without the metadata call having answered.
+                        text: "Visibility could not be read: " + root.visibilityError
+                        color: "#ff6b6b"
+                        font.pixelSize: 11
+                        wrapMode: Text.WordWrap
                     }
                 }
             }
