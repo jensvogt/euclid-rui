@@ -369,6 +369,35 @@ void EqsClient::sendMessage(const QString &queueErn, const QString &body, const 
          });
 }
 
+void EqsClient::fetchMessageMetadata(const QString &messageId) {
+    QJsonObject body;
+    body["messageId"] = messageId;
+
+    m_base->post("eqs", "get-message-metadata", body, true,
+         [this, messageId](const QJsonObject &response) {
+             QVariantMap metadata;
+             metadata["messageId"] = response.value("messageId").toString();
+             metadata["queueErn"] = response.value("queueErn").toString();
+             metadata["receiptHandle"] = response.value("receiptHandle").toString();
+             metadata["status"] = response.value("status").toString();
+             metadata["priority"] = response.value("priority").toString();
+             metadata["size"] = response.value("size").toInteger();
+             metadata["receivedCount"] = response.value("receivedCount").toInteger();
+             // The reason this call exists. Seconds, and the length of the lease the current
+             // receive holds rather than a property of the message: EQS takes it from the queue on
+             // every receive unless it was pinned for this message by set-message-visibility, so it
+             // can differ from the queue's current setting and from what the last receive used.
+             metadata["visibilityTimeout"] = response.value("visibilityTimeout").toInteger();
+             metadata["contentType"] = response.value("contentType").toString();
+             metadata["created"] = response.value("created").toString();
+             metadata["modified"] = response.value("modified").toString();
+             emit messageMetadataLoaded(messageId, metadata);
+         },
+         [this, messageId](const QString &message) {
+             emit messageMetadataFailed(messageId, message);
+         });
+}
+
 void EqsClient::deleteSqsMessage(const QString &queueErn, const QString &messageId) {
     QJsonObject body;
     body["messageId"] = messageId;
