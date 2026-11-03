@@ -88,24 +88,47 @@ Item {
     }
 
     readonly property var columns: [
-        { title: "Node", key: "name", fill: true },
+        {
+            title: "Node",
+            key: "name",
+            fill: true,
+            tooltip: "The name the worker registered under. It belongs to whoever claimed it first, "
+                     + "so a second worker cannot take it over."
+        },
         {
             // Not a column somebody can act on, but the one that answers "why can nothing be placed
             // here" when the state says QUIET - a node that has gone is a node whose last renewal
             // is old, and the age is the whole diagnosis.
             title: "State",
             key: "live",
+            tooltip: "READY: renewing its lease, and work can be placed here.\n"
+                     + "DRAINED: still renewing, but nothing new is placed on it.\n"
+                     + "QUIET: has not renewed inside the lease. See \"Last seen\" for how long.",
             formatter: function (v, row) { return root.nodeState(row) },
             colorFor: function (v, row) { return root.nodeStateColor(row) }
         },
-        { title: "Last seen", key: "lastSeen", formatter: function (v) { return DateFormat.format(v) } },
-        { title: "CPUs", key: "cpuCount" },
+        {
+            title: "Last seen",
+            key: "lastSeen",
+            tooltip: "When the worker last renewed its lease. A node that has gone is a node whose "
+                     + "last renewal is old, so this is the whole diagnosis behind QUIET.",
+            formatter: function (v) { return DateFormat.format(v) }
+        },
+        {
+            title: "CPUs",
+            key: "cpuCount",
+            tooltip: "How many CPUs the worker reported. Placement divides the node's load average "
+                     + "by this to compare machines of different sizes."
+        },
         {
             // What the node offers applications - its memory less what the worker keeps back -
             // and what admission measures memory limits against. "—" for a worker too old to say,
             // which admission does not refuse on.
             title: "Memory",
             key: "memoryMb",
+            tooltip: "What the node offers applications - its memory less what the worker keeps "
+                     + "back - and what admission measures memory limits against. A dash is a "
+                     + "worker too old to say, which admission does not refuse on.",
             formatter: function (v) { return Number(v) > 0 ? ResourceLimits.memoryText(v) : "—" },
             colorFor: function (v) { return Number(v) > 0 ? "#c4c9d1" : "#6b7280" }
         },
@@ -115,22 +138,39 @@ Item {
             // thing a placement rule is usually working around.
             title: "OS / Arch",
             key: "os",
+            tooltip: "What the worker's binary was built for, reported by the worker itself - so "
+                     + "unlike a label it cannot disagree with the machine. An artifact built for "
+                     + "one platform does not run on another, which is what placement rules are "
+                     + "usually working around.",
             formatter: function (v, row) { return root.platformText(row) },
             // Dimmed when neither half was reported, the way the Labels column is: nothing is
             // wrong with the node, its worker is simply older than the fields.
             colorFor: function (v, row) { return root.platformText(row) === "—" ? "#6b7280" : "#c4c9d1" }
         },
-        { title: "Version", key: "version" },
+        {
+            title: "Version",
+            key: "version",
+            tooltip: "The euclid version the worker is running."
+        },
         {
             title: "Labels",
             key: "labels",
+            tooltip: "Key/value tags set on the worker. An application is placed here only if the "
+                     + "node carries every label its placement rule names; an application with no "
+                     + "rule goes anywhere.",
             formatter: function (v, row) { return root.labelText(row) },
             colorFor: function (v, row) { return root.labelText(row) === "—" ? "#6b7280" : "#c4c9d1" }
         },
         // The EAM principal the worker registered as. The node name belongs to whoever claimed it
         // first, and this is who that was - so it is also what says a second worker cannot take the
         // name over and inherit the instances running under it.
-        { title: "Registered by", key: "principal" }
+        {
+            title: "Registered by",
+            key: "principal",
+            tooltip: "The EAM principal the worker registered as, and the only one allowed to renew "
+                     + "the lease - which is what stops a second worker taking the name over and "
+                     + "inheriting the instances running under it."
+        }
     ]
 
     function refresh() {

@@ -28,18 +28,63 @@ Item {
     }
 
     readonly property var columns: [
-        { title: "Server ID", key: "serverId", fill: true },
-        { title: "Protocol", key: "protocol" },
-        { title: "Address", key: "address" },
-        { title: "Port", key: "port" },
-        { title: "Bucket", key: "bucketName" },
-        { title: "State", key: "state", colorFor: function (v) { return root.stateColor(v) } },
-        { title: "Desired", key: "desiredState", colorFor: function (v) { return root.stateColor(v) } },
+        {
+            title: "Server ID",
+            key: "serverId",
+            fill: true,
+            tooltip: "The transfer server's identifier."
+        },
+        {
+            title: "Protocol",
+            key: "protocol",
+            tooltip: "Which transfer protocol the server speaks - FTP, FTPS or SFTP."
+        },
+        {
+            title: "Address",
+            key: "address",
+            tooltip: "The address the server listens on."
+        },
+        {
+            title: "Port",
+            key: "port",
+            tooltip: "The TCP port the server listens on."
+        },
+        {
+            title: "Bucket",
+            key: "bucketName",
+            tooltip: "The ESM bucket this server reads and writes. A client's directory tree is "
+                     + "that bucket's keys."
+        },
+        {
+            title: "State",
+            key: "state",
+            tooltip: "What the server is actually doing, as the manager sees it.",
+            colorFor: function (v) { return root.stateColor(v) }
+        },
+        {
+            title: "Desired",
+            key: "desiredState",
+            tooltip: "What it has been asked to do. Start and stop write this; the reconciler is "
+                     + "what eventually makes \"State\" match. The two disagreeing is the server "
+                     + "saying it could not get there.",
+            colorFor: function (v) { return root.stateColor(v) }
+        },
         // Everyone who may log in, not the length of the userIds list: access is the union of the
         // users named directly and the members of the groups named, so a server that admits a
         // whole department by group used to read as having none. ETS counts it - see its toJson.
-        { title: "Users", key: "userCount" },
-        { title: "Created", key: "created", formatter: function (v) { return DateFormat.format(v) } },
+        {
+            title: "Users",
+            key: "userCount",
+            tooltip: "Everyone who may log in: the users named directly plus the members of the "
+                     + "groups named. A server that admits a whole department by group counts all "
+                     + "of them here."
+        },
+        {
+            title: "Created",
+            key: "created",
+            tooltip: "When the transfer server was created.",
+            formatter: function (v) { return DateFormat.format(v) }
+        },
         { title: "Ern", key: "ern", hidden: true }
     ]
 

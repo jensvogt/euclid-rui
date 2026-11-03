@@ -27,29 +27,70 @@ Item {
 
     readonly property var columns: {
         let cols = [
-            { title: "Name", key: "name", fill: true },
-            { title: "Messages", key: "messages" },
+            {
+                title: "Name",
+                key: "name",
+                fill: true,
+                tooltip: "The topic's name, unique within the namespace."
+            },
+            {
+                title: "Messages",
+                key: "messages",
+                tooltip: "Messages the topic is holding right now. Retention removes them as they "
+                         + "age, so this falls on its own - see \"Send\" for what has gone through."
+            },
             // Totals since the topic was created or last purged, beside the current count, and the
             // pair is the point: "Messages" falls when retention removes what it held, so a topic
             // that has published steadily for a fortnight and one that has never published at all
             // can both read as zero there. "Send" does not fall with retention, and says which of
             // the two it is. A purge starts both over.
-            { title: "Send", key: "send" },
+            {
+                title: "Send",
+                key: "send",
+                tooltip: "Messages published to the topic since it was created or last purged. "
+                         + "Unlike \"Messages\" this does not fall when retention removes them, so "
+                         + "it tells a topic that has never published from one that has been "
+                         + "emptied by age."
+            },
             // Above zero means somebody has had to replay this topic - a subscriber that was down,
             // or one added after the fact - which is worth seeing next to what it has delivered.
-            { title: "Resend", key: "resend" },
-            { title: "Size", key: "size", formatter: function (v) { return SizeFormat.format(v) } },
+            {
+                title: "Resend",
+                key: "resend",
+                tooltip: "Messages delivered a second time by a resend, for a subscriber that was "
+                         + "down or one added after the fact. Above zero means somebody has had to "
+                         + "replay this topic. Counted since creation or the last purge."
+            },
+            {
+                title: "Size",
+                key: "size",
+                tooltip: "Approximate space the topic's messages take up on disk.",
+                formatter: function (v) { return SizeFormat.format(v) }
+            },
             {
                 // A stopped topic is invisible in every other column: it goes on accepting
                 // publishes and its message count goes on climbing, the messages just sit there
                 // held instead of being fanned out.
                 title: "State",
                 key: "status",
+                tooltip: "RUNNING: publishes are fanned out to the topic's subscriptions.\n"
+                         + "STOPPED: publishes are still accepted and the message count keeps "
+                         + "climbing, but nothing is delivered.",
                 formatter: function (v) { return root.isStopped({ status: v }) ? "STOPPED" : "RUNNING" },
                 colorFor: function (v) { return root.isStopped({ status: v }) ? "#ffb545" : "#4cd97b" }
             },
-            { title: "Created", key: "created", formatter: function (v) { return DateFormat.format(v) } },
-            { title: "Modified", key: "modified", formatter: function (v) { return DateFormat.format(v) } },
+            {
+                title: "Created",
+                key: "created",
+                tooltip: "When the topic was created.",
+                formatter: function (v) { return DateFormat.format(v) }
+            },
+            {
+                title: "Modified",
+                key: "modified",
+                tooltip: "When the server last changed the topic.",
+                formatter: function (v) { return DateFormat.format(v) }
+            },
             { title: "Ern", key: "ern", hidden: true }
         ]
         return cols

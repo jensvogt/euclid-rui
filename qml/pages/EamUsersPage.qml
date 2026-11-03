@@ -22,12 +22,43 @@ Item {
 
     readonly property var columns: {
         let cols = [
-            { title: "User ID", key: "userId", fill: true },
-            { title: "Email", key: "email" },
-            { title: "Account ID", key: "accountId" },
-            { title: "Region", key: "region" },
-            { title: "Created", key: "created", formatter: function (v) { return DateFormat.format(v) } },
-            { title: "Modified", key: "modified", formatter: function (v) { return DateFormat.format(v) } },
+            {
+                title: "User ID",
+                key: "userId",
+                fill: true,
+                tooltip: "What the user signs in as, and what names them in a grant. Fixed at "
+                         + "registration - there is no action that renames a user."
+            },
+            {
+                title: "Email",
+                key: "email",
+                tooltip: "The address on the user record. It can be signed in with instead of the "
+                         + "user ID, which is why a login form takes either."
+            },
+            {
+                title: "Account ID",
+                key: "accountId",
+                tooltip: "The user's home account, set at registration. Grants can reach into other "
+                         + "accounts; this is the one they belong to."
+            },
+            {
+                title: "Region",
+                key: "region",
+                tooltip: "The region the user was registered in. Part of the credential scope every "
+                         + "signed request is checked against."
+            },
+            {
+                title: "Created",
+                key: "created",
+                tooltip: "When the user was registered.",
+                formatter: function (v) { return DateFormat.format(v) }
+            },
+            {
+                title: "Modified",
+                key: "modified",
+                tooltip: "When the server last changed the user - a password change counts.",
+                formatter: function (v) { return DateFormat.format(v) }
+            },
             { title: "Ern", key: "ern", hidden: true }
         ]
         return cols

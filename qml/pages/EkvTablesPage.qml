@@ -44,15 +44,25 @@ Item {
     }
 
     readonly property var columns: [
-        { title: "Table", key: "name", fill: true },
+        {
+            title: "Table",
+            key: "name",
+            fill: true,
+            tooltip: "The table's name, unique within the namespace."
+        },
         {
             title: "Partition key",
             key: "partitionKey",
+            tooltip: "The attribute items are grouped by, with its type. Fixed when the table is "
+                     + "created, and the only thing a query can be run against.",
             formatter: function (v, row) { return root.keyText(v, row ? row.partitionKeyType : "") }
         },
         {
             title: "Sort key",
             key: "sortKey",
+            tooltip: "The attribute that orders items within a partition, with its type. A dash is "
+                     + "not something missing: it is a table whose partition key identifies an item "
+                     + "on its own.",
             formatter: function (v, row) { return root.keyText(v, row ? row.sortKeyType : "") },
             // A table without one is not lacking anything - it is a table whose partition key
             // identifies an item on its own - so the dash is not coloured as a fault.
@@ -62,10 +72,23 @@ Item {
             title: "Items",
             key: "itemCount",
             // Counted by the server when asked rather than kept, so it is right rather than close.
+            tooltip: "How many items the table holds. Counted by the server when asked rather than "
+                     + "kept as a running total, so it is exact rather than approximate.",
             formatter: function (v) { return String(Number(v)) }
         },
-        { title: "Created", key: "created", formatter: function (v) { return DateFormat.format(v) } },
-        { title: "Modified", key: "modified", formatter: function (v) { return DateFormat.format(v) } },
+        {
+            title: "Created",
+            key: "created",
+            tooltip: "When the table was created.",
+            formatter: function (v) { return DateFormat.format(v) }
+        },
+        {
+            title: "Modified",
+            key: "modified",
+            tooltip: "When the server last changed the table definition. Writing items does not "
+                     + "count - this is about the table, not its contents.",
+            formatter: function (v) { return DateFormat.format(v) }
+        },
         { title: "Ern", key: "ern", hidden: true }
     ]
 

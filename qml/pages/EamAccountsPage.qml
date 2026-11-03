@@ -22,11 +22,36 @@ Item {
 
     readonly property var columns: {
         let cols = [
-            { title: "Name", key: "name", fill: true },
-            { title: "Account ID", key: "accountId" },
-            { title: "Description", key: "description" },
-            { title: "Created", key: "created", formatter: function (v) { return DateFormat.format(v) } },
-            { title: "Modified", key: "modified", formatter: function (v) { return DateFormat.format(v) } },
+            {
+                title: "Name",
+                key: "name",
+                fill: true,
+                tooltip: "The account's display name. Unlike the account ID it can be changed, so "
+                         + "nothing should be keyed on it."
+            },
+            {
+                title: "Account ID",
+                key: "accountId",
+                tooltip: "What identifies the account everywhere else: namespaces, users and every "
+                         + "ERN are scoped by it. Fixed at creation."
+            },
+            {
+                title: "Description",
+                key: "description",
+                tooltip: "Free text set when the account was created or last changed."
+            },
+            {
+                title: "Created",
+                key: "created",
+                tooltip: "When the account was created.",
+                formatter: function (v) { return DateFormat.format(v) }
+            },
+            {
+                title: "Modified",
+                key: "modified",
+                tooltip: "When the server last changed the account.",
+                formatter: function (v) { return DateFormat.format(v) }
+            },
             { title: "Ern", key: "ern", hidden: true }
         ]
         return cols

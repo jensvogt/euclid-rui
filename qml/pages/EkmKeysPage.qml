@@ -29,12 +29,45 @@ Item {
 
     readonly property var columns: {
         let cols = [
-            { title: "Key ID", key: "name", fill: true },
-            { title: "Algorithm", key: "algorithm" },
-            { title: "Length", key: "length", formatter: function (v) { return v + " bit" } },
-            { title: "Status", key: "status", colorFor: function (v) { return root.statusColor(v) } },
-            { title: "Created", key: "created", formatter: function (v) { return DateFormat.format(v) } },
-            { title: "Modified", key: "modified", formatter: function (v) { return DateFormat.format(v) } },
+            {
+                title: "Key ID",
+                key: "name",
+                fill: true,
+                tooltip: "The key's name, which is what a bucket or a secret names when it says "
+                         + "what it is encrypted with."
+            },
+            {
+                title: "Algorithm",
+                key: "algorithm",
+                tooltip: "The cipher the key is for. Fixed when the key is created - a key cannot "
+                         + "be re-algorithmed, only replaced."
+            },
+            {
+                title: "Length",
+                key: "length",
+                tooltip: "The key's size in bits.",
+                formatter: function (v) { return v + " bit" }
+            },
+            {
+                title: "Status",
+                key: "status",
+                tooltip: "Whether the key can still be used. Anything that has been disabled or "
+                         + "scheduled for deletion goes on existing but stops serving - which is "
+                         + "what makes everything encrypted under it unreadable.",
+                colorFor: function (v) { return root.statusColor(v) }
+            },
+            {
+                title: "Created",
+                key: "created",
+                tooltip: "When the key was created.",
+                formatter: function (v) { return DateFormat.format(v) }
+            },
+            {
+                title: "Modified",
+                key: "modified",
+                tooltip: "When the server last changed the key - a status change counts.",
+                formatter: function (v) { return DateFormat.format(v) }
+            },
             { title: "Ern", key: "ern", hidden: true },
         ]
         return cols

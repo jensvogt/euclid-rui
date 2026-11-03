@@ -174,16 +174,30 @@ Item {
         {
             title: "State",
             key: "state",
+            tooltip: "What the rule currently judges. NO_DATA means the series stopped reporting, "
+                     + "which is not the same as being within threshold; DISABLED means the rule "
+                     + "is judging nothing at all.",
             formatter: function (v) { return root.stateText(v) },
             colorFor: function (v) { return root.stateColor(v) }
         },
-        { title: "Rule", key: "ruleId" },
-        { title: "Metric", key: "name" },
+        {
+            title: "Rule",
+            key: "ruleId",
+            tooltip: "The alert rule this row comes from. One rule produces a row per series it "
+                     + "matches."
+        },
+        {
+            title: "Metric",
+            key: "name",
+            tooltip: "The metric the rule watches."
+        },
         {
             // For a disabled rule, its selector rather than a series: it judges none right now.
             title: "Series",
             key: "labels",
             fill: true,
+            tooltip: "Which series of the metric this row judges, by its labels. For a disabled "
+                     + "rule it is the selector instead, since the rule is judging none right now.",
             formatter: function (v) { return root.labelText(v) },
             colorFor: function (v) { return root.labelText(v) === "—" ? "#6b7280" : "#c4c9d1" }
         },
@@ -192,6 +206,8 @@ Item {
             key: "value",
             // Meaningless for a series that stopped reporting - it is the last figure, not a
             // current one - and absent for a disabled rule.
+            tooltip: "The figure the rule last judged. Shown as a dash where it would mislead: a "
+                     + "series that stopped reporting has only its last value, not a current one.",
             formatter: function (v, row) {
                 return row && (row.state === "NO_DATA" || row.state === "DISABLED" || row.state === "PENDING") ? "—" : root.numberText(v)
             }
@@ -200,10 +216,24 @@ Item {
             title: "Threshold",
             key: "warning",
             sortable: false,
+            tooltip: "The levels the value is compared against. Not sortable: it is composed from "
+                     + "the rule's warning and critical levels rather than being one field.",
             formatter: function (v, row) { return root.thresholdText(row) }
         },
-        { title: "Since", key: "since", formatter: function (v) { return v ? DateFormat.format(v) : "—" } },
-        { title: "Last seen", key: "lastSeen", formatter: function (v) { return v ? DateFormat.format(v) : "—" } }
+        {
+            title: "Since",
+            key: "since",
+            tooltip: "When this row entered the state it is in now - how long the alert has been "
+                     + "firing, rather than when the rule was written.",
+            formatter: function (v) { return v ? DateFormat.format(v) : "—" }
+        },
+        {
+            title: "Last seen",
+            key: "lastSeen",
+            tooltip: "When the series last reported a sample. An old timestamp here is what NO_DATA "
+                     + "is made of.",
+            formatter: function (v) { return v ? DateFormat.format(v) : "—" }
+        }
     ]
 
     readonly property int activeCount: root.series.filter(a => root.isFiring(a.state)).length

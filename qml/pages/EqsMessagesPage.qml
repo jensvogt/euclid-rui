@@ -68,13 +68,51 @@ Item {
 
     readonly property var columns: {
         let cols = [
-            { title: "Message ID", key: "messageId", fill: true },
-            { title: "Content Type", key: "contentType" },
-            { title: "Status", key: "status", colorFor: function (v) { return root.statusColor(v) } },
-            { title: "Priority", key: "priority", colorFor: function (v) { return root.priorityColor(v) } },
-            { title: "Size", key: "size", formatter: function (v) { return SizeFormat.format(v) } },
-            { title: "Created", key: "created", formatter: function (v) { return DateFormat.format(v) } },
-            { title: "Modified", key: "modified", formatter: function (v) { return DateFormat.format(v) } },
+            {
+                title: "Message ID",
+                key: "messageId",
+                fill: true,
+                tooltip: "The message's own identifier, assigned when it was sent."
+            },
+            {
+                title: "Content Type",
+                key: "contentType",
+                tooltip: "What the sender said the body is, carried through untouched."
+            },
+            {
+                title: "Status",
+                key: "status",
+                tooltip: "AVAILABLE: can be received now.\n"
+                         + "INVISIBLE: received by a consumer and not yet deleted. It comes back on "
+                         + "its own when the visibility timeout runs out.\n"
+                         + "DELAYED: sent with a delay that has not passed yet.",
+                colorFor: function (v) { return root.statusColor(v) }
+            },
+            {
+                title: "Priority",
+                key: "priority",
+                tooltip: "The order the queue hands messages out in: HIGH before MEDIUM before LOW. "
+                         + "Set per message when it is sent, falling back to the queue's default.",
+                colorFor: function (v) { return root.priorityColor(v) }
+            },
+            {
+                title: "Size",
+                key: "size",
+                tooltip: "The size of the message body.",
+                formatter: function (v) { return SizeFormat.format(v) }
+            },
+            {
+                title: "Created",
+                key: "created",
+                tooltip: "When the message was sent to the queue.",
+                formatter: function (v) { return DateFormat.format(v) }
+            },
+            {
+                title: "Modified",
+                key: "modified",
+                tooltip: "When the message last changed - a receive that made it invisible counts.",
+                formatter: function (v) { return DateFormat.format(v) }
+            },
             { title: "QueueErn", key: "queueErn", hidden: true },
             { title: "MessageErn", key: "ern", hidden: true }
         ]

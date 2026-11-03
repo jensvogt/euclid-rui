@@ -122,13 +122,19 @@ Item {
             title: "Namespace",
             key: "namespace",
             fill: true,
+            tooltip: "The namespace whose routes this listener serves.",
             formatter: function (v, row) { return root.namespaceText(row) },
             colorFor: function (v) { return String(v).length > 0 ? "#c4c9d1" : "#9aa1ac" }
         },
-        { title: "Port", key: "port" },
+        {
+            title: "Port",
+            key: "port",
+            tooltip: "The TCP port the gateway binds for this listener."
+        },
         {
             title: "Protocol",
             key: "protocol",
+            tooltip: "Whether the port is served over TLS. Amber marks a plain-text port.",
             formatter: function (v) { return String(v).toUpperCase() },
             // The plain-text port is the one worth noticing in a list of them.
             colorFor: function (v) { return v === "https" ? "#4cd97b" : "#ffb545" }
@@ -136,6 +142,9 @@ Item {
         {
             title: "State",
             key: "serving",
+            tooltip: "BOUND: the gateway holds the port and is serving on it.\n"
+                     + "NOT BOUND: configured but not listening - usually the port was already "
+                     + "taken, or its certificate would not load. Routes on it are unreachable.",
             formatter: function (v) { return v ? "BOUND" : "NOT BOUND" },
             colorFor: function (v) { return v ? "#4cd97b" : "#ff4f5e" }
         },
@@ -143,6 +152,8 @@ Item {
             title: "Certificate",
             key: "certificate",
             sortable: false,
+            tooltip: "The EKM certificate this listener presents. Only meaningful on an HTTPS "
+                     + "listener; a certificate named but not found is what keeps a port unbound.",
             formatter: function (v, row) { return root.certificateText(row) },
             colorFor: function (v, row) { return root.certificateColor(row) }
         },
@@ -150,6 +161,8 @@ Item {
             title: "Issued by",
             key: "certificateGenerated",
             sortable: false,
+            tooltip: "Who signed the presented certificate. \"euclid (self-signed)\" works, but is "
+                     + "refused by every client that has not been told about it.",
             formatter: function (v, row) {
                 if (!row || !row.https || !row.certificateFound) return "—"
                 return v ? "euclid (self-signed)" : String(row.certificateIssuer)
@@ -163,6 +176,8 @@ Item {
             // is the one column somebody actually wants ordered.
             title: "Expires",
             key: "certificateNotAfter",
+            tooltip: "When the presented certificate stops being accepted. Nothing renews it on "
+                     + "its own, and an expired one takes the listener's clients down with it.",
             formatter: function (v, row) { return root.expiryText(row) },
             colorFor: function (v, row) { return root.certificateColor(row) }
         }

@@ -125,11 +125,20 @@ Item {
     // None of these are sortable: the server has no sort for "list-modules", and the rows are put
     // in name order below - which is the order a registry is read in anyway.
     readonly property var columns: [
-        { title: "Module", key: "name", fill: true, sortable: false },
+        {
+            title: "Module",
+            key: "name",
+            fill: true,
+            sortable: false,
+            tooltip: "The module's name. An EAP application appears here under its runtime name "
+                     + "rather than its application ID, because that is what the manager runs it as."
+        },
         {
             title: "State",
             key: "active",
             sortable: false,
+            tooltip: "What the module's process pool is doing, as the manager sees it - not what "
+                     + "it was asked to do.",
             formatter: function (v, row) { return root.stateText(row) },
             colorFor: function (v, row) { return root.stateColor(row) }
         },
@@ -137,6 +146,8 @@ Item {
             title: "Instances",
             key: "runningInstances",
             sortable: false,
+            tooltip: "Instances running, against the ceiling the autoscaler may grow to. The floor "
+                     + "is on the module's details page.",
             // Running against the ceiling the autoscaler may grow to, written the way the EAP
             // applications table writes it. The floor is on the details page, where the pending
             // "1 → 3" of a scaling change belongs with it.
@@ -144,9 +155,28 @@ Item {
                 return row ? Number(v) + " / " + Number(row.maxInstances) : String(v)
             }
         },
-        { title: "Auto-restart", key: "autoRestart", sortable: false, formatter: function (v) { return v ? "Yes" : "No" } },
-        { title: "Created", key: "created", sortable: false, formatter: function (v) { return DateFormat.format(v) } },
-        { title: "Modified", key: "modified", sortable: false, formatter: function (v) { return DateFormat.format(v) } }
+        {
+            title: "Auto-restart",
+            key: "autoRestart",
+            sortable: false,
+            tooltip: "Whether the manager starts the module again when its process exits. \"No\" "
+                     + "means a crash leaves it stopped until somebody starts it.",
+            formatter: function (v) { return v ? "Yes" : "No" }
+        },
+        {
+            title: "Created",
+            key: "created",
+            sortable: false,
+            tooltip: "When the module was registered with the manager.",
+            formatter: function (v) { return DateFormat.format(v) }
+        },
+        {
+            title: "Modified",
+            key: "modified",
+            sortable: false,
+            tooltip: "When the module's definition last changed.",
+            formatter: function (v) { return DateFormat.format(v) }
+        }
     ]
 
     // What the last control action did, kept next to the table: every one of them is a request the

@@ -40,18 +40,36 @@ Item {
                 title: "Name",
                 key: "name",
                 fill: true,
+                tooltip: "The bucket's name, unique within the namespace. Marked \"(internal)\" "
+                         + "when it is euclid's own plumbing rather than something somebody created.",
                 formatter: function (v, row) { return row && row.internal ? v + "  (internal)" : String(v) },
                 colorFor: function (v, row) { return row && row.internal ? "#9aa1ac" : "#c4c9d1" }
             },
-            { title: "Objects", key: "objects" },
+            {
+                title: "Objects",
+                key: "objects",
+                tooltip: "How many objects the bucket holds. Directory markers are counted "
+                         + "separately and are not included here."
+            },
             // Beside Objects rather than folded into it. A directory marker is a zero-byte key
             // ending in "/" that keeps an empty directory in existence for an FTP or SFTP client
             // to change into - a listing shows it, but nobody stored it, so it is not one of the
             // bucket's objects. Mostly 0, and worth the column anyway: on a transfer bucket it is
             // most of what is there, and reading those rows as objects is what made one show
             // "5 objects, 0 B" when it held a single empty receipt file.
-            { title: "Directories", key: "directories" },
-            { title: "Size", key: "size", formatter: function (v) { return SizeFormat.format(v) } },
+            {
+                title: "Directories",
+                key: "directories",
+                tooltip: "Directory markers: zero-byte keys ending in \"/\" that keep an empty "
+                         + "directory in existence for an FTP or SFTP client to change into. A "
+                         + "listing shows them, but nobody stored them, so they are not objects."
+            },
+            {
+                title: "Size",
+                key: "size",
+                tooltip: "Approximate space the bucket's objects take up on disk.",
+                formatter: function (v) { return SizeFormat.format(v) }
+            },
             // Says what happens to the next object written, not that everything in the bucket is
             // encrypted - a bucket holds objects written under whatever setting was in force at the
             // time. Not sortable: the server derives "encrypted" from the bucket's key ERN, so
@@ -59,6 +77,9 @@ Item {
             {
                 title: "Encrypted",
                 key: "encrypted",
+                tooltip: "What happens to the next object written, not a statement about everything "
+                         + "in the bucket: a bucket holds objects written under whatever setting "
+                         + "was in force at the time.",
                 sortable: false,
                 formatter: function (v) { return v ? "Yes" : "No" },
                 colorFor: function (v) { return v ? "#4cd97b" : "#6b7280" }
@@ -71,11 +92,24 @@ Item {
             {
                 title: "Priority",
                 key: "priority",
+                tooltip: "The priority this bucket's event notifications are sent at - nothing "
+                         + "about the bucket itself, since a bucket is not consumed from. A dash "
+                         + "means it states nothing, leaving the target queue's own default in force.",
                 formatter: function (v) { return String(v).length > 0 ? String(v) : "—" },
                 colorFor: function (v) { return root.priorityColor(String(v)) }
             },
-            { title: "Created", key: "created", formatter: function (v) { return DateFormat.format(v) } },
-            { title: "Modified", key: "modified", formatter: function (v) { return DateFormat.format(v) } },
+            {
+                title: "Created",
+                key: "created",
+                tooltip: "When the bucket was created.",
+                formatter: function (v) { return DateFormat.format(v) }
+            },
+            {
+                title: "Modified",
+                key: "modified",
+                tooltip: "When the server last changed the bucket.",
+                formatter: function (v) { return DateFormat.format(v) }
+            },
             { title: "Ern", key: "ern", hidden: true }
         ]
         return cols

@@ -29,13 +29,52 @@ Item {
     }
 
     readonly property var columns: [
-        { title: "Name", key: "name", fill: true },
-        { title: "Description", key: "description" },
-        { title: "Version", key: "version" },
-        { title: "Rotated", key: "rotated", formatter: function (v) { return DateFormat.format(v) } },
-        { title: "Key", key: "encryptionKeyErn", formatter: function (v) { return root.keyName(v) } },
-        { title: "Created", key: "created", formatter: function (v) { return DateFormat.format(v) } },
-        { title: "Modified", key: "modified", formatter: function (v) { return DateFormat.format(v) } },
+        {
+            title: "Name",
+            key: "name",
+            fill: true,
+            tooltip: "The secret's name, unique within the namespace. This is what an application "
+                     + "asks for; the value itself is never shown in a listing."
+        },
+        {
+            title: "Description",
+            key: "description",
+            tooltip: "Free text about what the secret is for. Safe to read - it is stored "
+                     + "alongside the value, not inside it."
+        },
+        {
+            title: "Version",
+            key: "version",
+            tooltip: "How many times the value has been written. Rotating a secret stores a new "
+                     + "version rather than overwriting the old one."
+        },
+        {
+            title: "Rotated",
+            key: "rotated",
+            tooltip: "When the value was last replaced. This is the date that matters for a "
+                     + "rotation policy, not \"Modified\".",
+            formatter: function (v) { return DateFormat.format(v) }
+        },
+        {
+            title: "Key",
+            key: "encryptionKeyErn",
+            tooltip: "The EKM key the value is encrypted under. Disabling or deleting that key "
+                     + "makes this secret unreadable.",
+            formatter: function (v) { return root.keyName(v) }
+        },
+        {
+            title: "Created",
+            key: "created",
+            tooltip: "When the secret was created.",
+            formatter: function (v) { return DateFormat.format(v) }
+        },
+        {
+            title: "Modified",
+            key: "modified",
+            tooltip: "When the server last changed the secret - a description change counts, so "
+                     + "this can be newer than \"Rotated\".",
+            formatter: function (v) { return DateFormat.format(v) }
+        },
         { title: "Ern", key: "ern", hidden: true }
     ]
 

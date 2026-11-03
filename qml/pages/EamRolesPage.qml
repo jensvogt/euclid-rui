@@ -34,11 +34,23 @@ Item {
     signal openRoleDetails(string roleName, var details)
 
     readonly property var columns: [
-        { title: "Role", key: "name", fill: true },
-        { title: "Description", key: "description" },
+        {
+            title: "Role",
+            key: "name",
+            fill: true,
+            tooltip: "The role's name, which is what a grant names. Granting it to a principal is "
+                     + "what gives them its permissions, in the namespaces the grant scopes it to."
+        },
+        {
+            title: "Description",
+            key: "description",
+            tooltip: "What the role is for. Built-in roles carry euclid's own wording."
+        },
         {
             title: "Permissions",
             key: "permissionCount",
+            tooltip: "How many permissions the role carries. \"everything\" means it holds the "
+                     + "\"*:*\" wildcard rather than a list - one entry, and every permission there is.",
             formatter: function (v, row) {
                 // "*:*" is one entry and every permission there is, which "1" would say the
                 // opposite of.
@@ -49,12 +61,26 @@ Item {
         {
             title: "Kind",
             key: "builtin",
+            tooltip: "built in: one of the six every installation has. They cannot be edited or "
+                     + "deleted, and they carry no created or modified date because they are not "
+                     + "rows in the account.\n"
+                     + "custom: created here, and editable.",
             formatter: function (v) { return v ? "built in" : "custom" },
             // The ones that can actually be edited are the ones worth picking out.
             colorFor: function (v) { return v ? "#9aa1ac" : "#4f8cff" }
         },
-        { title: "Created", key: "created", formatter: function (v) { return DateFormat.format(v) } },
-        { title: "Modified", key: "modified", formatter: function (v) { return DateFormat.format(v) } },
+        {
+            title: "Created",
+            key: "created",
+            tooltip: "When the role was created. Empty for a built-in role.",
+            formatter: function (v) { return DateFormat.format(v) }
+        },
+        {
+            title: "Modified",
+            key: "modified",
+            tooltip: "When the role's permissions last changed. Empty for a built-in role.",
+            formatter: function (v) { return DateFormat.format(v) }
+        },
         { title: "Ern", key: "ern", hidden: true }
     ]
 

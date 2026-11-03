@@ -92,6 +92,8 @@ Item {
             title: "Site",
             key: "site",
             fill: true,
+            tooltip: "The outbound host these limits apply to. The \"all sites\" row is not a host: "
+                     + "it is what this application is held to everywhere it has no limit of its own.",
             // "*" is not a host: it is what this application is held to everywhere it has no
             // limit of its own, so it is said rather than printed.
             formatter: function (v) { return String(v) === root.allSites ? "All sites (this application's default)" : String(v) },
@@ -100,18 +102,30 @@ Item {
         {
             title: "Rate",
             key: "requestsPerSecond",
+            tooltip: "How fast the token bucket refills - the sustained request rate this "
+                     + "application is held to for the site.",
             formatter: function (v) { return Number(v) > 0 ? Number(v).toFixed(2) + "/s" : "unlimited" }
         },
-        { title: "Burst", key: "burst", formatter: function (v) { return Number(v).toFixed(0) } },
+        {
+            title: "Burst",
+            key: "burst",
+            tooltip: "The bucket's capacity: how many requests can go out back to back after a "
+                     + "quiet spell, before the refill rate becomes the limit.",
+            formatter: function (v) { return Number(v).toFixed(0) }
+        },
         {
             title: "Concurrent",
             key: "concurrent",
+            tooltip: "How many requests to the site may be in flight at once, independently of the "
+                     + "rate.",
             formatter: function (v) { return Number(v) > 0 ? String(v) : "unlimited" }
         },
         {
             // Whose decision these limits are: the site's own, or nobody's yet.
             title: "Limits",
             key: "limitsSet",
+            tooltip: "Whose decision the limits on this row are. \"set\" means the site carries its "
+                     + "own; \"default\" means it is inheriting, and changing the default moves it.",
             formatter: function (v) { return v ? "set" : "default" },
             colorFor: function (v) { return v ? "#4f8cff" : "#6b7280" }
         },
@@ -120,11 +134,15 @@ Item {
             // waits. Blank for the "*" row: nothing acquires a permit for it, so it has no bucket.
             title: "Tokens",
             key: "tokens",
+            tooltip: "What is left in the bucket right now, which is what decides whether the next "
+                     + "request waits. A dash on the \"all sites\" row: nothing acquires a permit "
+                     + "against it, so it has no bucket of its own.",
             formatter: function (v, row) { return row && row.allSites ? "—" : Number(v).toFixed(1) }
         },
         {
             title: "In flight",
             key: "inFlight",
+            tooltip: "Requests to this site running right now, measured against \"Concurrent\".",
             formatter: function (v, row) { return row && row.allSites ? "—" : String(v) }
         },
         {
@@ -132,12 +150,17 @@ Item {
             // application reported - and nothing is granted for it until then.
             title: "Blocked until",
             key: "blockedUntil",
+            tooltip: "Set only when the site itself asked to be left alone - a 429 or 503 the "
+                     + "application reported - and nothing is granted for it until then. A dash is "
+                     + "the ordinary case.",
             formatter: function (v) { return String(v).length > 0 ? DateFormat.format(v) : "—" },
             colorFor: function (v) { return String(v).length > 0 ? "#ff6b6b" : "#6b7280" }
         },
         {
             title: "Last used",
             key: "lastUsed",
+            tooltip: "When this application last sent a request to the site. An old date is a "
+                     + "limit nobody is relying on any more.",
             formatter: function (v, row) { return row && row.allSites ? "—" : DateFormat.format(v) }
         }
     ]
@@ -354,10 +377,17 @@ Item {
     }
 
     readonly property var instanceColumns: [
-        { title: "Instance", key: "instanceId", fill: true },
+        {
+            title: "Instance",
+            key: "instanceId",
+            fill: true,
+            tooltip: "The instance's identifier within the pool."
+        },
         {
             title: "PID",
             key: "pid",
+            tooltip: "The process id on its host. A dash is the manager's \"no process\" rather "
+                     + "than a pid - see Host for which machine it is on.",
             // -1 is the manager's "no process", not a pid.
             formatter: function (v) { return Number(v) > 0 ? String(v) : "—" }
         },
@@ -367,6 +397,10 @@ Item {
             // course. This is the machine the worker running the instance reported itself as.
             title: "Host",
             key: "host",
+            tooltip: "The machine the instance is running on. A pid on its own does not identify a "
+                     + "process here - every host runs the same installation path and pids collide "
+                     + "across machines. \"manager\" is euclid-mgr's own host, which is where every "
+                     + "instance runs on an installation with no workers.",
             // Empty is the manager's own host and not an unknown one - it is what every instance on
             // an installation with no workers carries. Named rather than left blank, so a column of
             // them reads as "all here" instead of "nobody knows".
@@ -376,6 +410,9 @@ Item {
         {
             title: "Port",
             key: "httpPort",
+            tooltip: "The TCP port this instance was given at start, which is what the API gateway "
+                     + "routes to. A dash means none was handed out - the instance is not reachable "
+                     + "through the gateway whatever its state says.",
             // 0 means none was handed out. An instance without one is not reachable through the
             // gateway, whatever its state says, so it is marked rather than left blank.
             formatter: function (v) { return Number(v) > 0 ? String(v) : "—" },
@@ -388,11 +425,16 @@ Item {
             // has only two values. Naming both "State" reads as one of them being wrong.
             title: "Instance state",
             key: "state",
+            tooltip: "This one process's state out of EMM - STARTING, CRASHED, RESTARTING and the "
+                     + "rest of the module lifecycle. Not the same as the application's State "
+                     + "above, which is EAP's answer to \"is any instance running\".",
             colorFor: function (v) { return root.instanceStateColor(v) }
         },
         {
             title: "Restarts",
             key: "restartCount",
+            tooltip: "How often this instance has been restarted. Coloured above zero: a pool that "
+                     + "keeps its instance count only by restarting looks healthy from the outside.",
             // A pool that keeps its count only by restarting is one that looks healthy from the
             // outside, so the number is coloured.
             colorFor: function (v) { return Number(v) > 0 ? "#ffb545" : "#c4c9d1" }
@@ -404,9 +446,17 @@ Item {
             title: "Up",
             key: "started",
             sortable: false,
+            tooltip: "How long this instance has been running. A young instance among old ones is "
+                     + "one that has been restarting. Not sortable - it would order identically to "
+                     + "\"Started\", which is.",
             formatter: function (v) { return root.uptimeText(v) }
         },
-        { title: "Started", key: "started", formatter: function (v) { return DateFormat.format(v) } }
+        {
+            title: "Started",
+            key: "started",
+            tooltip: "When this instance's process started - not when the application was deployed.",
+            formatter: function (v) { return DateFormat.format(v) }
+        }
     ]
 
     // What EAP accepts, in the order its own error message lists them. Java is the only one that
