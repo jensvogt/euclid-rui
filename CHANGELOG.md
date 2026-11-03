@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.1.54](https://github.com/jensvogt/euclid-rui/compare/1.1.53...v1.1.54) (2026-11-03)
+
+
+### Bug Fixes
+
+* tooltips for all table columns ([7107472](https://github.com/jensvogt/euclid-rui/commit/710747219f3b66f11024c6632bcd183d58ee1a10))
+* tooltips for all table columns ([08b434a](https://github.com/jensvogt/euclid-rui/commit/08b434aa0a2f72ab36b4d947527c022d1e78887c))
+
 ## [1.1.53](https://github.com/jensvogt/euclid-rui/compare/1.1.52...v1.1.53) (2026-11-02)
 
 
