@@ -121,10 +121,25 @@ Item {
                      + "by this to compare machines of different sizes."
         },
         {
+            // The machine's memory in use against what is installed, as of the last renewal.
+            // Not what admission measures against - that is the next column.
+            title: "Memory",
+            key: "memoryTotalMb",
+            tooltip: "The machine's memory in use against what is installed, as of the node's last "
+                     + "renewal. The page cache does not count as used. A dash is a worker too old "
+                     + "to say.",
+            formatter: function (v, row) { return ResourceLimits.machineMemoryText(row.memoryUsedMb, v) },
+            colorFor: function (v, row) {
+                const percent = ResourceLimits.machineMemoryPercent(row.memoryUsedMb, v)
+                if (percent < 0) return Number(v) > 0 ? "#c4c9d1" : "#6b7280"
+                return percent >= 90 ? "#ff5c5c" : percent >= 75 ? "#ffb020" : "#c4c9d1"
+            }
+        },
+        {
             // What the node offers applications - its memory less what the worker keeps back -
             // and what admission measures memory limits against. "—" for a worker too old to say,
             // which admission does not refuse on.
-            title: "Memory",
+            title: "For apps",
             key: "memoryMb",
             tooltip: "What the node offers applications - its memory less what the worker keeps "
                      + "back - and what admission measures memory limits against. A dash is a "

@@ -270,11 +270,24 @@ Item {
                 }
                 StatCard {
                     title: "Memory"
-                    value: Number(root.detail("memoryMb", 0)) > 0 ? ResourceLimits.memoryText(root.detail("memoryMb", 0)) : "—"
-                    // Not the host's total: what is left for applications once the worker's reserve
-                    // is kept back, and so what memory limits are admitted against.
-                    trend: Number(root.detail("memoryMb", 0)) > 0 ? "offered to applications" : "not reported by this worker"
-                    trendUp: Number(root.detail("memoryMb", 0)) > 0
+                    // The machine's memory in use against what is installed - "64 GiB / 128 GiB" -
+                    // with what applications are offered below it, which is what memory limits are
+                    // admitted against and is less than the total by the worker's reserve.
+                    value: Number(root.detail("memoryTotalMb", 0)) > 0
+                           ? ResourceLimits.machineMemoryText(root.detail("memoryUsedMb", 0), root.detail("memoryTotalMb", 0))
+                           : (Number(root.detail("memoryMb", 0)) > 0 ? ResourceLimits.memoryText(root.detail("memoryMb", 0)) : "—")
+                    trend: {
+                        const offered = Number(root.detail("memoryMb", 0))
+                        const percent = ResourceLimits.machineMemoryPercent(root.detail("memoryUsedMb", 0), root.detail("memoryTotalMb", 0))
+                        const parts = []
+                        if (percent >= 0) parts.push(percent + "% in use")
+                        if (offered > 0) parts.push(ResourceLimits.memoryText(offered) + " offered to applications")
+                        return parts.length > 0 ? parts.join(" · ") : "not reported by this worker"
+                    }
+                    trendUp: {
+                        const percent = ResourceLimits.machineMemoryPercent(root.detail("memoryUsedMb", 0), root.detail("memoryTotalMb", 0))
+                        return percent >= 0 ? percent < 90 : Number(root.detail("memoryMb", 0)) > 0
+                    }
                     accent: "#c56bff"
                 }
                 StatCard {

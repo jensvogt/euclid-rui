@@ -251,6 +251,12 @@ QVariantMap nodeToMap(const QJsonObject &node) {
     // (euclid.worker.memory-reserve-mb), which is what admission measures memory limits against.
     // 0 for a worker too old to report it, which admission treats as unknown.
     entry["memoryMb"] = node.value("memoryMb").toInteger();
+    // The machine itself, in MiB: its installed memory and how much of it was in use at the last
+    // renewal (total less what the kernel calls available, so the page cache is not "used"). What
+    // the node pages show as "64 GiB / 128 GiB". Both 0 for a worker older than the fields; the used
+    // figure alone is 0 on a platform with no reading (macOS).
+    entry["memoryTotalMb"] = node.value("memoryTotalMb").toInteger();
+    entry["memoryUsedMb"] = node.value("memoryUsedMb").toInteger();
     // The one-minute load average as of the node's last heartbeat, which is the same call and the
     // same tick that keeps the node alive - so it is as current as `lastSeen` says it is.
     //
