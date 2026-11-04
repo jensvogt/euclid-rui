@@ -164,7 +164,7 @@ jobs:
 
   build-qt-static-macos:
     name: Build static Qt (macOS, cached)
-    runs-on: macos-latest
+    runs-on: macos-15
     needs: release-please
     if: ${{ needs.release-please.outputs.release_created == 'true' }}
     steps:
@@ -453,7 +453,7 @@ jobs:
 
   build-macos:
     name: Build & Package (macOS)
-    runs-on: macos-latest
+    runs-on: macos-15
     needs: [ release-please, build-qt-static-macos ]
     env:
       BUILD_DIR: "${{ github.workspace }}/build-macos"
