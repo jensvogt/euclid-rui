@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.1.57](https://github.com/jensvogt/euclid-rui/compare/1.1.56...v1.1.57) (2026-11-04)
+
+
+### Bug Fixes
+
+* add nodes total memory ([2f74e4f](https://github.com/jensvogt/euclid-rui/commit/2f74e4fd3f30941ee5cfa192ac2d32e8e12561a7))
+* add nodes total memory ([7003b48](https://github.com/jensvogt/euclid-rui/commit/7003b48767790ba1b9b21416548d8f511f915392))
+
 ## [1.1.56](https://github.com/jensvogt/euclid-rui/compare/1.1.55...v1.1.56) (2026-11-03)
 
 
