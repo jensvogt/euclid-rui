@@ -251,3 +251,12 @@ target_link_libraries(euclid-rui
         # if the module is linked - without it every Image pointing at it renders nothing.
         Qt6::Svg
 )
+
+# The native Wayland platform plugin. A static Qt links xcb in by default but not this one, and
+# without it the app runs on a Wayland desktop through XWayland - where the window frame, and the
+# cursor over it, are drawn by the compositor's X11 frames client at a size the app cannot correct.
+# Its shell integration (xdg-shell), title-bar decoration and EGL client buffer plugins are default
+# plugins of their own and come along with Qt6::Gui. Only when the Qt in use was built with it.
+if(UNIX AND NOT APPLE AND TARGET Qt6::QWaylandIntegrationPlugin)
+    qt_import_plugins(euclid-rui INCLUDE Qt6::QWaylandIntegrationPlugin)
+endif()

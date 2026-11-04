@@ -78,6 +78,29 @@ QtObject {
         return n + " MiB"
     }
 
+    // A machine's memory in use against what is installed: "64 GiB / 128 GiB". Whole GiB from ten
+    // up, where a decimal is noise that changes every renewal; one decimal below that. Just the
+    // total when the node sends no used figure (macOS), and "—" when it sends neither.
+    function machineMemoryText(usedMb, totalMb) {
+        const total = Number(totalMb)
+        if (!(total > 0)) return "—"
+        const used = Number(usedMb)
+        return used > 0 ? gibText(used) + " / " + gibText(total) : gibText(total)
+    }
+
+    function gibText(mb) {
+        const g = Number(mb) / 1024
+        if (g < 1) return Math.round(Number(mb)) + " MiB"
+        return (g >= 10 ? Math.round(g) : Math.round(g * 10) / 10) + " GiB"
+    }
+
+    // The share of a machine's memory in use, as a whole percentage, or -1 when not reported.
+    function machineMemoryPercent(usedMb, totalMb) {
+        const total = Number(totalMb)
+        const used = Number(usedMb)
+        return total > 0 && used > 0 ? Math.round(100 * used / total) : -1
+    }
+
     function cpuText(cores) {
         const n = Number(cores)
         if (!(n > 0)) return "none"

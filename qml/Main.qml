@@ -27,6 +27,16 @@ ApplicationWindow {
     // EMO: the alert rule the details page shows.
     property string selectedAlertRuleId: ""
 
+    // The plain arrow, stated rather than left unset. Where nothing under the pointer asks for a
+    // cursor, Qt Quick unsets the window's, and on X11 (XWayland included) an unset cursor is the
+    // root window's - loaded by the window manager at a size of its own choosing, which on a
+    // multi-monitor desktop can be twice that of every other cursor. Stated here, it is loaded by
+    // Qt at the size main.cpp settles, like the hand and the I-beam. Anything deeper that sets a
+    // cursor of its own still wins: the deepest item under the pointer decides.
+    HoverHandler {
+        cursorShape: Qt.ArrowCursor
+    }
+
     // Kept in step with the breadcrumb's idea of where the window is, and the way back: a crumb
     // asks for a route rather than setting one, because arriving somewhere is more than a string -
     // see components/Nav.qml. Routes stay here, which is where the pages and their state are.

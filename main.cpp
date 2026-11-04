@@ -6,6 +6,7 @@
 #include <QQmlContext>
 #include <QQuickStyle>
 #include <QIcon>
+#include <QPalette>
 #include <QQuickWindow>
 
 #include "AppSettings.h"
@@ -39,8 +40,9 @@ namespace {
      *
      * @par
      * Which is seen, oddly, as a huge crosshair over the charts and a huge hand over anything
-     * clickable, while the ordinary arrow stays the right size - because a cursor this application
-     * never sets is not one it loaded. That one belongs to the compositor and was never in doubt.
+     * clickable. The ordinary arrow is a separate matter: where nothing asks for a cursor, Qt Quick
+     * unsets the window's and X11 shows the root window's, which the window manager loaded at a
+     * size of its own - so qml/Main.qml asks for the arrow explicitly, and it comes from here too.
      *
      * @par
      * The context those cursors come from is built once, while the platform plugin starts, and is
@@ -120,6 +122,17 @@ int main(int argc, char *argv[]) {
     // Wayland, where there is no WM_CLASS to guess from, the window would go unmatched entirely and
     // show the fallback icon. Ignored on Windows and macOS, which have their own mechanisms.
     QGuiApplication::setDesktopFileName(QStringLiteral("euclid-rui"));
+
+    // The title bar on Wayland. GNOME leaves decorations to the client, and Qt's own (the
+    // "bradient" plugin) paints itself from the application palette - Window behind, WindowText for
+    // the title and buttons, disabled WindowText when the window is not focused - which unset is
+    // the light default, a white frame round a dark window. The same colours as Main.qml, so the
+    // frame reads as part of it. Material styles the QML itself, so nothing inside is affected.
+    QPalette palette = QGuiApplication::palette();
+    palette.setColor(QPalette::Window, QColor(0x14, 0x16, 0x1b));
+    palette.setColor(QPalette::WindowText, QColor(0xe6, 0xe8, 0xec));
+    palette.setColor(QPalette::Disabled, QPalette::WindowText, QColor(0x8a, 0x8f, 0x98));
+    QGuiApplication::setPalette(palette);
 
     QCommandLineParser parser;
     parser.setApplicationDescription("Euclid RUI - Qt6/QML dashboard for the euclid backend");
