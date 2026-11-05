@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.61](https://github.com/jensvogt/euclid-rui/compare/1.1.60...v1.1.61) (2026-11-05)
+
+
+### Bug Fixes
+
+* add ESM bucket versioning ([b79e23a](https://github.com/jensvogt/euclid-rui/commit/b79e23a8ad8d6df426a1dbd24953db29553d49c5))
+
 ## [1.1.60](https://github.com/jensvogt/euclid-rui/compare/1.1.59...v1.1.60) (2026-11-05)
 
 
