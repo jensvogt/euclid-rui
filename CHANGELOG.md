@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.60](https://github.com/jensvogt/euclid-rui/compare/1.1.59...v1.1.60) (2026-11-05)
+
+
+### Bug Fixes
+
+* make ESS secrets editable ([c09a484](https://github.com/jensvogt/euclid-rui/commit/c09a484b4eea2feac710bb9aecb6ca5189873585))
+
 ## [1.1.59](https://github.com/jensvogt/euclid-rui/compare/v1.1.58...v1.1.59) (2026-11-05)
 
 
