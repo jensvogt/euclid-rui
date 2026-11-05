@@ -54,6 +54,9 @@ void EsmClient::fetchBuckets(const QString &prefix, const int pageIndex, const i
                  // The objects are untouched either way: a stopped bucket is read and written as
                  // before, it is only what it announces that waits.
                  entry["stopped"] = bucket.value("stopped").toBool();
+                 // Whether an upload over an existing key keeps the object it replaces as a
+                 // non-current version - see setBucketVersioning().
+                 entry["versioning"] = bucket.value("versioning").toBool();
                  // Only ever true in a listing an administrator asked to include them in, so a row
                  // can be marked as euclid's own rather than sitting unexplained among the user's.
                  entry["internal"] = bucket.value("internal").toBool();
@@ -280,6 +283,24 @@ void EsmClient::deleteBucket(const QString &bucketErn) {
          },
          [this](const QString &message) {
              emit bucketsFailed(message);
+         });
+}
+
+void EsmClient::setBucketVersioning(const QString &bucketErn, const bool enabled) {
+    QJsonObject body;
+    body["ern"] = bucketErn;
+    // Always sent: the server requires it rather than defaulting, since either answer is a change
+    // somebody may not have meant.
+    body["enabled"] = enabled;
+
+    m_base->post("esm", "set-bucket-versioning", body, true,
+         [this, bucketErn](const QJsonObject &response) {
+             // What the server stored rather than what was asked for, as the other bucket calls do.
+             emit bucketVersioningChanged(bucketErn, response.value("versioning").toBool());
+             // No bucketsReload(), as with the priority: nothing a listing shows has changed.
+         },
+         [this](const QString &message) {
+             emit bucketVersioningFailed(message);
          });
 }
 
