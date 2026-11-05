@@ -115,6 +115,10 @@ public:
     // Outranked by an object's own: a priority in an object's system attributes is a statement
     // about that object where this is one about all of them, so that one wins.
     Q_INVOKABLE void setBucketPriority(const QString &bucketErn, const QString &priority);
+    // Turns versioning on or off. On, an upload over an existing key whose bytes differ keeps the
+    // object it replaces as a non-current version (identical bytes are ignored); off, uploads
+    // replace as before and the versions already kept stay until deleted.
+    Q_INVOKABLE void setBucketVersioning(const QString &bucketErn, bool enabled);
     // Upserts the tag unconditionally (unlike set-bucket-tag, this doesn't require the key to
     // already exist), matching an "Add" button's semantics.
     Q_INVOKABLE void addBucketTag(const QString &bucketErn, const QString &key, const QString &value);
@@ -288,6 +292,8 @@ signals:
     void bucketStoppedChanged(const QString &bucketErn, bool stopped, int count);
     void bucketStoppedFailed(const QString &message);
     void bucketPriorityFailed(const QString &message);
+    void bucketVersioningChanged(const QString &bucketErn, bool versioning);
+    void bucketVersioningFailed(const QString &message);
     void bucketTagAdded(const QString &bucketErn, const QString &key, const QString &value);
     void bucketTagAddFailed(const QString &message);
     void bucketTagDeleted(const QString &bucketErn, const QString &key);

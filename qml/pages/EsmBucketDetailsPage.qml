@@ -118,9 +118,23 @@ Item {
         root.details = Object.assign({}, root.details, { priority: priority })
     }
 
+    // Whether an upload over an existing key keeps the object it replaces as a non-current version.
+    readonly property bool versioning: !!detail("versioning", false)
+    property bool versioningSaving: false
+    property string versioningNote: ""
+    property string versioningError: ""
+
+    // Nothing re-reads the bucket after this call either - see addTagLocally() above.
+    function setVersioningLocally(versioning) {
+        root.details = Object.assign({}, root.details, { versioning: versioning })
+    }
+
     // One instance of this page serves every bucket, so a note about the last one must not follow
     // the user to the next.
     onBucketErnChanged: {
+        root.versioningNote = ""
+        root.versioningError = ""
+        root.versioningSaving = false
         root.encryptionNote = ""
         root.priorityNote = ""
         root.priorityError = ""
@@ -196,6 +210,22 @@ Item {
                       + "their own keep it, and nothing already delivered changes."
                     : "This bucket no longer states a priority. Its notifications take the default of the queue "
                       + "they are delivered to."
+        }
+        function onBucketVersioningChanged(bucketErn, versioning) {
+            if (bucketErn !== root.bucketErn) return
+            root.versioningSaving = false
+            root.setVersioningLocally(versioning)
+            root.versioningError = ""
+            root.versioningNote = versioning
+                    ? "Versioning is on. The next upload over an existing key keeps the object it replaces."
+                    : "Versioning is off. Versions kept so far stay until they are deleted."
+        }
+        function onBucketVersioningFailed(message) {
+            // The box is bound to what is stored, so it is already showing the setting the bucket
+            // still has - this says why the change did not happen.
+            root.versioningSaving = false
+            root.versioningNote = ""
+            root.versioningError = message
         }
         function onBucketPriorityFailed(message) {
             // The combo is bound to what is stored, so it has already snapped back to the setting
@@ -406,6 +436,82 @@ Item {
                         font.pixelSize: 12
                         visible: root.encryptionNote.length > 0
                         text: root.encryptionNote
+                    }
+                }
+            }
+
+            Rectangle {
+                width: parent.width
+                height: versioningCol.implicitHeight + 40
+                radius: 14
+                color: "#20242e"
+                border.color: "#2c313c"
+                border.width: 1
+
+                Column {
+                    id: versioningCol
+                    anchors.top: parent.top
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.margins: 20
+                    spacing: 14
+
+                    Row {
+                        spacing: 10
+                        Text { text: "Versioning"; color: "white"; font.pixelSize: 15; font.bold: true }
+                        BusyIndicator {
+                            running: root.versioningSaving
+                            visible: root.versioningSaving
+                            width: 20
+                            height: 20
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+                    }
+
+                    CheckBox {
+                        id: versioningCheck
+                        text: "Keep previous versions of overwritten objects"
+                        Material.theme: Material.Dark
+                        Material.accent: "#4f8cff"
+                        enabled: !root.versioningSaving && root.loggedIn
+                        checked: root.versioning
+                        // As with encryption: the click asks, the server answers, and until then
+                        // the box goes on showing what the bucket is actually set to.
+                        onClicked: {
+                            checked = Qt.binding(function () { return root.versioning })
+                            root.versioningNote = ""
+                            root.versioningError = ""
+                            root.versioningSaving = true
+                            esmClient.setBucketVersioning(root.bucketErn, !root.versioning)
+                        }
+                    }
+
+                    Text {
+                        width: parent.width
+                        wrapMode: Text.WordWrap
+                        color: "#9aa1ac"
+                        font.pixelSize: 12
+                        text: root.versioning
+                              ? "An upload over an existing key keeps the object it replaces as a non-current version, so it can still be read or restored. Re-uploading identical bytes is ignored. Every kept version takes disk space until it is deleted."
+                              : "An upload over an existing key replaces the object, and the old bytes are gone. Versions kept while versioning was on stay until they are deleted."
+                    }
+
+                    Text {
+                        width: parent.width
+                        wrapMode: Text.WordWrap
+                        color: "#e0a458"
+                        font.pixelSize: 12
+                        visible: root.versioningNote.length > 0
+                        text: root.versioningNote
+                    }
+
+                    Text {
+                        width: parent.width
+                        wrapMode: Text.WordWrap
+                        color: "#ff6b6b"
+                        font.pixelSize: 12
+                        visible: root.versioningError.length > 0
+                        text: root.versioningError
                     }
                 }
             }
