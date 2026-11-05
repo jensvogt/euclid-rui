@@ -70,6 +70,41 @@ Item {
     property bool revealing: false
     property string revealError: ""
 
+    // Editing the value in place. Saving is the same update-secret a rotation is - the server seals
+    // the new value under the secret's EKM key, stores only the ciphertext and bumps the version -
+    // so the plain text travels to ess exactly as it does from the Rotate dialog, and no further.
+    property bool editingValue: false
+    property bool valueSaving: false
+    property string valueEditError: ""
+
+    function startEditValue() {
+        // Starts from the value on screen when there is one, so a small correction stays small;
+        // otherwise from nothing, rather than revealing it behind the user's back - a read is an
+        // audited action of its own.
+        valueEditor.text = root.revealed ? root.revealedValue : ""
+        root.valueEditError = ""
+        root.valueSaving = false
+        root.editingValue = true
+        // The editor is not on a timer: hiding the value mid-edit would throw the edit away.
+        hideTimer.stop()
+        valueEditor.forceActiveFocus()
+    }
+
+    function cancelEditValue() {
+        root.editingValue = false
+        root.valueSaving = false
+        root.valueEditError = ""
+        valueEditor.text = ""
+        if (root.revealed) hideTimer.restart()
+    }
+
+    function saveValue() {
+        if (valueEditor.text.length === 0 || root.valueSaving) return
+        root.valueEditError = ""
+        root.valueSaving = true
+        essClient.rotateSecret(root.secretName, valueEditor.text)
+    }
+
     function hideValue() {
         root.revealedValue = ""
         root.revealed = false
@@ -80,8 +115,9 @@ Item {
 
     // Navigating away drops it. A secret left uncovered on a page nobody is looking at is the
     // shoulder-surfing case this whole screen is otherwise careful about.
-    onVisibleChanged: if (!visible) hideValue()
-    onSecretNameChanged: hideValue()
+    // An unsaved edit goes with it: it is as much the secret as the revealed value is.
+    onVisibleChanged: if (!visible) { cancelEditValue(); hideValue() }
+    onSecretNameChanged: { cancelEditValue(); hideValue() }
 
     Timer {
         id: hideTimer
@@ -114,11 +150,18 @@ Item {
             if (name !== root.secretName) return
             rotateDialog.saving = false
             rotateDialog.close()
+            root.cancelEditValue()
             // What is on screen is the previous value, and it is no longer the secret.
             root.hideValue()
             root.applySecret(secret)
         }
+        // One signal for both ways of changing the value; whichever is saving is the one that asked.
         function onSecretRotateFailed(message) {
+            if (root.valueSaving) {
+                root.valueSaving = false
+                root.valueEditError = message
+                return
+            }
             rotateDialog.saving = false
             rotateDialog.errorText = message
         }
@@ -282,11 +325,45 @@ Item {
                             spacing: 10
                             Text { text: "Value"; color: "white"; font.pixelSize: 15; font.bold: true }
                             Text {
-                                text: "· visible"
+                                text: root.editingValue ? "· editing" : "· visible"
                                 color: "#e0a458"
                                 font.pixelSize: 11
                                 anchors.verticalCenter: parent.verticalCenter
-                                visible: root.revealed
+                                visible: root.revealed || root.editingValue
+                            }
+                        }
+
+                        // While editing: Cancel and Save, and nothing that reads or copies the old
+                        // value - the edit is what is on screen.
+                        Row {
+                            anchors.right: parent.right
+                            anchors.verticalCenter: valueHeaderRow.verticalCenter
+                            spacing: 8
+                            visible: root.editingValue
+
+                            BusyIndicator {
+                                running: root.valueSaving
+                                visible: root.valueSaving
+                                width: 22
+                                height: 22
+                                anchors.verticalCenter: parent.verticalCenter
+                            }
+
+                            Button {
+                                text: "Cancel"
+                                flat: true
+                                Material.theme: Material.Dark
+                                enabled: !root.valueSaving
+                                onClicked: root.cancelEditValue()
+                            }
+
+                            Button {
+                                text: "Save"
+                                highlighted: true
+                                Material.theme: Material.Dark
+                                Material.accent: "#4f8cff"
+                                enabled: !root.valueSaving && valueEditor.text.length > 0 && root.loggedIn
+                                onClicked: root.saveValue()
                             }
                         }
 
@@ -294,6 +371,7 @@ Item {
                             anchors.right: parent.right
                             anchors.verticalCenter: valueHeaderRow.verticalCenter
                             spacing: 8
+                            visible: !root.editingValue
 
                             BusyIndicator {
                                 running: root.revealing
@@ -316,6 +394,14 @@ Item {
                             }
 
                             Button {
+                                text: "Edit"
+                                flat: true
+                                Material.theme: Material.Dark
+                                enabled: !root.revealing && root.loggedIn
+                                onClicked: root.startEditValue()
+                            }
+
+                            Button {
                                 text: root.revealed ? "Hide" : "Reveal"
                                 highlighted: !root.revealed
                                 flat: root.revealed
@@ -335,6 +421,54 @@ Item {
                         }
                     }
 
+                    // The editor. Plain text, not masked: a value can be a multi-line certificate or
+                    // connection string, and one that cannot be read cannot be checked before saving.
+                    Rectangle {
+                        width: parent.width
+                        height: Math.max(48, valueEditor.implicitHeight + 24)
+                        radius: 10
+                        color: "#181b21"
+                        border.color: valueEditor.activeFocus ? "#4f8cff" : "#3a4152"
+                        border.width: 1
+                        visible: root.editingValue
+
+                        TextEdit {
+                            id: valueEditor
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.verticalCenter: parent.verticalCenter
+                            anchors.margins: 12
+                            readOnly: root.valueSaving
+                            selectByMouse: true
+                            wrapMode: TextEdit.WrapAnywhere
+                            font.family: "monospace"
+                            font.pixelSize: 13
+                            color: "#e6e8ec"
+                            selectionColor: "#4f8cff"
+                            // Ctrl+Enter saves, Escape abandons; a bare Enter is a newline, which a
+                            // certificate or a key file needs.
+                            Keys.onPressed: event => {
+                                if ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter)
+                                        && (event.modifiers & Qt.ControlModifier)) {
+                                    root.saveValue()
+                                    event.accepted = true
+                                } else if (event.key === Qt.Key_Escape && !root.valueSaving) {
+                                    root.cancelEditValue()
+                                    event.accepted = true
+                                }
+                            }
+
+                            Text {
+                                anchors.fill: parent
+                                visible: valueEditor.text.length === 0
+                                text: "The new value - password, token, connection string or certificate"
+                                color: "#6b7280"
+                                font: valueEditor.font
+                                elide: Text.ElideRight
+                            }
+                        }
+                    }
+
                     Rectangle {
                         width: parent.width
                         height: Math.max(48, valueText.implicitHeight + 24)
@@ -342,6 +476,7 @@ Item {
                         color: "#181b21"
                         border.color: root.revealed ? "#3a4152" : "#2c313c"
                         border.width: 1
+                        visible: !root.editingValue
 
                         TextEdit {
                             id: valueText
@@ -366,7 +501,7 @@ Item {
                         wrapMode: Text.WordWrap
                         color: "#6b7280"
                         font.pixelSize: 11
-                        visible: root.revealError.length === 0
+                        visible: root.revealError.length === 0 && !root.editingValue
                         text: root.revealed
                               ? "Hidden again in a minute, or as soon as this page is left."
                               : "Revealing decrypts the value under its EKM key and is logged server-side with who asked."
@@ -375,10 +510,21 @@ Item {
                     Text {
                         width: parent.width
                         wrapMode: Text.WordWrap
+                        color: "#e0a458"
+                        font.pixelSize: 12
+                        visible: root.editingValue
+                        text: "Saved encrypted under " + root.keyName(root.encryptionKeyErn) + " as version "
+                              + (root.version + 1) + ". The previous value is gone - euclid keeps one version - so"
+                              + " anything still using it has to be updated. Ctrl+Enter saves, Escape cancels."
+                    }
+
+                    Text {
+                        width: parent.width
+                        wrapMode: Text.WordWrap
                         color: "#ff6b6b"
                         font.pixelSize: 12
-                        visible: root.revealError.length > 0
-                        text: root.revealError
+                        visible: root.editingValue ? root.valueEditError.length > 0 : root.revealError.length > 0
+                        text: root.editingValue ? root.valueEditError : root.revealError
                     }
                 }
             }
