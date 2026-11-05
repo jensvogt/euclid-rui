@@ -164,19 +164,24 @@ jobs:
 
   build-qt-static-macos:
     name: Build static Qt (macOS, cached)
-    runs-on: macos-15
+    runs-on: macos-latest
     needs: release-please
     if: ${{ needs.release-please.outputs.release_created == 'true' }}
     steps:
+      # macos-latest moves to a new macOS now and then, and a static Qt references the SDK it was
+      # built against: one cached on a newer macOS fails to link on an older one (undefined
+      # NSAccessibilityLanguageAttribute, last time). So the key carries the macOS the runner
+      # actually has, read here rather than written down, and a new image builds a Qt of its own.
+      - name: Detect macOS version
+        id: macos
+        run: echo "major=$(sw_vers -productVersion | cut -d. -f1)" >> "$GITHUB_OUTPUT"
+
       - name: Restore/save cached static Qt
         id: cache
         uses: actions/cache@v4
         with:
           path: ${{ github.workspace }}/qt-static
-          # The runner's macOS is part of the key, and must follow runs-on above (and in build-macos):
-          # a static Qt references the SDK it was built against, so one cached from a newer macOS
-          # fails to link on an older one - undefined NSAccessibilityLanguageAttribute, last time.
-          key: qt-static-macos-15-${{ env.QT_VERSION }}-${{ env.QT_CACHE_VERSION }}
+          key: qt-static-macos-${{ steps.macos.outputs.major }}-${{ env.QT_VERSION }}-${{ env.QT_CACHE_VERSION }}
 
       - name: Install Qt build dependencies
         if: steps.cache.outputs.cache-hit != 'true'
@@ -467,11 +472,18 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Detect macOS version
+        id: macos
+        run: echo "major=$(sw_vers -productVersion | cut -d. -f1)" >> "$GITHUB_OUTPUT"
+
+      # The same key as build-qt-static-macos. Should the two jobs land on different macOS images -
+      # macos-latest mid-rollout - this stops here, saying so, rather than at the link step.
       - name: Restore cached static Qt
         uses: actions/cache@v4
         with:
           path: ${{ github.workspace }}/qt-static
-          key: qt-static-macos-15-${{ env.QT_VERSION }}-${{ env.QT_CACHE_VERSION }}
+          key: qt-static-macos-${{ steps.macos.outputs.major }}-${{ env.QT_VERSION }}-${{ env.QT_CACHE_VERSION }}
+          fail-on-cache-miss: true
 
       - name: Configure (macOS)
         run: |
