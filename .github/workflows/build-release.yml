@@ -173,7 +173,10 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ github.workspace }}/qt-static
-          key: qt-static-macos-${{ env.QT_VERSION }}-${{ env.QT_CACHE_VERSION }}
+          # The runner's macOS is part of the key, and must follow runs-on above (and in build-macos):
+          # a static Qt references the SDK it was built against, so one cached from a newer macOS
+          # fails to link on an older one - undefined NSAccessibilityLanguageAttribute, last time.
+          key: qt-static-macos-15-${{ env.QT_VERSION }}-${{ env.QT_CACHE_VERSION }}
 
       - name: Install Qt build dependencies
         if: steps.cache.outputs.cache-hit != 'true'
@@ -453,7 +456,7 @@ jobs:
 
   build-macos:
     name: Build & Package (macOS)
-    runs-on: macos-15
+    runs-on: macos-latest
     needs: [ release-please, build-qt-static-macos ]
     env:
       BUILD_DIR: "${{ github.workspace }}/build-macos"
@@ -468,7 +471,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ github.workspace }}/qt-static
-          key: qt-static-macos-${{ env.QT_VERSION }}-${{ env.QT_CACHE_VERSION }}
+          key: qt-static-macos-15-${{ env.QT_VERSION }}-${{ env.QT_CACHE_VERSION }}
 
       - name: Configure (macOS)
         run: |
