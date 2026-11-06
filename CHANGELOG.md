@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.62](https://github.com/jensvogt/euclid-rui/compare/1.1.61...v1.1.62) (2026-11-06)
+
+
+### Bug Fixes
+
+* add ESM bucket maxVersions ([3b1a634](https://github.com/jensvogt/euclid-rui/commit/3b1a634f119c8fe756cadcb9a547351216265536))
+
 ## [1.1.61](https://github.com/jensvogt/euclid-rui/compare/1.1.60...v1.1.61) (2026-11-05)
 
 
