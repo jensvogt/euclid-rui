@@ -119,6 +119,10 @@ public:
     // object it replaces as a non-current version (identical bytes are ignored); off, uploads
     // replace as before and the versions already kept stay until deleted.
     Q_INVOKABLE void setBucketVersioning(const QString &bucketErn, bool enabled);
+    // The most non-current versions a key keeps, 0 for all of them. Leaves versioning itself as it
+    // is. The oldest versions beyond the limit are deleted the next time that key gains a version -
+    // not when the limit is lowered.
+    Q_INVOKABLE void setBucketMaxVersions(const QString &bucketErn, int maxVersions);
     // Upserts the tag unconditionally (unlike set-bucket-tag, this doesn't require the key to
     // already exist), matching an "Add" button's semantics.
     Q_INVOKABLE void addBucketTag(const QString &bucketErn, const QString &key, const QString &value);
@@ -292,7 +296,7 @@ signals:
     void bucketStoppedChanged(const QString &bucketErn, bool stopped, int count);
     void bucketStoppedFailed(const QString &message);
     void bucketPriorityFailed(const QString &message);
-    void bucketVersioningChanged(const QString &bucketErn, bool versioning);
+    void bucketVersioningChanged(const QString &bucketErn, bool versioning, int maxVersions);
     void bucketVersioningFailed(const QString &message);
     void bucketTagAdded(const QString &bucketErn, const QString &key, const QString &value);
     void bucketTagAddFailed(const QString &message);

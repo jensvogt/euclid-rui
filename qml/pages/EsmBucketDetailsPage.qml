@@ -120,18 +120,21 @@ Item {
 
     // Whether an upload over an existing key keeps the object it replaces as a non-current version.
     readonly property bool versioning: !!detail("versioning", false)
+    // The most non-current versions a key keeps; 0 keeps them all.
+    readonly property int maxVersions: Number(detail("maxVersions", 0))
     property bool versioningSaving: false
     property string versioningNote: ""
     property string versioningError: ""
 
     // Nothing re-reads the bucket after this call either - see addTagLocally() above.
-    function setVersioningLocally(versioning) {
-        root.details = Object.assign({}, root.details, { versioning: versioning })
+    function setVersioningLocally(versioning, maxVersions) {
+        root.details = Object.assign({}, root.details, { versioning: versioning, maxVersions: maxVersions })
     }
 
     // One instance of this page serves every bucket, so a note about the last one must not follow
     // the user to the next.
     onBucketErnChanged: {
+        maxVersionsSpin.value = Qt.binding(function () { return root.maxVersions })
         root.versioningNote = ""
         root.versioningError = ""
         root.versioningSaving = false
@@ -211,14 +214,23 @@ Item {
                     : "This bucket no longer states a priority. Its notifications take the default of the queue "
                       + "they are delivered to."
         }
-        function onBucketVersioningChanged(bucketErn, versioning) {
+        function onBucketVersioningChanged(bucketErn, versioning, maxVersions) {
             if (bucketErn !== root.bucketErn) return
             root.versioningSaving = false
-            root.setVersioningLocally(versioning)
+            const limitChanged = maxVersions !== root.maxVersions
+            const switched = versioning !== root.versioning
+            root.setVersioningLocally(versioning, maxVersions)
             root.versioningError = ""
-            root.versioningNote = versioning
-                    ? "Versioning is on. The next upload over an existing key keeps the object it replaces."
-                    : "Versioning is off. Versions kept so far stay until they are deleted."
+            if (switched) {
+                root.versioningNote = versioning
+                        ? "Versioning is on. The next upload over an existing key keeps the object it replaces."
+                        : "Versioning is off. Versions kept so far stay until they are deleted."
+            } else if (limitChanged) {
+                root.versioningNote = maxVersions > 0
+                        ? "Each key keeps at most " + maxVersions + " previous version(s). Older ones are deleted the next "
+                          + "time that key is overwritten - not now."
+                        : "Each key keeps every previous version."
+            }
         }
         function onBucketVersioningFailed(message) {
             // The box is bound to what is stored, so it is already showing the setting the bucket
@@ -484,6 +496,96 @@ Item {
                             root.versioningSaving = true
                             esmClient.setBucketVersioning(root.bucketErn, !root.versioning)
                         }
+                    }
+
+                    // The limit. Only while versioning is on: off, no version is kept for it to
+                    // limit. Disabling the row takes the spin box and its Apply/Reset with it,
+                    // and the dimming says why the labels beside them are not to be acted on.
+                    Row {
+                        spacing: 12
+                        enabled: root.versioning
+                        opacity: enabled ? 1.0 : 0.45
+
+                        // An edit left unapplied when versioning goes off is dropped, so it is not
+                        // waiting there, unexplained, when versioning comes back on.
+                        onEnabledChanged: if (!enabled) maxVersionsSpin.value = Qt.binding(function () { return root.maxVersions })
+
+                        Text {
+                            text: "Keep at most"
+                            color: "#c4c9d1"
+                            font.pixelSize: 13
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+
+                        SpinBox {
+                            id: maxVersionsSpin
+                            from: 0
+                            to: 10000
+                            editable: true
+                            width: 170
+                            Material.theme: Material.Dark
+                            Material.accent: "#4f8cff"
+                            enabled: !root.versioningSaving && root.loggedIn
+                            // Bound to what is stored until the user changes it; Apply sends it,
+                            // Reset (and a bucket change) brings the binding back.
+                            value: root.maxVersions
+                            textFromValue: (v, locale) => v === 0 ? "Unlimited" : Number(v).toLocaleString(locale, "f", 0)
+                            valueFromText: (text, locale) => {
+                                const t = text.trim().toLowerCase()
+                                if (t.length === 0 || t === "unlimited" || t === "∞") return 0
+                                const n = Number.fromLocaleString(locale, text)
+                                return isNaN(n) ? 0 : Math.max(0, Math.round(n))
+                            }
+                            // Digits, or a word starting with "u" on the way to "Unlimited".
+                            validator: RegularExpressionValidator { regularExpression: /^(\d{0,5}|[Uu][A-Za-z]*)$/ }
+                        }
+
+                        Text {
+                            text: "previous version(s) per key"
+                            color: "#c4c9d1"
+                            font.pixelSize: 13
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+
+                        Button {
+                            id: applyMaxVersions
+                            text: "Apply"
+                            highlighted: true
+                            Material.theme: Material.Dark
+                            Material.accent: "#4f8cff"
+                            visible: maxVersionsSpin.value !== root.maxVersions
+                            enabled: !root.versioningSaving && root.loggedIn
+                            anchors.verticalCenter: parent.verticalCenter
+                            onClicked: {
+                                const wanted = maxVersionsSpin.value
+                                maxVersionsSpin.value = Qt.binding(function () { return root.maxVersions })
+                                root.versioningNote = ""
+                                root.versioningError = ""
+                                root.versioningSaving = true
+                                esmClient.setBucketMaxVersions(root.bucketErn, wanted)
+                            }
+                        }
+
+                        Button {
+                            text: "Reset"
+                            flat: true
+                            Material.theme: Material.Dark
+                            visible: applyMaxVersions.visible
+                            enabled: !root.versioningSaving
+                            anchors.verticalCenter: parent.verticalCenter
+                            onClicked: maxVersionsSpin.value = Qt.binding(function () { return root.maxVersions })
+                        }
+                    }
+
+                    Text {
+                        width: parent.width
+                        wrapMode: Text.WordWrap
+                        color: "#9aa1ac"
+                        font.pixelSize: 12
+                        text: (root.maxVersions > 0
+                               ? "Each key keeps its " + root.maxVersions + " most recent previous version(s); the oldest beyond that is deleted when the key is next overwritten. "
+                               : "Each key keeps every previous version. ")
+                              + "Lowering the limit deletes nothing until a key gains its next version."
                     }
 
                     Text {

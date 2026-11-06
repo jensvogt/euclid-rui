@@ -57,6 +57,8 @@ void EsmClient::fetchBuckets(const QString &prefix, const int pageIndex, const i
                  // Whether an upload over an existing key keeps the object it replaces as a
                  // non-current version - see setBucketVersioning().
                  entry["versioning"] = bucket.value("versioning").toBool();
+                 // The most non-current versions a key keeps; 0 keeps them all.
+                 entry["maxVersions"] = bucket.value("maxVersions").toInteger();
                  // Only ever true in a listing an administrator asked to include them in, so a row
                  // can be marked as euclid's own rather than sitting unexplained among the user's.
                  entry["internal"] = bucket.value("internal").toBool();
@@ -296,8 +298,26 @@ void EsmClient::setBucketVersioning(const QString &bucketErn, const bool enabled
     m_base->post("esm", "set-bucket-versioning", body, true,
          [this, bucketErn](const QJsonObject &response) {
              // What the server stored rather than what was asked for, as the other bucket calls do.
-             emit bucketVersioningChanged(bucketErn, response.value("versioning").toBool());
+             emit bucketVersioningChanged(bucketErn, response.value("versioning").toBool(),
+                                          static_cast<int>(response.value("maxVersions").toInteger()));
              // No bucketsReload(), as with the priority: nothing a listing shows has changed.
+         },
+         [this](const QString &message) {
+             emit bucketVersioningFailed(message);
+         });
+}
+
+void EsmClient::setBucketMaxVersions(const QString &bucketErn, const int maxVersions) {
+    QJsonObject body;
+    body["ern"] = bucketErn;
+    // Only the limit. Leaving "enabled" out is what the server reads as "leave versioning as it
+    // is", so changing how many versions are kept never turns versioning on or off with it.
+    body["maxVersions"] = maxVersions;
+
+    m_base->post("esm", "set-bucket-versioning", body, true,
+         [this, bucketErn](const QJsonObject &response) {
+             emit bucketVersioningChanged(bucketErn, response.value("versioning").toBool(),
+                                          static_cast<int>(response.value("maxVersions").toInteger()));
          },
          [this](const QString &message) {
              emit bucketVersioningFailed(message);
