@@ -7,9 +7,10 @@
 
 EqsClient::EqsClient(EuclidBaseClient *baseClient, QObject *parent) : QObject(parent), m_base(baseClient) {}
 
-void EqsClient::fetchQueues(const QString &prefix, const int pageIndex, const int pageSize, const QString &sortColumn, const QString &sortDirection, const bool includeInternal) {
+void EqsClient::fetchQueues(const QString &prefix, const int pageIndex, const int pageSize, const QString &sortColumn, const QString &sortDirection, const bool includeInternal, const QString &matchType) {
     QJsonObject body;
     body["prefix"] = prefix;
+    EuclidBaseClient::addMatchType(body, matchType);
     body["pageSize"] = pageSize;
     body["pageIndex"] = pageIndex;
     body["sortColumn"] = sortColumn;

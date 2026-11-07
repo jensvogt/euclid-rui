@@ -70,9 +70,10 @@ QJsonArray toJsonArray(const QStringList &values) {
 
 EagClient::EagClient(EuclidBaseClient *baseClient, QObject *parent) : QObject(parent), m_base(baseClient) {}
 
-void EagClient::fetchRoutes(const QString &prefix) {
+void EagClient::fetchRoutes(const QString &prefix, const QString &matchType) {
     QJsonObject body;
     body["prefix"] = prefix;
+    EuclidBaseClient::addMatchType(body, matchType);
 
     m_base->post("eag", "list-routes", body, true,
          [this](const QJsonObject &response) {

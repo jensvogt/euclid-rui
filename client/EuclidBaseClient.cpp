@@ -550,3 +550,8 @@ void EuclidBaseClient::fetchNamespaces() {
 void EuclidBaseClient::setNamespace(const QString &namespaceName) {
     m_namespace = namespaceName;
 }
+
+void EuclidBaseClient::addMatchType(QJsonObject &body, const QString &matchType) {
+    if (!matchType.isEmpty() && matchType != QLatin1String("prefix"))
+        body["matchType"] = matchType;
+}

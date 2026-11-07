@@ -23,7 +23,8 @@ public:
 
     // "list-servers" takes a prefix but has no paging and returns no total, unlike the other
     // modules' list actions - every server is returned and the count is however many came back.
-    Q_INVOKABLE void fetchServers(const QString &prefix = QString());
+    Q_INVOKABLE void fetchServers(const QString &prefix = QString(),
+                                  const QString &matchType = QString());
 
     // `bucket` is an ESM bucket *name*, resolved server-side at creation so a typo is reported now
     // rather than surfacing later as a server that runs but stores nothing. The server is created

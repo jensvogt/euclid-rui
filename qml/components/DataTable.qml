@@ -22,6 +22,19 @@ Item {
     // a page and a query takes a partition, and neither takes a substring. Refresh stays either
     // way; it is the box that goes, not the row.
     property bool searchable: true
+    // How the filter text is matched: "prefix" (the default, and all a server older than the
+    // match types understands), "endsWith", "contains" or "regex". The owner reads it from the
+    // second argument of searchChanged and passes it on with its query - or, for a table filtered
+    // in the client, hands it to TextMatch.matches(). Tables whose filter cannot do anything but a
+    // prefix (a path, a partition) set matchTypeSelectable false and keep the plain field.
+    property bool matchTypeSelectable: true
+    property string matchType: "prefix"
+    readonly property var matchTypeOptions: [
+        { value: "prefix", text: "Starts with" },
+        { value: "endsWith", text: "Ends with" },
+        { value: "contains", text: "Contains" },
+        { value: "regex", text: "Regex" }
+    ]
     property string lastUpdatedText: "—"
     property bool rowsClickable: false
     property string emptyText: "No results found."
@@ -34,7 +47,9 @@ Item {
     property string sortKey: ""
     property bool sortAscending: true
 
-    signal searchChanged(string prefix)
+    // The match type rides along so a handler written as (text) => ... keeps working; one that
+    // wants it takes (text, matchType) => ...
+    signal searchChanged(string prefix, string matchType)
     signal refreshRequested()
     signal pageChanged(int pageIndex)
     // A page size the user picked. Named "...Requested" like the other asks here, and not
@@ -147,15 +162,47 @@ Item {
                 width: parent.width
                 height: 40
 
+                ComboBox {
+                    id: matchTypeCombo
+                    visible: root.searchable && root.matchTypeSelectable
+                    anchors.left: parent.left
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: visible ? 160 : 0
+                    height: parent.height
+                    model: root.matchTypeOptions
+                    textRole: "text"
+                    valueRole: "value"
+                    Material.theme: Material.Dark
+                    Material.accent: "#4f8cff"
+                    currentIndex: Math.max(0, root.matchTypeOptions.findIndex(o => o.value === root.matchType))
+                    onActivated: (index) => {
+                        root.matchType = root.matchTypeOptions[index].value
+                        // Bound again, so an owner setting matchType moves the combo too.
+                        currentIndex = Qt.binding(function () {
+                            return Math.max(0, root.matchTypeOptions.findIndex(o => o.value === root.matchType))
+                        })
+                        // Only worth a query when there is text for the new type to apply to.
+                        if (searchField.text.length > 0) {
+                            searchDebounce.stop()
+                            root.searchChanged(searchField.text, root.matchType)
+                        }
+                    }
+                }
+
                 TextField {
                     id: searchField
                     visible: root.searchable
-                    anchors.left: parent.left
+                    anchors.left: matchTypeCombo.visible ? matchTypeCombo.right : parent.left
+                    anchors.leftMargin: matchTypeCombo.visible ? 10 : 0
                     anchors.right: refreshButton.left
                     anchors.rightMargin: 10
                     height: parent.height
                     anchors.verticalCenter: parent.verticalCenter
-                    placeholderText: root.searchPlaceholder
+                    placeholderText: !root.matchTypeSelectable || root.matchType === "prefix"
+                                     ? root.searchPlaceholder
+                                     : (root.matchType === "regex" ? "Filter by regular expression..."
+                                        : root.matchType === "endsWith" ? "Filter by the end of the name..."
+                                        : "Filter by any part of the name...")
                     Material.accent: "#4f8cff"
                     // Room for the × that sits in the field, so a long filter scrolls to a stop in
                     // front of it rather than underneath it.
@@ -184,14 +231,14 @@ Item {
                         // filtered page is exactly the moment somebody presses it again.
                         onCleared: {
                             searchDebounce.stop()
-                            root.searchChanged("")
+                            root.searchChanged("", root.matchType)
                         }
                     }
 
                     Timer {
                         id: searchDebounce
                         interval: 350
-                        onTriggered: root.searchChanged(searchField.text)
+                        onTriggered: root.searchChanged(searchField.text, root.matchType)
                     }
                 }
 

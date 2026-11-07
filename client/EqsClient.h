@@ -21,7 +21,8 @@ public:
     Q_INVOKABLE void fetchQueues(const QString &prefix = QString(), int pageIndex = 0, int pageSize = 10,
                                  const QString &sortColumn = QStringLiteral("available"),
                                  const QString &sortDirection = QStringLiteral("desc"),
-                                 bool includeInternal = false);
+                                 bool includeInternal = false,
+                                 const QString &matchType = QString());
     // The settings default to what "create-queue" itself defaults to, so a caller that only has a
     // name can pass one. A queue created as another queue's dead letter queue is an ordinary queue
     // and usually wants that queue's settings, which is why they are all passable.

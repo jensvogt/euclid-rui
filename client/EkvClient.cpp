@@ -49,9 +49,10 @@ EkvClient::EkvClient(EuclidBaseClient *baseClient, QObject *parent) : QObject(pa
 // ── Tables ───────────────────────────────────────────────────────────────────
 
 void EkvClient::fetchTables(const QString &prefix, const int pageIndex, const int pageSize,
-                            const QString &sortColumn, const QString &sortDirection) {
+                            const QString &sortColumn, const QString &sortDirection, const QString &matchType) {
     QJsonObject body;
     body["prefix"] = prefix;
+    EuclidBaseClient::addMatchType(body, matchType);
     body["pageSize"] = pageSize;
     body["pageIndex"] = pageIndex;
     body["sortColumn"] = sortColumn;

@@ -43,13 +43,13 @@ Item {
     // Carries the certificate the listener names, so the certificates page can open on it.
     signal openCertificates(string certificateName)
 
+    // "contains" by default, which is what this filter always did; the table's combo changes it.
+    property string filterMatchType: "contains"
+
     readonly property var filteredListeners: {
-        const needle = root.filter.toLowerCase()
+        const needle = root.filter
         const matched = needle.length === 0 ? root.listeners.slice() : root.listeners.filter(l =>
-            String(l["namespace"]).toLowerCase().indexOf(needle) >= 0
-            || String(l.port).indexOf(needle) >= 0
-            || String(l.protocol).toLowerCase().indexOf(needle) >= 0
-            || String(l.certificate).toLowerCase().indexOf(needle) >= 0)
+            TextMatch.matchesAny([l["namespace"], l.port, l.protocol, l.certificate], needle, root.filterMatchType, true))
 
         const key = root.sortColumn
         const direction = root.sortAscending ? 1 : -1
@@ -331,7 +331,11 @@ Item {
                 rowsClickable: false
                 sortKey: root.sortColumn
                 sortAscending: root.sortAscending
-                onSearchChanged: (text) => { root.filter = text }
+                matchType: root.filterMatchType
+                onSearchChanged: (text, matchType) => {
+                    root.filter = text
+                    root.filterMatchType = matchType
+                }
                 onRefreshRequested: root.refresh()
                 onSortRequested: (key, ascending) => {
                     root.sortColumn = key

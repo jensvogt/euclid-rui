@@ -52,9 +52,10 @@ QJsonArray toJsonArray(const QStringList &values) {
 
 EtsClient::EtsClient(EuclidBaseClient *baseClient, QObject *parent) : QObject(parent), m_base(baseClient) {}
 
-void EtsClient::fetchServers(const QString &prefix) {
+void EtsClient::fetchServers(const QString &prefix, const QString &matchType) {
     QJsonObject body;
     body["prefix"] = prefix;
+    EuclidBaseClient::addMatchType(body, matchType);
 
     m_base->post("ets", "list-servers", body, true,
          [this](const QJsonObject &response) {

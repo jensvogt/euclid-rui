@@ -21,7 +21,8 @@ public:
     Q_INVOKABLE void fetchBuckets(const QString &prefix = QString(), int pageIndex = 0, int pageSize = 10,
                                   const QString &sortColumn = QStringLiteral("name"),
                                   const QString &sortDirection = QStringLiteral("asc"),
-                                  bool includeInternal = false);
+                                  bool includeInternal = false,
+                                  const QString &matchType = QString());
     // `priority` is what the bucket's notifications are sent at, and empty - the default - is a
     // bucket that states none. See setBucketPriority(), which is how it is changed afterwards.
     Q_INVOKABLE void createBucket(const QString &name, const QString &priority = QString());

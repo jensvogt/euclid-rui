@@ -212,9 +212,10 @@ QStringList declarationFiles(const QList<QUrl> &sources, QString &error) {
 
 EapClient::EapClient(EuclidBaseClient *baseClient, QObject *parent) : QObject(parent), m_base(baseClient) {}
 
-void EapClient::fetchApplications(const QString &prefix) {
+void EapClient::fetchApplications(const QString &prefix, const QString &matchType) {
     QJsonObject body;
     body["prefix"] = prefix;
+    EuclidBaseClient::addMatchType(body, matchType);
 
     m_base->post("eap", "list-applications", body, true,
          [this](const QJsonObject &response) {

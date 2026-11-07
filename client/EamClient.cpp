@@ -64,9 +64,10 @@ namespace {
 
 }// namespace
 
-void EamClient::fetchAccounts(const QString &prefix, const int pageIndex, const int pageSize, const QString &sortColumn, const QString &sortDirection) {
+void EamClient::fetchAccounts(const QString &prefix, const int pageIndex, const int pageSize, const QString &sortColumn, const QString &sortDirection, const QString &matchType) {
     QJsonObject body;
     body["prefix"] = prefix;
+    EuclidBaseClient::addMatchType(body, matchType);
     body["pageSize"] = pageSize;
     body["pageIndex"] = pageIndex;
     body["sortColumn"] = sortColumn;
@@ -122,10 +123,11 @@ void EamClient::deleteAccount(const QString &accountId) {
          });
 }
 
-void EamClient::fetchNamespaces(const QString &accountId, const QString &prefix, const int pageIndex, const int pageSize, const QString &sortColumn, const QString &sortDirection) {
+void EamClient::fetchNamespaces(const QString &accountId, const QString &prefix, const int pageIndex, const int pageSize, const QString &sortColumn, const QString &sortDirection, const QString &matchType) {
     QJsonObject body;
     body["accountId"] = accountId;
     body["prefix"] = prefix;
+    EuclidBaseClient::addMatchType(body, matchType);
     body["pageSize"] = pageSize;
     body["pageIndex"] = pageIndex;
     body["sortColumn"] = sortColumn;
@@ -301,9 +303,10 @@ QVariantMap userToMap(const QJsonObject &user) {
 }
 }// namespace
 
-void EamClient::fetchUsers(const QString &prefix, const int pageIndex, const int pageSize, const QString &sortColumn, const QString &sortDirection) {
+void EamClient::fetchUsers(const QString &prefix, const int pageIndex, const int pageSize, const QString &sortColumn, const QString &sortDirection, const QString &matchType) {
     QJsonObject body;
     body["prefix"] = prefix;
+    EuclidBaseClient::addMatchType(body, matchType);
     body["pageSize"] = pageSize;
     body["pageIndex"] = pageIndex;
     body["sortColumn"] = sortColumn;
@@ -884,9 +887,10 @@ void EamClient::revokeNamespaceAccess(const QString &userErn, const QString &acc
          });
 }
 
-void EamClient::fetchUserGroups(const QString &prefix, const int pageIndex, const int pageSize, const QString &sortColumn, const QString &sortDirection) {
+void EamClient::fetchUserGroups(const QString &prefix, const int pageIndex, const int pageSize, const QString &sortColumn, const QString &sortDirection, const QString &matchType) {
     QJsonObject body;
     body["prefix"] = prefix;
+    EuclidBaseClient::addMatchType(body, matchType);
     body["pageSize"] = pageSize;
     body["pageIndex"] = pageIndex;
     body["sortColumn"] = sortColumn;

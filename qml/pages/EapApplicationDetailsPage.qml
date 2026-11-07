@@ -331,21 +331,19 @@ Item {
     // module with every instance in one answer and has no paging to ask for, so the table is given
     // one page's worth out of what is already in hand.
     property string instanceFilter: ""
+    // "contains" by default, which is what this filter always did; the table's combo changes it.
+    property string instanceMatchType: "contains"
     property int instancePageIndex: 0
     property int instancePageSize: 10
     property string instanceSortColumn: "started"
     property bool instanceSortAscending: true
 
     readonly property var filteredInstances: {
-        const needle = root.instanceFilter.toLowerCase()
+        const needle = root.instanceFilter
+        // By the reported host rather than what the column shows for an empty one: "manager" is a
+        // word this page chose, and filtering by it would match hosts nobody can name.
         const matched = needle.length === 0 ? root.instances.slice() : root.instances.filter(i =>
-            String(i.instanceId).toLowerCase().indexOf(needle) >= 0
-            || String(i.pid).indexOf(needle) >= 0
-            || String(i.httpPort).indexOf(needle) >= 0
-            // By the reported host rather than what the column shows for an empty one: "manager" is
-            // a word this page chose, and filtering by it would match hosts nobody can name.
-            || String(i.host).toLowerCase().indexOf(needle) >= 0
-            || String(i.state).toLowerCase().indexOf(needle) >= 0)
+            TextMatch.matchesAny([i.instanceId, i.pid, i.httpPort, i.host, i.state], needle, root.instanceMatchType, true))
 
         const key = root.instanceSortColumn
         const direction = root.instanceSortAscending ? 1 : -1
@@ -1678,8 +1676,10 @@ Item {
                     sortKey: root.instanceSortColumn
                     sortAscending: root.instanceSortAscending
 
-                    onSearchChanged: (text) => {
+                    matchType: root.instanceMatchType
+                    onSearchChanged: (text, matchType) => {
                         root.instanceFilter = text
+                        root.instanceMatchType = matchType
                         root.instancePageIndex = 0
                     }
                     onRefreshRequested: root.refresh()

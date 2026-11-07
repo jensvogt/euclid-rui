@@ -17,7 +17,8 @@ public:
     // Topics
     Q_INVOKABLE void fetchTopics(const QString &prefix = QString(), int pageIndex = 0, int pageSize = 10,
                                  const QString &sortColumn = QStringLiteral("name"),
-                                 const QString &sortDirection = QStringLiteral("asc"));
+                                 const QString &sortDirection = QStringLiteral("asc"),
+                                 const QString &matchType = QString());
     Q_INVOKABLE void createTopic(const QString &name, int maxMessageLength = 1048576);
     // Empties the topic. `async` hands the work to the server's background purge, which answers as
     // soon as it has accepted it rather than when it is done - a topic holding a retention period's

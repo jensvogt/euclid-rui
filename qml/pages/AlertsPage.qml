@@ -75,12 +75,14 @@ Item {
     // by prefix on one key as the server-paged tables do: someone looking for a host's alerts types
     // the host, which is in the series column, not at the start of the rule id.
     property string searchText: ""
+    // "contains" by default, which is what this filter always did; the table's combo changes it.
+    property string searchMatchType: "contains"
 
     function matchesSearch(row) {
-        const needle = root.searchText.trim().toLowerCase()
+        const needle = root.searchText.trim()
         if (needle.length === 0) return true
         const hay = [row.ruleId, row.name, root.labelText(row.labels), row.description, root.stateText(row.state)]
-        return hay.some(h => String(h || "").toLowerCase().indexOf(needle) >= 0)
+        return TextMatch.matchesAny(hay.map(h => h || ""), needle, root.searchMatchType, true)
     }
 
     readonly property var visibleAlerts: root.alerts.filter(function (a) {
@@ -668,8 +670,10 @@ Item {
                 error: root.error
                 lastUpdatedText: root.lastUpdatedText
                 searchPlaceholder: "Filter by rule, metric, label or state..."
-                onSearchChanged: (text) => {
+                matchType: root.searchMatchType
+                onSearchChanged: (text, matchType) => {
                     root.searchText = text
+                    root.searchMatchType = matchType
                     root.pageIndex = 0
                 }
                 onPageChanged: (index) => root.pageIndex = index

@@ -12,6 +12,10 @@ Item {
     property string namespaceName: ""
 
     property string prefix: ""
+
+    // How the server matches `prefix` - the table's match type, sent with every query.
+
+    property string matchType: "prefix"
     property var servers: []
     property int totalCount: 0
     property bool loading: false
@@ -99,7 +103,7 @@ Item {
         loading = true
         error = ""
         // "list-servers" has no paging server-side, so there is nothing to page through here.
-        etsClient.fetchServers(root.prefix)
+        etsClient.fetchServers(root.prefix, root.matchType)
     }
 
     onVisibleChanged: if (visible) refresh()
@@ -393,8 +397,9 @@ Item {
                 rowsClickable: true
                 onRowClicked: (row) => root.openServerDetails(row.serverId, row)
 
-                onSearchChanged: (text) => {
+                onSearchChanged: (text, matchType) => {
                     root.prefix = text
+                    root.matchType = matchType
                     root.refresh()
                 }
                 onRefreshRequested: root.refresh()

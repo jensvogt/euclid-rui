@@ -23,10 +23,11 @@ Item {
     // is a dozen rows that already arrived.
     property var allModules: []
     property string prefix: ""
+    property string matchType: "prefix"
     readonly property var modules: {
-        const wanted = root.prefix.trim().toLowerCase()
+        const wanted = root.prefix.trim()
         if (wanted.length === 0) return root.allModules
-        return root.allModules.filter(m => String(m.name).toLowerCase().startsWith(wanted))
+        return root.allModules.filter(m => TextMatch.matches(m.name, wanted, root.matchType, true))
     }
     readonly property int totalCount: root.modules.length
 
@@ -653,8 +654,9 @@ Item {
                 emptyText: root.prefix.length > 0 ? "No module matches that name." : "No modules registered."
                 // Back to the first page: page three of the unfiltered registry is not page three
                 // of what the filter leaves, and staying there lands somewhere arbitrary in it.
-                onSearchChanged: (text) => {
+                onSearchChanged: (text, matchType) => {
                     root.prefix = text
+                    root.matchType = matchType
                     root.pageIndex = 0
                 }
                 onRefreshRequested: root.refresh()

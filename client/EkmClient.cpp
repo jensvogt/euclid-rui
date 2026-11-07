@@ -55,9 +55,10 @@ bool readTextFile(const QUrl &source, QString &contents, QString &error) {
 
 EkmClient::EkmClient(EuclidBaseClient *baseClient, QObject *parent) : QObject(parent), m_base(baseClient) {}
 
-void EkmClient::fetchKeys(const QString &prefix, const int pageIndex, const int pageSize, const QString &sortColumn, const QString &sortDirection) {
+void EkmClient::fetchKeys(const QString &prefix, const int pageIndex, const int pageSize, const QString &sortColumn, const QString &sortDirection, const QString &matchType) {
     QJsonObject body;
     body["prefix"] = prefix;
+    EuclidBaseClient::addMatchType(body, matchType);
     body["pageSize"] = pageSize;
     body["pageIndex"] = pageIndex;
     body["sortColumn"] = sortColumn;
@@ -181,9 +182,10 @@ void EkmClient::deleteKeyTag(const QString &keyErn, const QString &key) {
 // ── Certificates ────────────────────────────────────────────────────────────
 
 void EkmClient::fetchCertificates(const QString &prefix, const int pageIndex, const int pageSize,
-                                  const QString &sortColumn, const QString &sortDirection) {
+                                  const QString &sortColumn, const QString &sortDirection, const QString &matchType) {
     QJsonObject body;
     body["prefix"] = prefix;
+    EuclidBaseClient::addMatchType(body, matchType);
     body["pageSize"] = pageSize;
     body["pageIndex"] = pageIndex;
     body["sortColumn"] = sortColumn;
