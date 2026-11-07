@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.63](https://github.com/jensvogt/euclid-rui/compare/1.1.62...v1.1.63) (2026-11-07)
+
+
+### Bug Fixes
+
+* general more options for filtering objects, added 'Starts With', 'Ends With', 'Contains', "Regex" ([f614e76](https://github.com/jensvogt/euclid-rui/commit/f614e76de70855ac84a1244f6e7da2aa64790783))
+
 ## [1.1.62](https://github.com/jensvogt/euclid-rui/compare/1.1.61...v1.1.62) (2026-11-06)
 
 
