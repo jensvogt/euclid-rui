@@ -41,19 +41,19 @@ Item {
     // handed one page's worth out of what is already in hand - the same arrangement
     // EapApplicationDetailsPage uses for its instance pool.
     property string memberFilter: ""
+    // "contains" by default, which is what this filter always did; the table's combo changes it.
+    property string memberMatchType: "contains"
     property int memberPageIndex: 0
     property int memberPageSize: 10
     property string memberSortColumn: "userId"
     property bool memberSortAscending: true
 
     readonly property var filteredMembers: {
-        const needle = root.memberFilter.toLowerCase()
+        const needle = root.memberFilter
+        // By ERN too, because that is what the grants tiles elsewhere name a principal by - so an
+        // ERN copied from one of those finds its user here.
         const matched = needle.length === 0 ? root.members.slice() : root.members.filter(u =>
-            String(u.userId).toLowerCase().indexOf(needle) >= 0
-            || String(u.email).toLowerCase().indexOf(needle) >= 0
-            // By ERN too, because that is what the grants tiles elsewhere name a principal by -
-            // so an ERN copied from one of those finds its user here.
-            || String(u.ern).toLowerCase().indexOf(needle) >= 0)
+            TextMatch.matchesAny([u.userId, u.email, u.ern], needle, root.memberMatchType, true))
 
         const key = root.memberSortColumn
         const direction = root.memberSortAscending ? 1 : -1
@@ -333,8 +333,10 @@ Item {
                         sortKey: root.memberSortColumn
                         sortAscending: root.memberSortAscending
 
-                        onSearchChanged: (text) => {
+                        matchType: root.memberMatchType
+                        onSearchChanged: (text, matchType) => {
                             root.memberFilter = text
+                            root.memberMatchType = matchType
                             root.memberPageIndex = 0
                         }
                         onRefreshRequested: root.refresh()

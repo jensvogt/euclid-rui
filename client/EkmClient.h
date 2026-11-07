@@ -25,7 +25,8 @@ public:
 
     Q_INVOKABLE void fetchKeys(const QString &prefix = QString(), int pageIndex = 0, int pageSize = 10,
                                const QString &sortColumn = QStringLiteral("name"),
-                               const QString &sortDirection = QStringLiteral("asc"));
+                               const QString &sortDirection = QStringLiteral("asc"),
+                               const QString &matchType = QString());
     Q_INVOKABLE void createKey(const QString &algorithm, int length = 128);
     Q_INVOKABLE void revokeKey(const QString &ern);
     // Schedules the key for permanent deletion after pendingWindowInDays (server default 7);
@@ -46,7 +47,8 @@ public:
     // the session is working in, so this lists what that namespace's listeners can name.
     Q_INVOKABLE void fetchCertificates(const QString &prefix = QString(), int pageIndex = 0, int pageSize = 10,
                                        const QString &sortColumn = QStringLiteral("name"),
-                                       const QString &sortDirection = QStringLiteral("asc"));
+                                       const QString &sortDirection = QStringLiteral("asc"),
+                                       const QString &matchType = QString());
     Q_INVOKABLE void fetchCertificate(const QString &name);
 
     // Generates a self-signed certificate, for an installation that has to serve HTTPS before

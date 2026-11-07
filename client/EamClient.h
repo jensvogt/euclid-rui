@@ -15,13 +15,15 @@ class EamClient : public QObject {
 public:
     explicit EamClient(EuclidBaseClient *baseClient, QObject *parent = nullptr);
 
-    Q_INVOKABLE void fetchAccounts(const QString &prefix = QString(), int pageIndex = 0, int pageSize = 10, const QString &sortColumn = QStringLiteral("name"), const QString &sortDirection = QStringLiteral("asc"));
+    Q_INVOKABLE void fetchAccounts(const QString &prefix = QString(), int pageIndex = 0, int pageSize = 10, const QString &sortColumn = QStringLiteral("name"), const QString &sortDirection = QStringLiteral("asc"),
+                                   const QString &matchType = QString());
     // Global-admin only server-side.
     Q_INVOKABLE void createAccount(const QString &accountId, const QString &name, const QString &description = QString());
     // Global-admin only; fails (409) if the account still has namespaces or user grants.
     Q_INVOKABLE void deleteAccount(const QString &accountId);
 
-    Q_INVOKABLE void fetchNamespaces(const QString &accountId, const QString &prefix = QString(), int pageIndex = 0, int pageSize = 10, const QString &sortColumn = QStringLiteral("name"), const QString &sortDirection = QStringLiteral("asc"));
+    Q_INVOKABLE void fetchNamespaces(const QString &accountId, const QString &prefix = QString(), int pageIndex = 0, int pageSize = 10, const QString &sortColumn = QStringLiteral("name"), const QString &sortDirection = QStringLiteral("asc"),
+                                     const QString &matchType = QString());
 
     // Every namespace of one account, unpaged, for the account details page. Separate from
     // fetchNamespaces()/namespacesLoaded() so a details page doesn't replace what the paged
@@ -40,7 +42,8 @@ public:
     Q_INVOKABLE void deleteNamespace(const QString &accountId, const QString &name);
 
     // ListUserRequest has no sortDirection field server-side, unlike the other list actions here.
-    Q_INVOKABLE void fetchUsers(const QString &prefix = QString(), int pageIndex = 0, int pageSize = 10, const QString &sortColumn = QStringLiteral("userId"), const QString &sortDirection = QStringLiteral("asc"));
+    Q_INVOKABLE void fetchUsers(const QString &prefix = QString(), int pageIndex = 0, int pageSize = 10, const QString &sortColumn = QStringLiteral("userId"), const QString &sortDirection = QStringLiteral("asc"),
+                                const QString &matchType = QString());
     // Wire action is "register", not "create-user" - registering a user IS how one gets created.
     // Admin-only server-side (except the very first user ever registered).
     Q_INVOKABLE void createUser(const QString &userId, const QString &password, const QString &email,
@@ -194,7 +197,8 @@ public:
     // so narrowing one means revoking it and writing what is left.
     Q_INVOKABLE void revokeRole(const QString &grantId, const QString &principalErn);
 
-    Q_INVOKABLE void fetchUserGroups(const QString &prefix = QString(), int pageIndex = 0, int pageSize = 10, const QString &sortColumn = QStringLiteral("userId"), const QString &sortDirection = QStringLiteral("asc"));
+    Q_INVOKABLE void fetchUserGroups(const QString &prefix = QString(), int pageIndex = 0, int pageSize = 10, const QString &sortColumn = QStringLiteral("userId"), const QString &sortDirection = QStringLiteral("asc"),
+                                     const QString &matchType = QString());
     // Admin-only; group name must be unique across the deployment. Starts empty - members are
     // added afterward via user-group-add-user (not yet exposed here).
     Q_INVOKABLE void createUserGroup(const QString &name, const QString &description = QString());

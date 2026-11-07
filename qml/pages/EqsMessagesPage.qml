@@ -36,9 +36,13 @@ Item {
     // so there the window still fetches a bounded block per queue and slices it itself.
     readonly property bool singleQueue: root.queueErn.length > 0
 
+    // How the filter text matches a message ID - the table's match type, applied here because the
+    // messages are filtered in the client.
+    property string matchType: "prefix"
+
     readonly property var filteredMessages: prefix.length === 0
         ? allMessages
-        : allMessages.filter(function (m) { return m.messageId.toLowerCase().indexOf(prefix.toLowerCase()) === 0 })
+        : allMessages.filter(function (m) { return TextMatch.matches(m.messageId, prefix, root.matchType, true) })
 
     readonly property var sortedMessages: {
         let arr = filteredMessages.slice()
@@ -651,8 +655,9 @@ Item {
                 sortKey: root.sortKey
                 sortAscending: root.sortAscending
 
-                onSearchChanged: (text) => {
+                onSearchChanged: (text, matchType) => {
                     root.prefix = text
+                    root.matchType = matchType
                     root.pageIndex = 0
                 }
                 onRefreshRequested: root.refresh()

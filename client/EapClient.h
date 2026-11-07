@@ -25,7 +25,8 @@ public:
     explicit EapClient(EuclidBaseClient *baseClient, QObject *parent = nullptr);
 
     // "list-applications" takes a prefix but has no paging and returns no total, same as ETS.
-    Q_INVOKABLE void fetchApplications(const QString &prefix = QString());
+    Q_INVOKABLE void fetchApplications(const QString &prefix = QString(),
+                                       const QString &matchType = QString());
 
     // `bucket` is an ESM bucket *name* and `artifact` an object key inside it; both are resolved
     // server-side at creation, so a typo is reported now rather than surfacing later as an

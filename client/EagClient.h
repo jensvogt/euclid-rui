@@ -31,7 +31,8 @@ public:
 
     // "list-routes" takes a prefix (matched against the routeId) but has no paging and returns no
     // total, like ETS's list-servers - every route comes back and the count is what arrived.
-    Q_INVOKABLE void fetchRoutes(const QString &prefix = QString());
+    Q_INVOKABLE void fetchRoutes(const QString &prefix = QString(),
+                                 const QString &matchType = QString());
     Q_INVOKABLE void fetchRoute(const QString &routeId);
 
     // `methods` empty means every method, which is what the server stores for "all" - see

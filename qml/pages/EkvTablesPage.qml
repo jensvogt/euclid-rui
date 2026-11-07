@@ -16,6 +16,10 @@ Item {
     property string namespaceName: ""
 
     property string prefix: ""
+
+    // How the server matches `prefix` - the table's match type, sent with every query.
+
+    property string matchType: "prefix"
     property int pageIndex: 0
     property int pageSize: 10
     property string sortColumn: "name"
@@ -103,7 +107,7 @@ Item {
         loading = true
         error = ""
         ekvClient.fetchTables(root.prefix, root.pageIndex, root.pageSize,
-            root.sortColumn, root.sortAscending ? "asc" : "desc")
+            root.sortColumn, root.sortAscending ? "asc" : "desc", root.matchType)
     }
 
     onVisibleChanged: if (visible) refresh()
@@ -499,8 +503,9 @@ Item {
                 sortAscending: root.sortAscending
 
                 onRowClicked: (row) => root.openTableDetails(row.name, row)
-                onSearchChanged: (text) => {
+                onSearchChanged: (text, matchType) => {
                     root.prefix = text
+                    root.matchType = matchType
                     root.pageIndex = 0
                     root.refresh()
                 }

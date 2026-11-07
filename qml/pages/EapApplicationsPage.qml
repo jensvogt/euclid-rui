@@ -13,6 +13,10 @@ Item {
     property string namespaceName: ""
 
     property string prefix: ""
+
+    // How the server matches `prefix` - the table's match type, sent with every query.
+
+    property string matchType: "prefix"
     property var applications: []
 
     // ── Paging ───────────────────────────────────────────────────────────────
@@ -334,7 +338,7 @@ Item {
         loading = true
         error = ""
         // "list-applications" has no paging server-side, so there is nothing to page through here.
-        eapClient.fetchApplications(root.prefix)
+        eapClient.fetchApplications(root.prefix, root.matchType)
     }
 
     onVisibleChanged: if (visible) refresh()
@@ -2029,8 +2033,9 @@ Item {
                     root.pageSize = size
                     root.pageIndex = 0
                 }
-                onSearchChanged: (text) => {
+                onSearchChanged: (text, matchType) => {
                     root.prefix = text
+                    root.matchType = matchType
                     // The filter is the server's, so this is a different list - and page four of
                     // the old one says nothing about the new one.
                     root.pageIndex = 0

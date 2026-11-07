@@ -9,6 +9,10 @@ Item {
     property string namespaceName: ""
 
     property string prefix: ""
+
+    // How the server matches `prefix` - the table's match type, sent with every query.
+
+    property string matchType: "prefix"
     property int pageIndex: 0
     property int pageSize: 10
     property string sortColumn: "available"
@@ -154,7 +158,7 @@ Item {
         error = ""
         eqsClient.fetchQueues(root.prefix, root.pageIndex, root.pageSize,
             root.sortColumn, root.sortAscending ? "asc" : "desc",
-            root.isAdmin && root.showInternal)
+            root.isAdmin && root.showInternal, root.matchType)
         // Which of them are dead letter queues, for the redrive entry in the row menu.
         eqsClient.fetchDeadLetterTargets()
     }
@@ -489,8 +493,9 @@ Item {
                 sortKey: root.sortColumn
                 sortAscending: root.sortAscending
 
-                onSearchChanged: (text) => {
+                onSearchChanged: (text, matchType) => {
                     root.prefix = text
+                    root.matchType = matchType
                     root.pageIndex = 0
                     root.refresh()
                 }

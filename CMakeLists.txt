@@ -76,6 +76,9 @@ set_source_files_properties(qml/components/DateFormat.qml PROPERTIES
 set_source_files_properties(qml/components/SizeFormat.qml PROPERTIES
         QT_QML_SINGLETON_TYPE TRUE
 )
+set_source_files_properties(qml/components/TextMatch.qml PROPERTIES
+        QT_QML_SINGLETON_TYPE TRUE
+)
 set_source_files_properties(qml/components/Nav.qml PROPERTIES
         QT_QML_SINGLETON_TYPE TRUE
 )
@@ -147,6 +150,7 @@ qt_add_qml_module(euclid-rui
         qml/components/ClearButton.qml
         qml/components/DateFormat.qml
         qml/components/SizeFormat.qml
+        qml/components/TextMatch.qml
         qml/components/Gauge.qml
         qml/components/LineChart.qml
         qml/components/AboutDialog.qml

@@ -26,7 +26,8 @@ public:
     // secrets nobody has changed in a year.
     Q_INVOKABLE void fetchSecrets(const QString &prefix = QString(), int pageIndex = 0, int pageSize = 10,
                                   const QString &sortColumn = QStringLiteral("name"),
-                                  const QString &sortDirection = QStringLiteral("asc"));
+                                  const QString &sortDirection = QStringLiteral("asc"),
+                                  const QString &matchType = QString());
 
     // The one call that decrypts anything. Every read is logged server-side with who asked, which
     // is the reason it is a deliberate action here rather than something the table does for every

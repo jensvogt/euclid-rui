@@ -30,7 +30,8 @@ public:
     // size here is not free the way it is elsewhere.
     Q_INVOKABLE void fetchTables(const QString &prefix = QString(), int pageIndex = 0, int pageSize = 10,
                                  const QString &sortColumn = QStringLiteral("name"),
-                                 const QString &sortDirection = QStringLiteral("asc"));
+                                 const QString &sortDirection = QStringLiteral("asc"),
+                                 const QString &matchType = QString());
 
     // One table, with a freshly counted item count. What the details page re-reads: the count is
     // the only thing about a table that moves.

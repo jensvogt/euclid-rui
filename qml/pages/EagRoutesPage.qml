@@ -25,6 +25,8 @@ Item {
     // take a prefix, so unlike EMM this filter is sent rather than applied here.
     property var routes: []
     property string prefix: ""
+    // How the server matches `prefix` - the table's match type, sent with every query.
+    property string matchType: "prefix"
     readonly property int totalCount: root.routes.length
     property bool loading: false
     property string error: ""
@@ -221,7 +223,7 @@ Item {
         }
         root.loading = true
         root.error = ""
-        eagClient.fetchRoutes(root.prefix)
+        eagClient.fetchRoutes(root.prefix, root.matchType)
         // Where the Port and Protocol columns come from. A handful of ports at most, and they only
         // change when the module restarts, but they are read with the routes rather than once: this
         // page is open exactly when somebody is asking what is reachable.
@@ -468,8 +470,9 @@ Item {
                 emptyText: root.prefix.length > 0 ? "No route matches that name." : "No routes published."
                 rowsClickable: true
                 onRowClicked: (row) => root.openRouteDetails(row.routeId, row)
-                onSearchChanged: (text) => {
+                onSearchChanged: (text, matchType) => {
                     root.prefix = text
+                    root.matchType = matchType
                     root.refresh()
                 }
                 onRefreshRequested: root.refresh()

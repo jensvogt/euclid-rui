@@ -745,11 +745,16 @@ jobs:
           done
           echo "]}" >> files.json
 
+      # Named per attempt. Artifacts outlive a failed attempt, so a re-run of this job uploaded a
+      # second "github-pages" beside the first, and deploy-pages refuses a name that matches two.
       - name: Upload GitHub Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
           path: public
+          name: github-pages-${{ github.run_attempt }}
 
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+        with:
+          artifact_name: github-pages-${{ github.run_attempt }}

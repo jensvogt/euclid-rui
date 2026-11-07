@@ -25,6 +25,11 @@ class EuclidBaseClient : public QObject {
     Q_PROPERTY(QString baseUrl READ baseUrl WRITE setBaseUrl NOTIFY baseUrlChanged)
 
 public:
+    // Adds a list request's "matchType" - how its "prefix" text is matched: "endsWith", "contains"
+    // or "regex". Left out for "prefix" (and for nothing at all), which is what the field means
+    // when absent - so a plain prefix search still works against a server that predates it.
+    static void addMatchType(QJsonObject &body, const QString &matchType);
+
     explicit EuclidBaseClient(QObject *parent = nullptr);
 
     [[nodiscard]]
