@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.1.64](https://github.com/jensvogt/euclid-rui/compare/v1.1.63...v1.1.64) (2026-11-07)
+
+
+### Bug Fixes
+
+* version command line options ([95aed7f](https://github.com/jensvogt/euclid-rui/commit/95aed7fc055353e49dac0c90992ccf1af90517d0))
+* version command line options ([7096bfe](https://github.com/jensvogt/euclid-rui/commit/7096bfec2ba67d215c93d9338e6c63b742e2ff5a))
+
 ## [1.1.63](https://github.com/jensvogt/euclid-rui/compare/1.1.62...v1.1.63) (2026-11-07)
 
 
