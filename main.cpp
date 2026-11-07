@@ -137,6 +137,9 @@ int main(int argc, char *argv[]) {
     QCommandLineParser parser;
     parser.setApplicationDescription("Euclid RUI - Qt6/QML dashboard for the euclid backend");
     parser.addHelpOption();
+    // -v / --version: prints "Euclid RUI <version>" - the applicationVersion set above from
+    // version.txt - and exits before any window opens.
+    parser.addVersionOption();
     const QCommandLineOption userOption(QStringList{"user", "u"}, "Username or email to sign in with, skipping the login dialog.", "user");
     const QCommandLineOption passwordOption(QStringList{"password", "p"}, "Password to sign in with.", "password");
     const QCommandLineOption namespaceOption(QStringList{"namespace", "n"}, "Namespace to select after signing in; defaults to the first available.", "namespace");
