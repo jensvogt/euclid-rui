@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.1.65](https://github.com/jensvogt/euclid-rui/compare/1.1.64...v1.1.65) (2026-11-21)
+
+
+### Bug Fixes
+
+* add EDS ([a008b60](https://github.com/jensvogt/euclid-rui/commit/a008b6099b3350fb0d1c6ee869d0b8ec7b772e52))
+* add EDS ([ac5ceb7](https://github.com/jensvogt/euclid-rui/commit/ac5ceb75344a22641c3855d42d3932f4fbdb5372))
+
 ## [1.1.64](https://github.com/jensvogt/euclid-rui/compare/v1.1.63...v1.1.64) (2026-11-07)
 
 
