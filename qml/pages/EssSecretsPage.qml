@@ -22,6 +22,8 @@ Item {
     property int totalCount: 0
     property bool loading: false
     property string error: ""
+    // What the last copy did, kept on screen above the table.
+    property string copyNote: ""
     property string lastUpdatedText: "—"
 
     // The key name out of "ern:ekm:{region}:{accountId}:key:{name}". The whole ERN is too wide for
@@ -111,6 +113,31 @@ Item {
 
     Connections {
         target: essClient
+        function onSecretCopied(sourceName, newName, tagsFailed) {
+            copyDialog.copying = false
+            copyDialog.close()
+            root.copyNote = "Copied " + sourceName + " to " + newName + "."
+                    + (tagsFailed > 0 ? " " + tagsFailed + " tag(s) could not be copied - add them on the new secret's page." : "")
+        }
+        function onSecretCopyFailed(sourceName, message) {
+            copyDialog.copying = false
+            copyDialog.errorText = message
+        }
+        function onSecretRenamed(oldName, newName) {
+            copyDialog.copying = false
+            copyDialog.close()
+            root.copyNote = "Renamed " + oldName + " to " + newName + "."
+        }
+        function onSecretRenameFailed(oldName, message, copied) {
+            copyDialog.copying = false
+            if (copied) {
+                // Two secrets now; the dialog has nothing left to retry, so the note says so.
+                copyDialog.close()
+                root.copyNote = message
+            } else {
+                copyDialog.errorText = message
+            }
+        }
         function onSecretsLoaded(list, total) {
             root.loading = false
             root.error = ""
@@ -334,6 +361,169 @@ Item {
         }
     }
 
+    // A copy is a new secret with the source's value, description, key and tags. The value is read
+    // to make it - which the server records like any reveal - and goes straight into the new one.
+    Dialog {
+        id: copyDialog
+        modal: true
+        anchors.centerIn: parent
+        width: 440
+        padding: 28
+        topPadding: 24
+        bottomPadding: 24
+        standardButtons: Dialog.NoButton
+
+        property var source: null
+        // Rename is a copy followed by deleting the source - see EssClient::renameSecret().
+        property bool renaming: false
+        property bool copying: false
+        property string errorText: ""
+
+        function openFor(row, rename) {
+            copyDialog.renaming = !!rename
+            copyDialog.source = row
+            copyNameField.text = rename ? row.name : row.name + "-copy"
+            copyDescriptionField.text = row.description || ""
+            copyDialog.errorText = ""
+            copyDialog.copying = false
+            copyDialog.open()
+            copyNameField.forceActiveFocus()
+            copyNameField.selectAll()
+        }
+
+        background: Rectangle {
+            radius: 16
+            color: "#1b1e25"
+            border.color: "#2c313c"
+            border.width: 1
+        }
+
+        contentItem: Column {
+            width: copyDialog.availableWidth
+            spacing: 16
+
+            Column {
+                width: parent.width
+                spacing: 4
+                Text {
+                    text: copyDialog.renaming ? "Rename Secret" : "Copy Secret"
+                    color: "white"
+                    font.pixelSize: 18
+                    font.bold: true
+                }
+                Text {
+                    text: !copyDialog.source ? ""
+                          : copyDialog.renaming
+                            ? "ESS cannot rename in place, so " + copyDialog.source.name + " is copied to the new name - "
+                              + "value, key, description and tags - and then deleted. Its ERN changes with the name, so "
+                              + "grants written against the old ERN stop matching, and the version count starts again. "
+                              + "Reading the value is logged server-side like a reveal."
+                            : "A new secret with the value, encryption key and tags of " + copyDialog.source.name
+                              + ". Copying reads the value, which is logged server-side like a reveal."
+                    color: "#9aa1ac"
+                    font.pixelSize: 12
+                    wrapMode: Text.WordWrap
+                    width: parent.width
+                }
+            }
+
+            Column {
+                width: parent.width
+                spacing: 6
+                Text { text: "New name"; color: "#9aa1ac"; font.pixelSize: 12 }
+                TextField {
+                    id: copyNameField
+                    width: parent.width
+                    Material.accent: "#4f8cff"
+                    selectByMouse: true
+                    Keys.onReturnPressed: {
+                        if (copyDialog.renaming) { if (copyButton.enabled) copyButton.clicked() }
+                        else copyDescriptionField.forceActiveFocus()
+                    }
+                }
+                // The description column, which holds the error otherwise, is hidden for a rename.
+                Text {
+                    text: copyDialog.errorText
+                    color: "#ff6b6b"
+                    font.pixelSize: 12
+                    wrapMode: Text.WordWrap
+                    width: parent.width
+                    visible: copyDialog.renaming && text.length > 0
+                }
+            }
+
+            Column {
+                width: parent.width
+                spacing: 6
+                // A rename keeps the description as it is.
+                visible: !copyDialog.renaming
+                Text { text: "Description"; color: "#9aa1ac"; font.pixelSize: 12 }
+                TextField {
+                    id: copyDescriptionField
+                    width: parent.width
+                    placeholderText: "the source's description"
+                    Material.accent: "#4f8cff"
+                    selectByMouse: true
+                    Keys.onReturnPressed: if (copyButton.enabled) copyButton.clicked()
+                }
+                Text {
+                    text: copyDialog.errorText
+                    color: "#ff6b6b"
+                    font.pixelSize: 12
+                    wrapMode: Text.WordWrap
+                    width: parent.width
+                    visible: text.length > 0
+                }
+            }
+
+            Item {
+                width: parent.width
+                height: 40
+
+                Button {
+                    text: "Cancel"
+                    flat: true
+                    anchors.left: parent.left
+                    anchors.verticalCenter: parent.verticalCenter
+                    Material.theme: Material.Dark
+                    onClicked: copyDialog.close()
+                }
+
+                BusyIndicator {
+                    running: copyDialog.copying
+                    visible: copyDialog.copying
+                    width: 22
+                    height: 22
+                    anchors.right: copyButton.left
+                    anchors.rightMargin: 12
+                    anchors.verticalCenter: parent.verticalCenter
+                }
+
+                Button {
+                    id: copyButton
+                    text: copyDialog.renaming ? "Rename" : "Copy"
+                    highlighted: true
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    Material.theme: Material.Dark
+                    Material.accent: "#4f8cff"
+                    enabled: !copyDialog.copying && copyDialog.source !== null
+                             && copyNameField.text.trim().length > 0
+                             && copyNameField.text.trim() !== copyDialog.source.name
+                    onClicked: {
+                        copyDialog.errorText = ""
+                        copyDialog.copying = true
+                        if (copyDialog.renaming)
+                            essClient.renameSecret(copyDialog.source.name, copyNameField.text.trim())
+                        else
+                            essClient.copySecret(copyDialog.source.name, copyNameField.text.trim(),
+                                                 copyDescriptionField.text.trim())
+                    }
+                }
+            }
+        }
+    }
+
     Dialog {
         id: deleteDialog
         modal: true
@@ -451,6 +641,15 @@ Item {
                 }
             }
 
+            Text {
+                width: parent.width
+                wrapMode: Text.WordWrap
+                color: "#e0a458"
+                font.pixelSize: 12
+                visible: root.copyNote.length > 0
+                text: root.copyNote
+            }
+
             DataTable {
                 width: parent.width
                 columns: root.columns
@@ -498,6 +697,20 @@ Item {
                         text: "Details",
                         action: function(row) {
                             root.openSecretDetails(row.ern, row.name, row)
+                        }
+                    },
+                    {
+                        text: "Copy…",
+                        action: function(row) {
+                            root.copyNote = ""
+                            copyDialog.openFor(row, false)
+                        }
+                    },
+                    {
+                        text: "Rename…",
+                        action: function(row) {
+                            root.copyNote = ""
+                            copyDialog.openFor(row, true)
                         }
                     },
                     {

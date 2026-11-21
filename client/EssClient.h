@@ -1,5 +1,7 @@
 #pragma once
 
+#include <functional>
+
 #include <QJsonObject>
 #include <QObject>
 #include <QString>
@@ -40,6 +42,20 @@ public:
     Q_INVOKABLE void createSecret(const QString &name, const QString &value,
                                   const QString &description = QString(), const QString &keyErn = QString());
 
+    // A new secret holding what `sourceName` holds: its value, description, EKM key and tags. ESS
+    // has no copy of its own, so this is three steps - get-secret (a read of the value, audited as
+    // one), create-secret under `newName`, then one add-secret-tag per tag. The value goes from
+    // one call to the next and nowhere else. `description` replaces the source's when not empty.
+    // A name that exists already is refused by create-secret, as it would be by hand.
+    Q_INVOKABLE void copySecret(const QString &sourceName, const QString &newName,
+                                const QString &description = QString());
+
+    // ESS cannot rename either, so this is copySecret() followed by delete-secret of the source -
+    // and the source is only deleted once the copy is whole, tags included. Not a rename to
+    // anything that held on to the old one: the ERN is the name's, so grants written against the
+    // old ERN no longer match, and the version count and created date start again.
+    Q_INVOKABLE void renameSecret(const QString &sourceName, const QString &newName);
+
     // A rotation: the version moves on and the previous value is gone. Sends "value" alone, since
     // "update-secret" changes exactly what the request mentions and an absent field is what tells
     // the server to leave the rest as it is.
@@ -76,6 +92,14 @@ signals:
 
     void secretCreated(const QString &name, const QVariantMap &secret);
     void secretCreateFailed(const QString &message);
+    // `tagsFailed` counts tags that could not be copied - the secret itself exists by then, so it
+    // is reported as done, with what is missing, rather than as a failure.
+    void secretCopied(const QString &sourceName, const QString &newName, int tagsFailed);
+    void secretCopyFailed(const QString &sourceName, const QString &message);
+    void secretRenamed(const QString &oldName, const QString &newName);
+    // `copied` is true when the new secret exists but the old one is still there too - the copy
+    // went through and the delete (or a tag) did not, so there are two until somebody removes one.
+    void secretRenameFailed(const QString &oldName, const QString &message, bool copied);
     void secretRotated(const QString &name, const QVariantMap &secret);
     void secretRotateFailed(const QString &message);
     void secretDescriptionChanged(const QString &name, const QString &description);
@@ -90,5 +114,10 @@ signals:
     void secretTagDeleteFailed(const QString &message);
 
 private:
+    // The copy itself, shared by copySecret() and renameSecret(): `onDone` gets the number of tags
+    // that could not be copied, `onFail` the message when the secret itself was not created.
+    void copySecretThen(const QString &sourceName, const QString &newName, const QString &description,
+                        const std::function<void(int)> &onDone, const std::function<void(const QString &)> &onFail);
+
     EuclidBaseClient *m_base;
 };

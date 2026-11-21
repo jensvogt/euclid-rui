@@ -1,4 +1,6 @@
 #include "EssClient.h"
+
+#include <memory>
 #include "EuclidBaseClient.h"
 
 #include <QJsonArray>
@@ -80,6 +82,88 @@ void EssClient::createSecret(const QString &name, const QString &value, const QS
          [this](const QString &message) {
              emit secretCreateFailed(message);
          });
+}
+
+void EssClient::copySecret(const QString &sourceName, const QString &newName, const QString &description) {
+    copySecretThen(sourceName, newName, description,
+        [this, sourceName, newName](const int tagsFailed) {
+            emit secretCopied(sourceName, newName, tagsFailed);
+            emit secretsReload();
+        },
+        [this, sourceName](const QString &message) { emit secretCopyFailed(sourceName, message); });
+}
+
+void EssClient::renameSecret(const QString &sourceName, const QString &newName) {
+    copySecretThen(sourceName, newName, QString(),
+        [this, sourceName, newName](const int tagsFailed) {
+            if (tagsFailed > 0) {
+                // Not deleted: the copy is short of tags the original still has.
+                emit secretRenameFailed(sourceName, QString::number(tagsFailed) + " tag(s) could not be copied to "
+                                        + newName + ", so " + sourceName + " was kept.", true);
+                emit secretsReload();
+                return;
+            }
+            QJsonObject body;
+            body["name"] = sourceName;
+            m_base->post("ess", "delete-secret", body, true,
+                 [this, sourceName, newName](const QJsonObject &) {
+                     emit secretRenamed(sourceName, newName);
+                     emit secretsReload();
+                 },
+                 [this, sourceName, newName](const QString &message) {
+                     emit secretRenameFailed(sourceName, newName + " was created, but " + sourceName
+                                             + " could not be deleted: " + message, true);
+                     emit secretsReload();
+                 });
+        },
+        [this, sourceName](const QString &message) { emit secretRenameFailed(sourceName, message, false); });
+}
+
+void EssClient::copySecretThen(const QString &sourceName, const QString &newName, const QString &description,
+                               const std::function<void(int)> &onDone, const std::function<void(const QString &)> &onFail) {
+    QJsonObject readBody;
+    readBody["name"] = sourceName;
+
+    // Posted directly rather than through fetchSecretValue(): that one announces the value to
+    // whoever listens for a reveal - the details page - and this read is not one.
+    m_base->post("ess", "get-secret", readBody, true,
+         [this, newName, description, onDone, onFail](const QJsonObject &response) {
+             const QVariantMap source = secretToMap(response.value("secret").toObject());
+
+             QJsonObject createBody;
+             createBody["name"] = newName;
+             createBody["value"] = response.value("value").toString();
+             createBody["description"] = description.isEmpty() ? source.value("description").toString() : description;
+             // The same key, so the copy is sealed exactly as the original is.
+             createBody["keyErn"] = source.value("encryptionKeyErn").toString();
+             const QVariantMap tags = source.value("tags").toMap();
+
+             m_base->post("ess", "create-secret", createBody, true,
+                  [this, newName, tags, onDone](const QJsonObject &) {
+                      if (tags.isEmpty()) {
+                          onDone(0);
+                          return;
+                      }
+                      // One request per tag; done once the last has answered.
+                      auto remaining = std::make_shared<int>(static_cast<int>(tags.size()));
+                      auto failed = std::make_shared<int>(0);
+                      for (auto it = tags.cbegin(); it != tags.cend(); ++it) {
+                          QJsonObject tagBody;
+                          tagBody["name"] = newName;
+                          tagBody["key"] = it.key();
+                          tagBody["value"] = it.value().toString();
+                          const auto done = [remaining, failed, onDone]() {
+                              if (--*remaining > 0) return;
+                              onDone(*failed);
+                          };
+                          m_base->post("ess", "add-secret-tag", tagBody, true,
+                               [done](const QJsonObject &) { done(); },
+                               [done, failed](const QString &) { ++*failed; done(); });
+                      }
+                  },
+                  onFail);
+         },
+         onFail);
 }
 
 // The three calls below are all "update-secret". They are kept apart because the server tells a

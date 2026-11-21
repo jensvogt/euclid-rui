@@ -1033,6 +1033,17 @@ ApplicationWindow {
                     visible: window.currentRoute === "dashboard"
                     loggedIn: window.loggedIn
                 }
+                // The dashboard's System Load, host by host - reached by clicking that tile.
+                WorkerLoadPage {
+                    anchors.fill: parent
+                    visible: window.currentRoute === "dashboard-workers"
+                    loggedIn: window.loggedIn
+                    onOpenNodeDetails: (nodeName, details) => {
+                        window.selectedNodeName = nodeName
+                        window.selectedNodeDetails = details
+                        window.currentRoute = "modules-eap-node-details"
+                    }
+                }
                 AnalyticsPage {
                     anchors.fill: parent
                     visible: window.currentRoute === "analytics"
