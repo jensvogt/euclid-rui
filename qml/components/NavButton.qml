@@ -1,10 +1,16 @@
 import QtQuick
+import QtQuick.Controls
 
 Rectangle {
     id: root
     property string icon: "●"
     property string label: ""
     property bool selected: false
+    // Folded side panel: the icon alone, centred, and the label as a tooltip instead.
+    property bool collapsed: false
+    // What the tooltip says when folded, if not the label - the fold toggle's label is the action
+    // it does when open, and the opposite one is what it does when folded.
+    property string tooltip: ""
     signal clicked()
 
     width: parent ? parent.width : 200
@@ -26,17 +32,19 @@ Rectangle {
 
     Row {
         anchors.left: parent.left
-        anchors.leftMargin: 18
+        anchors.leftMargin: root.collapsed ? (root.width - iconText.width) / 2 : 18
         anchors.verticalCenter: parent.verticalCenter
         spacing: 14
 
         Text {
+            id: iconText
             text: root.icon
             font.pixelSize: 16
             color: root.selected ? "#4f8cff" : "#9aa1ac"
         }
         Text {
             text: root.label
+            visible: !root.collapsed
             font.pixelSize: 14
             color: root.selected ? "white" : "#c4c9d1"
         }
@@ -46,6 +54,11 @@ Rectangle {
         id: mouseArea
         anchors.fill: parent
         hoverEnabled: true
+        cursorShape: Qt.PointingHandCursor
         onClicked: root.clicked()
     }
+
+    ToolTip.visible: root.collapsed && mouseArea.containsMouse
+    ToolTip.text: root.tooltip.length > 0 ? root.tooltip : root.label
+    ToolTip.delay: 400
 }

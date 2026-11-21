@@ -103,7 +103,11 @@ Item {
 
         "modules-ets": { label: "ETS", parent: "dashboard" },
         "modules-ets-servers": { label: "Transfer Servers", parent: "modules-ets" },
-        "modules-ets-server-details": { parent: "modules-ets-servers" }
+        "modules-ets-server-details": { parent: "modules-ets-servers" },
+
+        "modules-eds": { label: "EDS", parent: "dashboard" },
+        "modules-eds-zones": { label: "Zones", parent: "modules-eds" },
+        "modules-eds-zone-details": { parent: "modules-eds-zones" }
     })
 
     // The route's ancestors, outermost first, each as a crumb that navigates to it. An ancestor

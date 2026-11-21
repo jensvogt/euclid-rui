@@ -23,6 +23,7 @@
 #include "client/EsmClient.h"
 #include "client/EssClient.h"
 #include "client/EtsClient.h"
+#include "client/EdsClient.h"
 #include "client/EuclidBaseClient.h"
 
 namespace {
@@ -166,6 +167,7 @@ int main(int argc, char *argv[]) {
     EkvClient ekvClient(&euclidClient);
     EapClient eapClient(&euclidClient);
     EtsClient etsClient(&euclidClient);
+    EdsClient edsClient(&euclidClient);
     EagClient eagClient(&euclidClient);
     EmoClient emoClient(&euclidClient);
     EadClient eadClient(&euclidClient);
@@ -212,6 +214,7 @@ int main(int argc, char *argv[]) {
     engine.rootContext()->setContextProperty("ekvClient", &ekvClient);
     engine.rootContext()->setContextProperty("eapClient", &eapClient);
     engine.rootContext()->setContextProperty("etsClient", &etsClient);
+    engine.rootContext()->setContextProperty("edsClient", &edsClient);
     engine.rootContext()->setContextProperty("eagClient", &eagClient);
     engine.rootContext()->setContextProperty("emoClient", &emoClient);
     engine.rootContext()->setContextProperty("eadClient", &eadClient);

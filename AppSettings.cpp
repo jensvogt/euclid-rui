@@ -37,6 +37,7 @@ constexpr auto kAuthModeKey = "authMode";
 constexpr auto kAccessKeyIdKey = "accessKeyId";
 constexpr auto kSecretAccessKeyKey = "secretAccessKey";
 constexpr auto kLastFileDialogFolderKey = "lastFileDialogFolder";
+constexpr auto kSideNavCollapsedKey = "sideNavCollapsed";
 
 bool isValidPort(const int port) { return port > 0 && port <= 65535; }
 
@@ -124,6 +125,8 @@ void AppSettings::load() {
         m_secretAccessKey = value.toString();
     if (const QJsonValue value = root.value(kLastFileDialogFolderKey); value.isString() && !value.toString().isEmpty())
         m_lastFileDialogFolder = value.toString();
+    if (const QJsonValue value = root.value(kSideNavCollapsedKey); value.isBool())
+        m_sideNavCollapsed = value.toBool();
 
     const QJsonObject gateway = root.value(kGatewayKey).toObject();
     if (const QJsonValue value = gateway.value(kHostKey); value.isString())
@@ -154,6 +157,7 @@ void AppSettings::save() const {
     root[kAccessKeyIdKey] = m_accessKeyId;
     root[kSecretAccessKeyKey] = m_secretAccessKey;
     root[kLastFileDialogFolderKey] = m_lastFileDialogFolder;
+    root[kSideNavCollapsedKey] = m_sideNavCollapsed;
     root[kGatewayKey] = gateway;
 
     QFile file(path);
@@ -221,6 +225,14 @@ void AppSettings::setLastFileDialogFolder(const QString &folder) {
     m_lastFileDialogFolder = folder;
     save();
     emit lastFileDialogFolderChanged();
+}
+
+void AppSettings::setSideNavCollapsed(const bool collapsed) {
+    if (collapsed == m_sideNavCollapsed)
+        return;
+    m_sideNavCollapsed = collapsed;
+    save();
+    emit sideNavCollapsedChanged();
 }
 
 void AppSettings::setHost(const QString &host) {
