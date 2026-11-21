@@ -24,6 +24,7 @@ class AppSettings : public QObject {
     Q_PROPERTY(QString accessKeyId READ accessKeyId WRITE setAccessKeyId NOTIFY credentialsChanged)
     Q_PROPERTY(QString secretAccessKey READ secretAccessKey WRITE setSecretAccessKey NOTIFY credentialsChanged)
     Q_PROPERTY(QString lastFileDialogFolder READ lastFileDialogFolder WRITE setLastFileDialogFolder NOTIFY lastFileDialogFolderChanged)
+    Q_PROPERTY(bool sideNavCollapsed READ sideNavCollapsed WRITE setSideNavCollapsed NOTIFY sideNavCollapsedChanged)
     Q_PROPERTY(QString configFilePath READ configFilePath CONSTANT)
 
 public:
@@ -100,6 +101,12 @@ public:
     QString lastFileDialogFolder() const { return m_lastFileDialogFolder; }
     Q_INVOKABLE void setLastFileDialogFolder(const QString &folder);
 
+    // Whether the side navigation is folded down to its icons. Remembered, so a window that was
+    // left narrow opens narrow.
+    [[nodiscard]]
+    bool sideNavCollapsed() const { return m_sideNavCollapsed; }
+    void setSideNavCollapsed(bool collapsed);
+
     // Absolute path of the JSON file above, e.g. "/home/alice/.euclid/rui.json". Shown in the
     // settings page so the file this writes is findable without guessing.
     [[nodiscard]]
@@ -108,6 +115,7 @@ public:
 signals:
     void autoRefreshSecondsChanged();
     void lastFileDialogFolderChanged();
+    void sideNavCollapsedChanged();
     void liveListUpdatesChanged();
     // One signal for host/port/useTls: they only matter as the URL they compose into, and every
     // consumer cares about that rather than the individual parts.
@@ -132,4 +140,5 @@ private:
     QString m_accessKeyId;
     QString m_secretAccessKey;
     QString m_lastFileDialogFolder;
+    bool m_sideNavCollapsed = false;
 };

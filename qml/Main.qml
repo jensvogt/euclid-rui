@@ -196,6 +196,12 @@ ApplicationWindow {
     property int etsServerCount: -1
     property int etsRunningCount: -1
     property double etsServiceCount: -1
+    // EDS
+    property int edsZoneCount: -1
+    property double edsServiceCount: -1
+    property double edsServiceTime: -1
+    property string selectedZoneName: ""
+    property var selectedZoneDetails: ({})
     property double etsServiceTime: -1
     property double etsFilesSent: -1
     property double etsFilesReceived: -1
@@ -254,6 +260,7 @@ ApplicationWindow {
     readonly property var moduleRoutes: ({
         "eam": "modules-eam", "roles": "modules-eam-roles", "eqs": "modules-eqs", "esm": "modules-esm", "ess": "modules-ess",
         "ekm": "modules-ekm", "ekv": "modules-ekv", "ens": "modules-ens", "ets": "modules-ets",
+        "eds": "modules-eds", "dns": "modules-eds", "zones": "modules-eds-zones",
         // "nodes" alongside "eap" the way "roles" sits alongside "eam": a sub-page worth reaching
         // by name, because somebody looking for a worker node is not looking for the module.
         "eap": "modules-eap", "nodes": "modules-eap-nodes",
@@ -419,6 +426,31 @@ ApplicationWindow {
         }
     }
 
+    function refreshEdsSummary() {
+        if (!window.loggedIn)
+            return
+        // One row is enough: the total is what the module page shows.
+        edsClient.fetchZones("", 0, 1)
+        emoClient.fetchAverage("eds-service-count")
+        emoClient.fetchAverage("eds-service-time")
+    }
+
+    Connections {
+        target: edsClient
+        // Only the module page's own one-row request: the zones page asks with a filter, and its
+        // total is the filtered one.
+        function onZonesLoaded(list, total) {
+            if (window.currentRoute === "modules-eds") window.edsZoneCount = total
+        }
+        function onZonesFailed(message) {
+            window.edsZoneCount = -1
+        }
+        function onZoneDeleted(name, deletedRecords) {
+            if (window.currentRoute === "modules-eds-zone-details" && window.selectedZoneName === name)
+                window.currentRoute = "modules-eds-zones"
+        }
+    }
+
     function refreshEtsSummary() {
         if (!window.loggedIn)
             return
@@ -581,6 +613,7 @@ ApplicationWindow {
         if (currentRoute === "modules-ens") refreshEnsSummary()
         if (currentRoute === "modules-ekm") refreshEkmSummary()
         if (currentRoute === "modules-ets") refreshEtsSummary()
+        if (currentRoute === "modules-eds") refreshEdsSummary()
         if (currentRoute === "modules-eag") refreshEagSummary()
         if (currentRoute === "modules-eap") refreshEapSummary()
     }
@@ -593,6 +626,7 @@ ApplicationWindow {
         if (loggedIn && currentRoute === "modules-ens") refreshEnsSummary()
         if (loggedIn && currentRoute === "modules-ekm") refreshEkmSummary()
         if (loggedIn && currentRoute === "modules-ets") refreshEtsSummary()
+        if (loggedIn && currentRoute === "modules-eds") refreshEdsSummary()
         if (loggedIn && currentRoute === "modules-eag") refreshEagSummary()
         if (loggedIn && currentRoute === "modules-eap") refreshEapSummary()
     }
@@ -658,6 +692,13 @@ ApplicationWindow {
         running: appSettings.autoRefreshSeconds > 0 && window.currentRoute === "modules-ets" && window.loggedIn
         repeat: true
         onTriggered: window.refreshEtsSummary()
+    }
+
+    Timer {
+        interval: appSettings.autoRefreshSeconds * 1000
+        running: appSettings.autoRefreshSeconds > 0 && window.currentRoute === "modules-eds" && window.loggedIn
+        repeat: true
+        onTriggered: window.refreshEdsSummary()
     }
 
     Timer {
@@ -818,6 +859,10 @@ ApplicationWindow {
                 window.etsServiceCount = value
             else if(name === "ets-service-time")
                 window.etsServiceTime = value
+            else if(name === "eds-service-count")
+                window.edsServiceCount = value
+            else if(name === "eds-service-time")
+                window.edsServiceTime = value
             else if(name === "eag-service-count")
                 window.eagServiceCount = value
             else if(name === "eag-service-time")
@@ -1571,6 +1616,58 @@ ApplicationWindow {
                     serverId: window.selectedTransferServerId
                     details: window.selectedTransferServerDetails
                     onBack: window.currentRoute = "modules-ets-servers"
+                }
+
+                // EDS
+                ModulePage {
+                    anchors.fill: parent
+                    visible: window.currentRoute === "modules-eds"
+                    moduleName: "EDS"
+                    loggedIn: window.loggedIn
+                    stats: [
+                        {
+                            title: "Hosted Zones", value: window.edsZoneCount < 0 ? "—" : String(window.edsZoneCount),
+                            trend: "in this namespace", trendUp: true, accent: "#4f8cff", route: "modules-eds-zones"
+                        },
+                        {
+                            title: "Service Count", value: window.edsServiceCount < 0 ? "—" : window.edsServiceCount.toFixed(1),
+                            trend: "per flush period", trendUp: true, accent: "#9aa1ac"
+                        },
+                        {
+                            title: "Service Time", value: window.edsServiceTime < 0 ? "—" : window.edsServiceTime.toFixed(1) + " ms",
+                            trend: "per action", trendUp: true, accent: "#9aa1ac"
+                        }
+                    ]
+                    activity: [
+                        { initials: "ED", avatarColor: "#4f8cff", title: "Hosted zones answered authoritatively", subtitle: "DNS · UDP and TCP port 1053", time: "live" },
+                        { initials: "ED", avatarColor: "#4cd97b", title: "Applications, nodes and the manager named in euclid.internal", subtitle: "rebuilt from what is running", time: "live" },
+                        { initials: "ED", avatarColor: "#ffb545", title: "Other names forwarded upstream for allowed networks", subtitle: "forwarders · allow-recursion", time: "—" }
+                    ]
+                    onNavigate: (route) => {
+                        window.selectedZoneName = ""
+                        window.currentRoute = route
+                    }
+                }
+                EdsZonesPage {
+                    anchors.fill: parent
+                    visible: window.currentRoute === "modules-eds-zones"
+                    loggedIn: window.loggedIn
+                    namespaceName: window.currentNamespace
+                    onBack: window.currentRoute = "modules-eds"
+                    onOpenZoneDetails: (zoneName, details) => {
+                        window.selectedZoneName = zoneName
+                        window.selectedZoneDetails = details
+                        window.currentRoute = "modules-eds-zone-details"
+                    }
+                }
+                EdsZoneDetailsPage {
+                    anchors.fill: parent
+                    visible: window.currentRoute === "modules-eds-zone-details"
+                    loggedIn: window.loggedIn
+                    namespaceName: window.currentNamespace
+                    zoneName: window.selectedZoneName
+                    details: window.selectedZoneDetails
+                    onBack: window.currentRoute = "modules-eds-zones"
                 }
 
                 // The module registry itself. Reached from the sidebar entry that only
