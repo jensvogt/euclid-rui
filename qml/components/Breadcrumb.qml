@@ -34,6 +34,7 @@ Item {
     readonly property var routeTree: ({
         "dashboard": { label: "Home" },
         "analytics": { label: "Analytics", parent: "dashboard" },
+        "dashboard-workers": { label: "Worker Load", parent: "dashboard" },
         "alerts": { label: "Alerts", parent: "dashboard" },
         "alerts-rule-details": { parent: "alerts" },
         "settings": { label: "Settings", parent: "dashboard" },

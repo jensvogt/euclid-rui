@@ -462,8 +462,18 @@ Item {
                     height: 280
                     radius: 14
                     color: "#20242e"
-                    border.color: "#2c313c"
+                    // The gauges are every host folded into one; a click opens them host by host.
+                    border.color: systemLoadMouse.containsMouse ? "#4f8cff" : "#2c313c"
+                    Behavior on border.color { ColorAnimation { duration: 120 } }
                     border.width: 1
+
+                    MouseArea {
+                        id: systemLoadMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: Nav.go("dashboard-workers")
+                    }
 
                     Column {
                         anchors.centerIn: parent
@@ -471,8 +481,8 @@ Item {
 
                         Text {
                             anchors.horizontalCenter: parent.horizontalCenter
-                            text: "System Load"
-                            color: "#9aa1ac"
+                            text: "System Load  ›"
+                            color: systemLoadMouse.containsMouse ? "#4f8cff" : "#9aa1ac"
                             font.pixelSize: 13
                         }
 

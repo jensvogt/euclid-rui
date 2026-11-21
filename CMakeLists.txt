@@ -128,6 +128,7 @@ qt_add_qml_module(euclid-rui
         qml/pages/EtsServerDetailsPage.qml
         qml/pages/EdsZonesPage.qml
         qml/pages/EdsZoneDetailsPage.qml
+        qml/pages/WorkerLoadPage.qml
         qml/pages/EsmObjectDetailsPage.qml
         qml/pages/EnsTopicsPage.qml
         qml/pages/EnsTopicDetailsPage.qml
