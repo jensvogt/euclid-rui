@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.67](https://github.com/jensvogt/euclid-rui/compare/1.1.66...v1.1.67) (2026-11-22)
+
+
+### Bug Fixes
+
+* worker load page ([06771b7](https://github.com/jensvogt/euclid-rui/commit/06771b7c8a6259efb1a9f7556b872d79e46152bd))
+
 ## [1.1.66](https://github.com/jensvogt/euclid-rui/compare/1.1.65...v1.1.66) (2026-11-21)
 
 
