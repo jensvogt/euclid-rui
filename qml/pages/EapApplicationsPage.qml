@@ -29,14 +29,34 @@ Item {
     // the fix is pageSize/pageIndex on the action, and this becomes a re-query like every other
     // table here.
     property int pageIndex: 0
-    property int pageSize: 25
+    property int pageSize: 10
+
+    // Sorted here for the same reason it is paged here: the whole list is in hand. Numbers compare
+    // as numbers and text without regard to case; ties fall back to the application ID, so equal
+    // rows keep a stable order from one refresh to the next.
+    property string sortKey: "applicationId"
+    property bool sortAscending: true
+    readonly property var sortedApplications: {
+        const key = root.sortKey
+        const dir = root.sortAscending ? 1 : -1
+        return root.applications.slice().sort(function (a, b) {
+            const av = a[key], bv = b[key]
+            let c = 0
+            if (typeof av === "number" && typeof bv === "number") c = av - bv
+            else c = String(av === undefined || av === null ? "" : av).localeCompare(
+                         String(bv === undefined || bv === null ? "" : bv), undefined, { sensitivity: "base", numeric: true })
+            if (c === 0 && key !== "applicationId")
+                c = String(a.applicationId).localeCompare(String(b.applicationId))
+            return c * dir
+        })
+    }
 
     readonly property int pageCount: Math.max(1, Math.ceil(root.applications.length / root.pageSize))
     // Clamped rather than left where it was: filtering or a refresh can shorten the list under a
     // page that is now past its end, and that would read as "no applications" rather than as a
     // page that is no longer there.
     readonly property int clampedPageIndex: Math.min(Math.max(0, root.pageIndex), root.pageCount - 1)
-    readonly property var pagedApplications: root.applications.slice(
+    readonly property var pagedApplications: root.sortedApplications.slice(
         root.clampedPageIndex * root.pageSize,
         root.clampedPageIndex * root.pageSize + root.pageSize)
     property int totalCount: 0
@@ -2024,6 +2044,15 @@ Item {
                 emptyText: "No applications defined."
                 rowsClickable: true
                 onRowClicked: (row) => root.openApplicationDetails(row.applicationId, row)
+
+                sortKey: root.sortKey
+                sortAscending: root.sortAscending
+                // A new order starts at its first page: page three of one order is not of another.
+                onSortRequested: (key, ascending) => {
+                    root.sortKey = key
+                    root.sortAscending = ascending
+                    root.pageIndex = 0
+                }
 
                 // No re-query: the page is cut from the list already in hand.
                 onPageChanged: (index) => root.pageIndex = index
