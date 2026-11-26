@@ -547,10 +547,33 @@ ApplicationWindow {
         id: loginDialog
         signedIn: window.loggedIn
         onLoggedIn: (username, namespaceName) => {
+            // What the session was in before this dialog ran. Signing in again over a live session
+            // is how an account is switched, and the two can differ by account, by namespace, by
+            // user or by all three.
+            const movedAccount = window.sessionAccountId !== euclidClient.accountId
+            const movedNamespace = window.currentNamespace !== namespaceName
+
             window.loggedIn = true
             window.currentUser = username
             window.currentNamespace = namespaceName
             euclidClient.setNamespace(namespaceName)
+            window.sessionAccountId = euclidClient.accountId
+
+            // Everything on screen belongs to where the session just was. A queue, a bucket, an
+            // application and every figure counted off them are scoped to an account and a
+            // namespace, so none of it describes where the session now is.
+            //
+            // Done here rather than on accountIdChanged, which fires midway through this dialog -
+            // the account is settled before the namespaces are even asked for, so refreshing then
+            // would re-read the new account through the old namespace. This is the first moment
+            // both halves are true.
+            //
+            // And nothing refetched on its own before this: a page re-reads when it becomes
+            // visible, when the session signs in, or on its timer - and that timer is off by
+            // default (see AppSettings::liveListUpdates), so a page already on screen when the
+            // account changed went on showing the previous account's rows indefinitely.
+            if (movedAccount || movedNamespace)
+                window.leaveAccountScope()
         }
     }
 
@@ -563,6 +586,8 @@ ApplicationWindow {
             window.loggedIn = false
             window.currentUser = ""
             window.currentNamespace = ""
+            window.sessionAccountId = ""
+            window.leaveAccountScope()
         }
     }
 
@@ -573,6 +598,27 @@ ApplicationWindow {
     // A page that has anything to re-fetch exposes refresh(); the ones that only display what the
     // list they were opened from already handed them have nothing to ask for, and F5 leaves them
     // alone rather than pretending otherwise.
+    // The account the live session is in, as of the last completed sign-in. Kept beside
+    // euclidClient.accountId rather than read from it, because that one moves while the login
+    // dialog is still open - it is set as soon as an account is picked, several steps before the
+    // session those steps are building actually exists.
+    property string sessionAccountId: ""
+
+    // Leaves behind everything on screen that belonged to the account and namespace the session
+    // has just moved out of.
+    //
+    // Going to the dashboard rather than clearing each page: every list and details page re-reads
+    // when it becomes visible, so moving away is what makes the rest of them correct, and the one
+    // page that stays on screen is the one this then refreshes. A details page is the reason it
+    // cannot simply stay put - it is about a single queue, bucket or application of the account
+    // just left, and re-reading its ERN somewhere else either fails or, worse, resolves.
+    function leaveAccountScope() {
+        window.currentRoute = "dashboard"
+        // Explicitly, because the route may already have been "dashboard": then nothing became
+        // visible, nothing fired, and the page would otherwise keep the figures it already had.
+        window.refreshCurrentPage()
+    }
+
     function refreshCurrentPage() {
         for (let i = 0; i < pageLoader.children.length; ++i) {
             const page = pageLoader.children[i]
