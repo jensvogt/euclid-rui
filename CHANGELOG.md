@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.1.68](https://github.com/jensvogt/euclid-rui/compare/1.1.67...v1.1.68) (2026-11-26)
+
+
+### Bug Fixes
+
+* add account verification ([f7d5b61](https://github.com/jensvogt/euclid-rui/commit/f7d5b613ff9b32cfea7d220cdda461485637c1c7))
+* add account verification ([92941e6](https://github.com/jensvogt/euclid-rui/commit/92941e6268cfb233510978fda3b3ce6643fef689))
+
 ## [1.1.67](https://github.com/jensvogt/euclid-rui/compare/1.1.66...v1.1.67) (2026-11-22)
 
 
